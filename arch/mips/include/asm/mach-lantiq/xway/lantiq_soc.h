@@ -36,6 +36,12 @@
 #define SOC_ID_GRX288_2		0x00D /* v1.2 */
 #define SOC_ID_GRX282_2		0x00E /* v1.2 */
 
+#define SOC_ID_ARX362		0x004
+#define SOC_ID_ARX368		0x005
+#define SOC_ID_ARX382		0x007
+#define SOC_ID_ARX388		0x008
+#define SOC_ID_GRX388		0x009
+
  /* SoC Types */
 #define SOC_TYPE_DANUBE		0x01
 #define SOC_TYPE_TWINPASS	0x02
@@ -43,6 +49,7 @@
 #define SOC_TYPE_VR9		0x04 /* v1.1 */
 #define SOC_TYPE_VR9_2		0x05 /* v1.2 */
 #define SOC_TYPE_AMAZON_SE	0x06
+#define SOC_TYPE_AR10		0x07
 
 /* BOOT_SEL - find what boot media we have */
 #define BS_EXT_ROM		0x0

@@ -21,6 +21,9 @@
 #define SOC_AR9		"AR9"
 #define SOC_GR9		"GR9"
 #define SOC_VR9		"VR9"
+#define SOC_AR10	"AR10"
+#define SOC_GR10	"GR10"
+
 
 #define COMP_DANUBE	"lantiq,danube"
 #define COMP_TWINPASS	"lantiq,twinpass"
@@ -28,6 +31,8 @@
 #define COMP_AR9	"lantiq,ar9"
 #define COMP_GR9	"lantiq,gr9"
 #define COMP_VR9	"lantiq,vr9"
+#define COMP_AR10	"lantiq,ar10"
+#define COMP_GR10	"lantiq,gr10"
 
 #define PART_SHIFT	12
 #define PART_MASK	0x0FFFFFFF
@@ -106,6 +111,21 @@ void __init ltq_soc_detect(struct ltq_soc_info *i)
 		i->name = SOC_GR9;
 		i->type = SOC_TYPE_VR9_2;
 		i->compatible = COMP_GR9;
+		break;
+
+	case SOC_ID_ARX362:
+	case SOC_ID_ARX368:
+	case SOC_ID_ARX382:
+	case SOC_ID_ARX388:
+		i->name = SOC_AR10;
+		i->type = SOC_TYPE_AR10;
+		i->compatible = COMP_AR10;
+		break;
+
+	case SOC_ID_GRX388:
+		i->name = SOC_GR10;
+		i->type = SOC_TYPE_AR10;
+		i->compatible = COMP_GR10;
 		break;
 
 	default:
