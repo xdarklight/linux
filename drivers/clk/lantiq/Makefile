@@ -4,6 +4,7 @@ obj-$(CONFIG_SOC_TYPE_FALCON) += \
 
 obj-$(CONFIG_SOC_TYPE_XWAY) += \
 	clk.o \
+	clk-ar10.o \
 	clk-ar9.o \
 	clk-ase.o \
 	clk-danube.o \
