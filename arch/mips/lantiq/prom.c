@@ -19,7 +19,6 @@
 #include <lantiq.h>
 
 #include "prom.h"
-#include "clk.h"
 
 /* access to the ebu needs to be locked between different drivers */
 DEFINE_SPINLOCK(ebu_lock);
