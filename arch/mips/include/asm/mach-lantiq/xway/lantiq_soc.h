@@ -68,11 +68,6 @@
 #define BS_NAND			0x6
 #define BS_RMII0		0x7
 
-/* helpers used to access the cgu */
-#define ltq_cgu_w32(x, y)	ltq_w32((x), ltq_cgu_membase + (y))
-#define ltq_cgu_r32(x)		ltq_r32(ltq_cgu_membase + (x))
-extern __iomem void *ltq_cgu_membase;
-
 /*
  * during early_printk no ioremap is possible
  * let's use KSEG1 instead
@@ -98,11 +93,6 @@ extern __iomem void *ltq_cgu_membase;
 
 /* allow booting xrx200 phys */
 int xrx200_gphy_boot(struct device *dev, unsigned int id, dma_addr_t dev_addr);
-
-/* request a non-gpio and set the PIO config */
-#define PMU_PPE			 BIT(13)
-extern void ltq_pmu_enable(unsigned int module);
-extern void ltq_pmu_disable(unsigned int module);
 
 #endif /* CONFIG_SOC_TYPE_XWAY */
 #endif /* _LTQ_XWAY_H__ */

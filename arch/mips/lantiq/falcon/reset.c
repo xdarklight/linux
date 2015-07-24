@@ -24,6 +24,8 @@
 /* boot mode mask */
 #define BM_MASK			0x0005
 
+void __iomem *ltq_sys1_membase;
+
 /* allow platform code to find out what surce we booted from */
 unsigned char ltq_boot_select(void)
 {
