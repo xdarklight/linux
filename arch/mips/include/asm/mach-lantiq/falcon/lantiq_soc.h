@@ -37,11 +37,6 @@
 #define FALCON_CHIPTYPE		((u32 *)(KSEG1 + LTQ_STATUS_BASE_ADDR + 0x38))
 #define FALCON_CHIPCONF		((u32 *)(KSEG1 + LTQ_STATUS_BASE_ADDR + 0x40))
 
-/* SYSCTL - start/stop/restart/configure/... different parts of the Soc */
-#define SYSCTL_SYS1		0
-#define SYSCTL_SYSETH		1
-#define SYSCTL_SYSGPE		2
-
 /* BOOT_SEL - find what boot media we have */
 #define BS_FLASH		0x1
 #define BS_SPI			0x4

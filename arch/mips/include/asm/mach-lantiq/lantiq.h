@@ -20,7 +20,7 @@
 #define ltq_r8(reg)		__raw_readb(reg)
 #define ltq_w8(val, reg)	__raw_writeb(val, reg)
 
-/* register access macros for EBU and CGU */
+/* register access macros for EBU */
 #define ltq_ebu_w32(x, y)	ltq_w32((x), ltq_ebu_membase + (y))
 #define ltq_ebu_r32(x)		ltq_r32(ltq_ebu_membase + (x))
 #define ltq_ebu_w32_mask(x, y, z) \
@@ -36,13 +36,21 @@ extern void ltq_mask_and_ack_irq(struct irq_data *data);
 extern void ltq_enable_irq(struct irq_data *data);
 extern int ltq_eiu_get_irq(int exin);
 
-/* clock handling */
-extern int clk_activate(struct clk *clk);
-extern void clk_deactivate(struct clk *clk);
-extern struct clk *clk_get_cpu(void);
-extern struct clk *clk_get_fpi(void);
-extern struct clk *clk_get_io(void);
-extern struct clk *clk_get_ppe(void);
+/* legacy clock handling */
+static inline struct clk *clk_get_fpi(void)
+{
+	return clk_get(NULL, "fpi");
+}
+
+static inline struct clk *clk_get_io(void)
+{
+	return clk_get(NULL, "io");
+}
+
+static inline struct clk *clk_get_ppe(void)
+{
+	return clk_get(NULL, "pp32");
+}
 
 /* find out what bootsource we have */
 extern unsigned char ltq_boot_select(void);
