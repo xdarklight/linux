@@ -316,6 +316,7 @@ config LANTIQ
 	select DMA_NONCOHERENT
 	select IRQ_MIPS_CPU
 	select CEVT_R4K
+	select COMMON_CLK
 	select CSRC_R4K
 	select SYS_HAS_CPU_MIPS32_R1
 	select SYS_HAS_CPU_MIPS32_R2
@@ -327,7 +328,6 @@ config LANTIQ
 	select ARCH_REQUIRE_GPIOLIB
 	select SWAP_IO_SPACE
 	select BOOT_RAW
-	select HAVE_MACH_CLKDEV
 	select CLKDEV_LOOKUP
 	select USE_OF
 	select PINCTRL
