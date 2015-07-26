@@ -229,7 +229,7 @@ ltq_dma_init(struct platform_device *pdev)
 	if (IS_ERR(clk))
 		panic("Failed to get dma clock");
 
-	clk_enable(clk);
+	clk_prepare_enable(clk);
 	ltq_dma_w32_mask(0, DMA_RESET, LTQ_DMA_CTRL);
 
 	/* disable all interrupts */
