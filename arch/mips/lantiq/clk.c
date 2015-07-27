@@ -46,7 +46,6 @@ void __init plat_time_init(void)
 {
 	struct clk *clk;
 
-	ltq_soc_init();
 	of_clk_init(NULL);
 
 	clk = clk_get_sys(NULL, "cpu");
