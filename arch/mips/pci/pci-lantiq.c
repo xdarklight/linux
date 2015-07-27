@@ -98,6 +98,7 @@ static int ltq_pci_startup(struct platform_device *pdev)
 	struct device_node *node = pdev->dev.of_node;
 	const __be32 *req_mask, *bus_clk;
 	u32 temp_buffer;
+	int ret;
 
 	/* get our clocks */
 	clk_pci = clk_get(&pdev->dev, NULL);
@@ -118,11 +119,26 @@ static int ltq_pci_startup(struct platform_device *pdev)
 	if (bus_clk)
 		clk_set_rate(clk_pci, *bus_clk);
 
-	/* and enable the clocks */
-	clk_enable(clk_pci);
-	if (of_find_property(node, "lantiq,external-clock", NULL))
-		clk_enable(clk_external);
-	else
+	/* The PCI clock always has to be on. */
+	ret = clk_prepare_enable(clk_pci);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to enable the pci clock\n");
+		return ret;
+	}
+
+	/* The clk framework doesn't let us disable clocks that were never
+	 * enabled before. Thus we enable it here (even though it may be
+	 * on already due to chip default settings) and disable it later. */
+	ret = clk_prepare_enable(clk_external);
+	if (ret) {
+		dev_err(&pdev->dev,
+			"failed to enable the external pci clock\n");
+		return ret;
+	}
+
+	/* Disable the external pci clock if it's not wanted. Enabling already
+	 * happened above. */
+	if (!of_find_property(node, "lantiq,external-clock", NULL))
 		clk_disable(clk_external);
 
 	/* setup reset gpio used by pci */
