@@ -98,6 +98,7 @@ static int ltq_pci_startup(struct platform_device *pdev)
 	struct device_node *node = pdev->dev.of_node;
 	const __be32 *req_mask, *bus_clk;
 	u32 temp_buffer;
+	int ret;
 
 	/* get our clocks */
 	clk_pci = clk_get(&pdev->dev, NULL);
@@ -118,12 +119,20 @@ static int ltq_pci_startup(struct platform_device *pdev)
 	if (bus_clk)
 		clk_set_rate(clk_pci, *bus_clk);
 
-	/* and enable the clocks */
-	clk_enable(clk_pci);
-	if (of_find_property(node, "lantiq,external-clock", NULL))
-		clk_enable(clk_external);
-	else
-		clk_disable(clk_external);
+	ret = clk_prepare_enable(clk_pci);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to enable the pci clock\n");
+		return ret;
+	}
+
+	if (of_property_read_bool(node, "lantiq,external-clock")) {
+		ret = clk_prepare_enable(clk_external);
+		if (ret) {
+			dev_err(&pdev->dev,
+				"failed to enable the external pci clock\n");
+			return ret;
+		}
+	}
 
 	/* setup reset gpio used by pci */
 	reset_gpio = of_get_named_gpio(node, "gpio-reset", 0);
