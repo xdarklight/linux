@@ -1,4 +1,4 @@
-obj-y := prom.o sysctrl.o reset.o dma.o gptu.o dcdc.o xbar.o
+obj-y := prom.o reset.o dma.o gptu.o dcdc.o xbar.o
 
 obj-y += vmmc.o
 
