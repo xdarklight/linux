@@ -1,0 +1,75 @@
+lantiq xway Soc USB 1.1/2.0 PHY binding
+=======================================
+
+This binding describes a device that is used to control the USB PHY hardware.
+
+Required properties (controller (parent) node):
+- compatible	: Should be one of
+			"lantiq,arx100-usb2-phy"
+			"lantiq,arx300-usb2-phy"
+			"lantiq,ase-usb2-phy"
+			"lantiq,danube-usb2-phy"
+			"lantiq,grx390-usb2-phy"
+			"lantiq,vrx200-usb2-phy"
+			"lantiq,xway-usb2-phy"
+- address-cells	: should be 1
+- size-cells	: should be 0
+- phy-cells	: from the generic PHY bindings, must be 1
+
+Required nodes	:  A sub-node is required for each USB PHY.
+
+Required properties (port (child) node):
+- reg        	: The ID of the USB port, usually 0 or 1.
+- clocks	: References to the (PMU) "ctrl" and "phy" clk gates.
+- clock-names	: Must be one of the following:
+			"ctrl"
+			"phy"
+- resets	: References to the RCU USB configuration resets.
+- reset-names	: Must be one of the following:
+			"config"
+			"hostmode"
+			"slave-endianness"
+			"host-endianness"
+			"statemachine-hard"
+			"statemachine-soft"
+
+Optional properties (port (child) node):
+- vbus-gpio	: References a GPIO which enables VBUS for the USB port.
+
+Example:
+
+	usb_phys: xway-usb2-phy {
+		compatible      = "lantiq,xway-usb2-phy";
+		#address-cells	= <1>;
+		#size-cells	= <0>;
+		#phy-cells	= <1>;
+
+		usb0_phy: port@0 {
+			reg = <0>;
+
+			clocks = <&pmu PMU_GATE_USB0_CTRL>,
+				 <&pmu PMU_GATE_USB0_PHY>;
+			clock-names = "ctrl", "phy";
+			vbus-gpio = <&gpio 32>;
+			resets = <&rcu 0x38 0>, <&rcu 0x18 11>, <&rcu 0x18 9>,
+					<&rcu 0x18 10>, <&rcu 0x10 4>,
+					<&rcu 0x48 4>
+			reset-names = "config", "hostmode", "slave-endianness",
+					"host-endianness", "statemachine-hard",
+					"statemachine-soft"
+		};
+
+		usb1_phy: port@1 {
+			reg = <0>;
+
+			clocks = <&pmu PMU_GATE_USB1_CTRL>,
+				 <&pmu PMU_GATE_USB1_PHY>;
+			clock-names = "ctrl", "phy";
+			resets = <&rcu 0x3c 0>, <&rcu 0x34 11>, <&rcu 0x34 9>,
+					<&rcu 0x34 10>, <&rcu 0x10 4>,
+					<&rcu 0x48 5>
+			reset-names = "config", "hostmode", "slave-endianness",
+					"host-endianness", "statemachine-hard",
+					"statemachine-soft"
+		};
+	};
