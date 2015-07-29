@@ -256,7 +256,12 @@ static int xway_stp_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Failed to get clock\n");
 		return PTR_ERR(clk);
 	}
-	clk_enable(clk);
+
+	ret = clk_prepare_enable(clk);
+	if (ret) {
+		dev_err(&pdev->dev, "Failed to prepare or enable the clock\n");
+		return ret;
+	}
 
 	ret = xway_stp_hw_init(chip);
 	if (!ret)
