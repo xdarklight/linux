@@ -432,6 +432,14 @@ config PHY_CYGNUS_PCIE
 	  Enable this to support the Broadcom Cygnus PCIe PHY.
 	  If unsure, say N.
 
+config PHY_LANTIQ_RCU_USB2
+	tristate "Lantiq XWAY SoC RCU based USB PHY"
+	depends on SOC_TYPE_XWAY
+	depends on OF
+	select GENERIC_PHY
+	help
+	  Support for the USB PHY(s) on the Lantiq XWAY family SoCs.
+
 source "drivers/phy/tegra/Kconfig"
 
 endmenu
