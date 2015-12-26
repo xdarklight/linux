@@ -1,0 +1,21 @@
+Lantiq XWAY SoC XBAR binding
+============================
+
+
+-------------------------------------------------------------------------------
+Required properties:
+- compatible	: Should be "lantiq,xbar-xway"
+- reg		: The address and length of the XBAR registers
+
+Optional properties:
+- lantiq,rcu-syscon	: A phandle and offset to the endianess configuration
+			  registers in the RCU module
+
+
+-------------------------------------------------------------------------------
+Example for the XBAR on the xRX200 SoCs:
+	xbar0: xbar@400000 {
+			compatible = "lantiq,xbar-xway";
+			reg = <0x400000 0x1000>;
+			lantiq,rcu-syscon = <&rcu0 0x4c>;
+	};
