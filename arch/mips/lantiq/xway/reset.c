@@ -64,37 +64,6 @@
 #define RCU_BOOT_SEL(x)		((x >> 18) & 0x7)
 #define RCU_BOOT_SEL_XRX200(x)	(((x >> 17) & 0xf) | ((x >> 8) & 0x10))
 
-/* dwc2 USB configuration registers */
-#define RCU_USB1CFG		0x0018
-#define RCU_USB2CFG		0x0034
-
-/* USB DMA endianness bits */
-#define RCU_USBCFG_HDSEL_BIT	BIT(11)
-#define RCU_USBCFG_HOST_END_BIT	BIT(10)
-#define RCU_USBCFG_SLV_END_BIT	BIT(9)
-
-/* USB reset bits */
-#define RCU_USBRESET		0x0010
-
-#define USBRESET_BIT		BIT(4)
-
-#define RCU_USBRESET2		0x0048
-
-#define USB1RESET_BIT		BIT(4)
-#define USB2RESET_BIT		BIT(5)
-
-#define RCU_CFG1A		0x0038
-#define RCU_CFG1B		0x003C
-
-/* USB PMU devices */
-#define PMU_AHBM		BIT(15)
-#define PMU_USB0		BIT(6)
-#define PMU_USB1		BIT(27)
-
-/* USB PHY PMU devices */
-#define PMU_USB0_P		BIT(0)
-#define PMU_USB1_P		BIT(26)
-
 #define XLATE_OFFSET_SHIFT	8
 #define XLATE_OFFSET_MASK	0xffffff
 #define XLATE_BIT_MASK		0xff
@@ -332,45 +301,6 @@ static void ltq_machine_power_off(void)
 	unreachable();
 }
 
-static void ltq_usb_init(void)
-{
-	/* Power for USB cores 1 & 2 */
-	ltq_pmu_enable(PMU_AHBM);
-	ltq_pmu_enable(PMU_USB0);
-	ltq_pmu_enable(PMU_USB1);
-
-	ltq_rcu_w32(ltq_rcu_r32(RCU_CFG1A) | BIT(0), RCU_CFG1A);
-	ltq_rcu_w32(ltq_rcu_r32(RCU_CFG1B) | BIT(0), RCU_CFG1B);
-
-	/* Enable USB PHY power for cores 1 & 2 */
-	ltq_pmu_enable(PMU_USB0_P);
-	ltq_pmu_enable(PMU_USB1_P);
-
-	/* Configure cores to host mode */
-	ltq_rcu_w32(ltq_rcu_r32(RCU_USB1CFG) & ~RCU_USBCFG_HDSEL_BIT,
-		RCU_USB1CFG);
-	ltq_rcu_w32(ltq_rcu_r32(RCU_USB2CFG) & ~RCU_USBCFG_HDSEL_BIT,
-		RCU_USB2CFG);
-
-	/* Select DMA endianness (Host-endian: big-endian) */
-	ltq_rcu_w32((ltq_rcu_r32(RCU_USB1CFG) & ~RCU_USBCFG_SLV_END_BIT)
-		| RCU_USBCFG_HOST_END_BIT, RCU_USB1CFG);
-	ltq_rcu_w32(ltq_rcu_r32((RCU_USB2CFG) & ~RCU_USBCFG_SLV_END_BIT)
-		| RCU_USBCFG_HOST_END_BIT, RCU_USB2CFG);
-
-	/* Hard reset USB state machines */
-	ltq_rcu_w32(ltq_rcu_r32(RCU_USBRESET) | USBRESET_BIT, RCU_USBRESET);
-	udelay(50 * 1000);
-	ltq_rcu_w32(ltq_rcu_r32(RCU_USBRESET) & ~USBRESET_BIT, RCU_USBRESET);
-
-	/* Soft reset USB state machines */
-	ltq_rcu_w32(ltq_rcu_r32(RCU_USBRESET2)
-		| USB1RESET_BIT | USB2RESET_BIT, RCU_USBRESET2);
-	udelay(50 * 1000);
-	ltq_rcu_w32(ltq_rcu_r32(RCU_USBRESET2)
-		& ~(USB1RESET_BIT | USB2RESET_BIT), RCU_USBRESET2);
-}
-
 static int xway_reset_probe(struct platform_device *pdev)
 {
 	struct resource res;
@@ -418,10 +348,6 @@ static int __init mips_reboot_setup(void)
 		pr_err("Error registering reset platform driver: %d\n", ret);
 		return ret;
 	}
-
-	if (of_machine_is_compatible("lantiq,ar9") ||
-	    of_machine_is_compatible("lantiq,vr9"))
-		ltq_usb_init();
 
 	if (of_machine_is_compatible("lantiq,vr9"))
 		ltq_rcu_w32_mask(0, RCU_VR9_BE_AHB1S, RCU_AHB_ENDIAN);
