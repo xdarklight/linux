@@ -7,6 +7,9 @@
  *  Copyright (C) 2012 Lantiq GmbH
  */
 
+#include <linux/clk.h>
+#include <linux/clkdev.h>
+#include <linux/clk-provider.h>
 #include <linux/interrupt.h>
 #include <linux/ioport.h>
 #include <linux/module.h>
@@ -14,7 +17,6 @@
 #include <linux/of_irq.h>
 
 #include <lantiq_soc.h>
-#include "../clk.h"
 
 /* the magic ID byte of the core */
 #define GPTU_MAGIC	0x59
@@ -66,11 +68,22 @@ enum gptu_timer {
 	TIMER2A,
 	TIMER2B,
 	TIMER3A,
-	TIMER3B
+	TIMER3B,
+	NUM_GPTU /* Must be last */
 };
 
 static void __iomem *gptu_membase;
-static struct resource irqres[6];
+static struct resource irqres[NUM_GPTU];
+
+struct gptu_clk {
+	struct clk_hw	hw;
+	enum gptu_timer	timer;
+};
+
+static inline struct gptu_clk *to_gptu_clk(struct clk_hw *hw)
+{
+	return container_of(hw, struct gptu_clk, hw);
+}
 
 static irqreturn_t timer_irq_handler(int irq, void *priv)
 {
@@ -93,9 +106,12 @@ static void gptu_hwexit(void)
 	gptu_w32(CLC_DISABLE, GPTU_CLC);
 }
 
-static int gptu_enable(struct clk *clk)
+static int gptu_enable(struct clk_hw *hw)
 {
-	int ret = request_irq(irqres[clk->bits].start, timer_irq_handler,
+	int ret;
+	struct gptu_clk *clk = to_gptu_clk(hw);
+
+	ret = request_irq(irqres[clk->timer].start, timer_irq_handler,
 		IRQF_TIMER, "gtpu", NULL);
 	if (ret) {
 		pr_err("gptu: failed to request irq\n");
@@ -103,42 +119,83 @@ static int gptu_enable(struct clk *clk)
 	}
 
 	gptu_w32(CON_CNT | CON_EDGE_ANY | CON_SYNC | CON_CLK_INT,
-		GPTU_CON(clk->bits));
-	gptu_w32(1, GPTU_RLD(clk->bits));
-	gptu_w32(gptu_r32(GPTU_IRNEN) | BIT(clk->bits), GPTU_IRNEN);
-	gptu_w32(RUN_SEN | RUN_RL, GPTU_RUN(clk->bits));
+		GPTU_CON(clk->timer));
+	gptu_w32(1, GPTU_RLD(clk->timer));
+	gptu_w32(gptu_r32(GPTU_IRNEN) | BIT(clk->timer), GPTU_IRNEN);
+	gptu_w32(RUN_SEN | RUN_RL, GPTU_RUN(clk->timer));
+
 	return 0;
 }
 
-static void gptu_disable(struct clk *clk)
+static void gptu_disable(struct clk_hw *hw)
 {
-	gptu_w32(0, GPTU_RUN(clk->bits));
-	gptu_w32(0, GPTU_CON(clk->bits));
-	gptu_w32(0, GPTU_RLD(clk->bits));
-	gptu_w32(gptu_r32(GPTU_IRNEN) & ~BIT(clk->bits), GPTU_IRNEN);
-	free_irq(irqres[clk->bits].start, NULL);
+	struct gptu_clk *clk = to_gptu_clk(hw);
+
+	gptu_w32(0, GPTU_RUN(clk->timer));
+	gptu_w32(0, GPTU_CON(clk->timer));
+	gptu_w32(0, GPTU_RLD(clk->timer));
+	gptu_w32(gptu_r32(GPTU_IRNEN) & ~BIT(clk->timer), GPTU_IRNEN);
+
+	free_irq(irqres[clk->timer].start, NULL);
 }
 
-static inline void clkdev_add_gptu(struct device *dev, const char *con,
-							unsigned int timer)
-{
-	struct clk *clk = kzalloc(sizeof(struct clk), GFP_KERNEL);
+const struct clk_ops gptu_timer_clk_ops = {
+	.enable = gptu_enable,
+	.disable = gptu_disable,
+};
 
-	clk->cl.dev_id = dev_name(dev);
-	clk->cl.con_id = con;
-	clk->cl.clk = clk;
-	clk->enable = gptu_enable;
-	clk->disable = gptu_disable;
-	clk->bits = timer;
-	clkdev_add(&clk->cl);
+static struct clk *gptu_register_timer_clk(struct device *dev,
+						const char *name,
+						enum gptu_timer timer)
+{
+	struct gptu_clk *gptu_timer;
+	struct clk *clk;
+	struct clk_init_data init;
+
+	gptu_timer = kzalloc(sizeof(*gptu_timer), GFP_KERNEL);
+	if (!gptu_timer)
+		return ERR_PTR(-ENOMEM);
+
+	init.name = name;
+	init.ops = &gptu_timer_clk_ops;
+	init.flags = CLK_IS_ROOT;
+	init.parent_names = NULL;
+	init.num_parents = 0;
+
+	gptu_timer->timer = timer;
+	gptu_timer->hw.init = &init;
+
+	clk = clk_register(NULL, &gptu_timer->hw);
+	if (IS_ERR(clk)) {
+		kfree(gptu_timer);
+		return clk;
+	}
+
+	if (clk_register_clkdev(clk, name, dev_name(dev)))
+		pr_err("%s: Failed to register lookup for %s\n",
+		       __func__, name);
+
+	return clk;
+}
+
+static void gptu_register_clks(struct platform_device *pdev)
+{
+	gptu_register_timer_clk(&pdev->dev, "timer1a", TIMER1A);
+	gptu_register_timer_clk(&pdev->dev, "timer1b", TIMER1B);
+	gptu_register_timer_clk(&pdev->dev, "timer2a", TIMER2A);
+	gptu_register_timer_clk(&pdev->dev, "timer2b", TIMER2B);
+	gptu_register_timer_clk(&pdev->dev, "timer3a", TIMER3A);
+	gptu_register_timer_clk(&pdev->dev, "timer3b", TIMER3B);
 }
 
 static int gptu_probe(struct platform_device *pdev)
 {
 	struct clk *clk;
 	struct resource *res;
+	int ret;
 
-	if (of_irq_to_resource_table(pdev->dev.of_node, irqres, 6) != 6) {
+	ret = of_irq_to_resource_table(pdev->dev.of_node, irqres, NUM_GPTU);
+	if (ret != NUM_GPTU) {
 		dev_err(&pdev->dev, "Failed to get IRQ list\n");
 		return -EINVAL;
 	}
@@ -156,7 +213,7 @@ static int gptu_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Failed to get clock\n");
 		return -ENOENT;
 	}
-	clk_enable(clk);
+	clk_prepare_enable(clk);
 
 	/* power up the core */
 	gptu_hwinit();
@@ -170,15 +227,9 @@ static int gptu_probe(struct platform_device *pdev)
 		return -ENAVAIL;
 	}
 
-	/* register the clocks */
-	clkdev_add_gptu(&pdev->dev, "timer1a", TIMER1A);
-	clkdev_add_gptu(&pdev->dev, "timer1b", TIMER1B);
-	clkdev_add_gptu(&pdev->dev, "timer2a", TIMER2A);
-	clkdev_add_gptu(&pdev->dev, "timer2b", TIMER2B);
-	clkdev_add_gptu(&pdev->dev, "timer3a", TIMER3A);
-	clkdev_add_gptu(&pdev->dev, "timer3b", TIMER3B);
+	gptu_register_clks(pdev);
 
-	dev_info(&pdev->dev, "gptu: 6 timers loaded\n");
+	dev_info(&pdev->dev, "gptu: %d timers loaded\n", NUM_GPTU);
 
 	return 0;
 }
@@ -202,7 +253,7 @@ int __init gptu_init(void)
 	int ret = platform_driver_register(&dma_driver);
 
 	if (ret)
-		pr_info("gptu: Error registering platform driver\n");
+		pr_err("gptu: Error registering platform driver\n");
 	return ret;
 }
 
