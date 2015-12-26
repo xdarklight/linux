@@ -95,6 +95,10 @@
 #define PMU_USB0_P		BIT(0)
 #define PMU_USB1_P		BIT(26)
 
+#define XLATE_OFFSET_SHIFT	8
+#define XLATE_OFFSET_MASK	0xffffff
+#define XLATE_BIT_MASK		0xff
+
 /* remapped base addr of the reset control unit */
 static void __iomem *ltq_rcu_membase;
 static struct device_node *ltq_rcu_np;
@@ -213,25 +217,35 @@ int xrx200_gphy_boot(struct device *dev, unsigned int id, dma_addr_t dev_addr)
 	return 0;
 }
 
-/* reset a io domain for u micro seconds */
-void ltq_reset_once(unsigned int module, ulong u)
+static inline u32 reset_id_to_reg_offset(unsigned long id)
 {
-	ltq_rcu_w32(ltq_rcu_r32(RCU_RST_REQ) | module, RCU_RST_REQ);
-	udelay(u);
-	ltq_rcu_w32(ltq_rcu_r32(RCU_RST_REQ) & ~module, RCU_RST_REQ);
+	return (id >> XLATE_OFFSET_SHIFT) & XLATE_OFFSET_MASK;
+}
+
+static inline u32 reset_id_to_reg_bit(unsigned long id)
+{
+	return BIT(id & XLATE_BIT_MASK);
+}
+
+static inline int reset_reg_offset_and_bit_to_id(uint32_t offset, uint32_t bit)
+{
+	int val;
+
+	val = ((offset & XLATE_OFFSET_MASK) << XLATE_OFFSET_SHIFT);
+	val |= (bit & XLATE_BIT_MASK);
+
+	return val;
 }
 
 static int ltq_assert_device(struct reset_controller_dev *rcdev,
 				unsigned long id)
 {
-	u32 val;
+	u32 offset, assert;
 
-	if (id < 8)
-		return -1;
+	offset = reset_id_to_reg_offset(id);
+	assert = reset_id_to_reg_bit(id);
 
-	val = ltq_rcu_r32(RCU_RST_REQ);
-	val |= BIT(id);
-	ltq_rcu_w32(val, RCU_RST_REQ);
+	ltq_rcu_w32_mask(0, assert, offset);
 
 	return 0;
 }
@@ -239,14 +253,12 @@ static int ltq_assert_device(struct reset_controller_dev *rcdev,
 static int ltq_deassert_device(struct reset_controller_dev *rcdev,
 				  unsigned long id)
 {
-	u32 val;
+	u32 offset, deassert;
 
-	if (id < 8)
-		return -1;
+	offset = reset_id_to_reg_offset(id);
+	deassert = reset_id_to_reg_bit(id);
 
-	val = ltq_rcu_r32(RCU_RST_REQ);
-	val &= ~BIT(id);
-	ltq_rcu_w32(val, RCU_RST_REQ);
+	ltq_rcu_w32_mask(deassert, 0, offset);
 
 	return 0;
 }
@@ -254,32 +266,45 @@ static int ltq_deassert_device(struct reset_controller_dev *rcdev,
 static int ltq_reset_device(struct reset_controller_dev *rcdev,
 			       unsigned long id)
 {
-	ltq_assert_device(rcdev, id);
+	int ret;
+
+	ret = ltq_assert_device(rcdev, id);
+	if (ret)
+		return ret;
+
 	return ltq_deassert_device(rcdev, id);
 }
 
-static struct reset_control_ops reset_ops = {
+static int ltq_reset_xlate(struct reset_controller_dev *rcdev,
+				const struct of_phandle_args *reset_spec)
+{
+	unsigned offset, bit;
+
+	if (WARN_ON(reset_spec->args_count != rcdev->of_reset_n_cells))
+		return -EINVAL;
+
+	offset = reset_spec->args[0];
+	bit = reset_spec->args[1];
+
+	if (bit >= rcdev->nr_resets)
+		return -EINVAL;
+
+	return reset_reg_offset_and_bit_to_id(offset, bit);
+}
+
+static struct reset_control_ops xway_reset_ops = {
 	.reset = ltq_reset_device,
 	.assert = ltq_assert_device,
 	.deassert = ltq_deassert_device,
 };
 
-static struct reset_controller_dev reset_dev = {
-	.ops			= &reset_ops,
+static struct reset_controller_dev xway_reset_controller = {
+	.ops			= &xway_reset_ops,
 	.owner			= THIS_MODULE,
 	.nr_resets		= 32,
-	.of_reset_n_cells	= 1,
+	.of_reset_n_cells	= 2,
+	.of_xlate		= ltq_reset_xlate,
 };
-
-void ltq_rst_init(void)
-{
-	reset_dev.of_node = of_find_compatible_node(NULL, NULL,
-						"lantiq,xway-reset");
-	if (!reset_dev.of_node)
-		pr_err("Failed to find reset controller node");
-	else
-		reset_controller_register(&reset_dev);
-}
 
 static void ltq_machine_restart(char *command)
 {
@@ -346,20 +371,19 @@ static void ltq_usb_init(void)
 		& ~(USB1RESET_BIT | USB2RESET_BIT), RCU_USBRESET2);
 }
 
-static int __init mips_reboot_setup(void)
+static int xway_reset_probe(struct platform_device *pdev)
 {
 	struct resource res;
 
-	ltq_rcu_np = of_find_compatible_node(NULL, NULL, "lantiq,rcu-xway");
-	if (!ltq_rcu_np)
-		ltq_rcu_np = of_find_compatible_node(NULL, NULL,
-							"lantiq,rcu-xrx200");
+	ltq_rcu_np = pdev->dev.of_node;
+
+	xway_reset_controller.of_node = ltq_rcu_np;
 
 	/* check if all the reset register range is available */
-	if (!ltq_rcu_np)
+	if (!xway_reset_controller.of_node)
 		panic("Failed to load reset resources from devicetree");
 
-	if (of_address_to_resource(ltq_rcu_np, 0, &res))
+	if (of_address_to_resource(xway_reset_controller.of_node, 0, &res))
 		panic("Failed to get rcu memory range");
 
 	if (!request_mem_region(res.start, resource_size(&res), res.name))
@@ -369,13 +393,38 @@ static int __init mips_reboot_setup(void)
 	if (!ltq_rcu_membase)
 		panic("Failed to remap core memory");
 
+	return reset_controller_register(&xway_reset_controller);
+}
+
+static const struct of_device_id xway_reset_match[] = {
+	{ .compatible = "lantiq,rcu-xway" },
+	{ .compatible = "lantiq,rcu-xrx200" },
+	{},
+};
+
+static struct platform_driver xway_reset_driver = {
+	.probe = xway_reset_probe,
+	.driver = {
+		.name = "xway-reset",
+		.of_match_table = xway_reset_match,
+	},
+};
+
+static int __init mips_reboot_setup(void)
+{
+	int ret = platform_driver_register(&xway_reset_driver);
+
+	if (ret) {
+		pr_err("Error registering reset platform driver: %d\n", ret);
+		return ret;
+	}
+
 	if (of_machine_is_compatible("lantiq,ar9") ||
 	    of_machine_is_compatible("lantiq,vr9"))
 		ltq_usb_init();
 
 	if (of_machine_is_compatible("lantiq,vr9"))
-		ltq_rcu_w32(ltq_rcu_r32(RCU_AHB_ENDIAN) | RCU_VR9_BE_AHB1S,
-			    RCU_AHB_ENDIAN);
+		ltq_rcu_w32_mask(0, RCU_VR9_BE_AHB1S, RCU_AHB_ENDIAN);
 
 	_machine_restart = ltq_machine_restart;
 	_machine_halt = ltq_machine_halt;
