@@ -108,6 +108,8 @@ struct ltq_etop_priv {
 	int tx_free[MAX_DMA_CHAN >> 1];
 
 	spinlock_t lock;
+
+	struct clk *clk_ppe;
 };
 
 static int
@@ -237,7 +239,8 @@ ltq_etop_hw_exit(struct net_device *dev)
 	struct ltq_etop_priv *priv = netdev_priv(dev);
 	int i;
 
-	ltq_pmu_disable(PMU_PPE);
+	clk_disable_unprepare(priv->clk_ppe);
+
 	for (i = 0; i < MAX_DMA_CHAN; i++)
 		if (IS_TX(i) || IS_RX(i))
 			ltq_etop_free_channel(dev, &priv->ch[i]);
@@ -249,7 +252,7 @@ ltq_etop_hw_init(struct net_device *dev)
 	struct ltq_etop_priv *priv = netdev_priv(dev);
 	int i;
 
-	ltq_pmu_enable(PMU_PPE);
+	clk_prepare_enable(priv->clk_ppe);
 
 	switch (priv->pldata->mii_mode) {
 	case PHY_INTERFACE_MODE_RMII:
@@ -438,6 +441,12 @@ ltq_etop_mdio_init(struct net_device *dev)
 	priv->mii_bus->irq = kmalloc(sizeof(int) * PHY_MAX_ADDR, GFP_KERNEL);
 	if (!priv->mii_bus->irq) {
 		err = -ENOMEM;
+		goto err_out_free_mdiobus;
+	}
+
+	priv->clk_ppe = clk_get(&priv->pdev->dev, NULL);
+	if (IS_ERR(priv->clk_ppe)) {
+		err = PTR_ERR(priv->clk_ppe);
 		goto err_out_free_mdiobus;
 	}
 
