@@ -3,6 +3,7 @@ if LANTIQ
 config SOC_TYPE_XWAY
 	bool
 	select PINCTRL_XWAY
+	select USB_ARCH_HAS_HCD
 	default n
 
 choice
