@@ -159,7 +159,7 @@ int xrx200_gphy_boot(struct device *dev, unsigned int id, dma_addr_t dev_addr)
 		clk = clk_get_sys("1f203000.rcu", "gphy");
 		if (IS_ERR(clk))
 			return PTR_ERR(clk);
-		clk_enable(clk);
+		clk_prepare_enable(clk);
 	}
 
 	dev_info(dev, "booting GPHY%u firmware at %X\n", id, dev_addr);
