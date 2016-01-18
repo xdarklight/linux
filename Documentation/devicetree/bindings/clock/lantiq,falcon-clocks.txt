@@ -1,0 +1,13 @@
+* Clock bindings for the clocks found on on Lantiq Falcon SoCs
+
+Required properties:
+- compatible:	Has to be one of the following
+	- "lantiq,sys1-falcon"
+	- "lantiq,syseth-falcon"
+- reg:		Address and length of the register set
+- #clock-cells:	Should be <1>
+
+Each clock is assigned an identifier and client nodes can use this identifier
+to specify the clock which they consume. All available clocks are defined as
+preprocessor macros in the include/dt-bindings/clock/lantiq-falcon.h
+header and can be used in device tree sources.
