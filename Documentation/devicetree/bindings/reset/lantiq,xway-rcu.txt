@@ -1,0 +1,26 @@
+* Reset controller for Lantiq XWAY SoCs
+
+Please also refer to reset.txt in this directory for common reset
+controller binding usage.
+
+The reset controller node must be a sub-node of the sram node on XWAY SoCs.
+
+Required properties:
+- compatible: Must be one of the following:
+	- "lantiq,rcu-xway" (for pre-xRX200 SoCs)
+	- "lantiq,rcu-xrx200" (for xRX200 and newer SoCs)
+- reg: Address and length of the register set
+- #reset-cells: must be set to 2
+
+Example:
+
+rcu: rcu@203000 {
+	compatible = "lantiq,rcu-xway";
+	reg = <0x203000 0x1000>;
+	#reset-cells = <2>;
+};
+
+usb0_phy1 {
+	/* RCU offset 0x38 bit 0 and offset 0x18 bit 11: */
+	resets = <&rcu 0x38 0>, <&rcu 0x18 11>;
+}
