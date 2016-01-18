@@ -1,0 +1,24 @@
+* Clock bindings for the PMU (Power Management Unit) gates on Lantiq XWAY SoCs
+
+Required properties:
+- compatible:	Has to be one of the following
+	- "lantiq,arx100-pmu"
+	- "lantiq,arx300-pmu"
+	- "antiq,ase-pmu"
+	- "lantiq,danube-pmu"
+	- "lantiq,grx390-pmu"
+	- "lantiq,vrx200-pmu"
+	- "lantiq,pmu-xway" (deprecated, should not be used anymore)
+- reg:		Address and length of the register set
+- #clock-cells:	Should be <1>
+
+Each clock is assigned an identifier and client nodes can use this identifier
+to specify the clock which they consume. All available clocks are defined as
+preprocessor macros in the following (SoC specific) headers and can be used in
+device tree sources:
+	- include/dt-bindings/clock/lantiq-pmu-arx100.h
+	- include/dt-bindings/clock/lantiq-pmu-arx300.h
+	- include/dt-bindings/clock/lantiq-pmu-ase.h
+	- include/dt-bindings/clock/lantiq-pmu-danube.h
+	- include/dt-bindings/clock/lantiq-pmu-grx390.h
+	- include/dt-bindings/clock/lantiq-pmu-vrx200.h

@@ -1,0 +1,24 @@
+* Clock bindings for the CGU (Clock Generation Unit) on Lantiq XWAY SoCs
+
+Required properties:
+- compatible:	Has to be one of the following
+	- "lantiq,arx100-cgu"
+	- "lantiq,arx300-cgu"
+	- "lantiq,ase-cgu"
+	- "lantiq,danube-cgu"
+	- "lantiq,grx390-cgu"
+	- "lantiq,vrx200-cgu"
+	- "lantiq,cgu-xway" (deprecated, should not be used anymore)
+- reg:		Address and length of the register set
+- #clock-cells:	Should be <1>
+
+Optional properties:
+- lantiq,gphy-clk-select:	Defines the clock-source for the internal GPHY
+				clock. All available values are defined as
+				preprocessor macros (CGU_GPHY_CLK_*) in
+				include/dt-bindings/clock/lantiq-xway-cgu.h
+
+Each clock is assigned an identifier and client nodes can use this identifier
+to specify the clock which they consume. All available clocks are defined as
+preprocessor macros in the include/dt-bindings/clock/lantiq-xway-cgu.h
+header and can be used in device tree sources.
