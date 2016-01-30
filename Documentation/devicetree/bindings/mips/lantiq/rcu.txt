@@ -1,0 +1,58 @@
+Lantiq XWAY SoC RCU binding
+===========================
+
+This binding describes the RCU (reset controller unit) multifunction device,
+where each sub-device has it's own set of registers.
+
+
+-------------------------------------------------------------------------------
+Required properties:
+- compatible	: The first and second values must be: "simple-mfd", "syscon"
+- reg		: The address and length of the system control registers
+
+
+-------------------------------------------------------------------------------
+Example of the RCU bindings on a xRX200 SoC:
+	rcu0: rcu@203000 {
+		compatible = "simple-mfd", "syscon";
+		reg = <0x203000 0x1000>;
+
+		rcu_sys_status {
+			compatible = "lantiq,xrx200-rcu-sys-status";
+			lantiq,rcu-syscon = <&rcu0 0x14>;
+		};
+
+		gphy0: rcu_gphy {
+			compatible = "lantiq,xrx200-rcu-gphy";
+			lantiq,rcu-syscon = <&rcu0 0x20>;
+			resets = <&rcu_reset0 31>;
+			reset-names = "gphy";
+			lantiq,gphy-mode = <GPHY_MODE_GE>;
+			clocks = <&pmu0 XRX200_PMU_GATE_GPHY>;
+			clock-names = "gphy";
+		};
+
+		gphy1: rcu_gphy {
+			compatible = "lantiq,xrx200-rcu-gphy";
+			lantiq,rcu-syscon = <&rcu0 0x68>;
+			resets = <&rcu_reset0 29>;
+			reset-names = "gphy";
+			lantiq,gphy-mode = <GPHY_MODE_FE>;
+			clocks = <&pmu0 XRX200_PMU_GATE_GPHY>;
+			clock-names = "gphy";
+		};
+
+		rcu_reset0: rcu_reset {
+			compatible = "lantiq,rcu-reset";
+			lantiq,rcu-syscon = <&rcu0 0x10 0x14>;
+			#reset-cells = <1>;
+		};
+
+		rcu_reset1: rcu_reset {
+			compatible = "lantiq,rcu-reset";
+			lantiq,rcu-syscon = <&rcu0 0x48 0x24>;
+			#reset-cells = <1>;
+		};
+
+		/* more sub-device nodes (USB PHY, etc.) */
+	};
