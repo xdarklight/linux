@@ -1,0 +1,25 @@
+Lantiq XWAY SoC System Status binding
+=====================================
+
+This binding describes a the system status functionality provided by the RCU
+module on Lantiq XWAY SoCs.
+
+
+-------------------------------------------------------------------------------
+Required properties (controller (parent) node):
+- compatible		: Should be one of
+				"lantiq,ase-rcu-sys-status"
+				"lantiq,danube-rcu-sys-status"
+				"lantiq,xrx100-rcu-sys-status"
+				"lantiq,xrx200-rcu-sys-status"
+				"lantiq,xrx300-rcu-sys-status"
+- lantiq,rcu-syscon	: A phandle and offset to the system status registers
+			  in the RCU module
+
+
+-------------------------------------------------------------------------------
+Example:
+	rcu_sys_status: rcu_sys_status {
+		compatible = "lantiq,xrx200-rcu-sys-status";
+		lantiq,rcu-syscon = <&rcu0 0x14>;
+	};
