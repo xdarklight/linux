@@ -1,0 +1,28 @@
+Lantiq XWAY SoC RCU reset controller binding
+============================================
+
+This binding describes a reset-controller found on the RCU module on Lantiq
+XWAY SoCs.
+
+
+-------------------------------------------------------------------------------
+Required properties (controller (parent) node):
+- compatible		: Should be "lantiq,rcu-reset"
+- lantiq,rcu-syscon	: A phandle to the RCU syscon, the reset register
+			  offset and the status register offset.
+- #reset-cells		: Specifies the number of cells needed to encode the
+			  reset line, should be 1.
+
+-------------------------------------------------------------------------------
+Example for the reset-controllers on the xRX200 SoCs:
+	rcu_reset0: rcu_reset {
+		compatible = "lantiq,rcu-reset";
+		lantiq,rcu-syscon = <&rcu0 0x10 0x14>;
+		#reset-cells = <1>;
+	};
+
+	rcu_reset1: rcu_reset {
+		compatible = "lantiq,rcu-reset";
+		lantiq,rcu-syscon = <&rcu0 0x48 0x24>;
+		#reset-cells = <1>;
+	};
