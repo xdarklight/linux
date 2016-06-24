@@ -65,6 +65,15 @@
 		enable-active-high;
 	};
 
+	vcc_3v3: regulator@0 {
+		compatible = "regulator-fixed";
+
+		regulator-name = "VCC3V3";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+
+		regulator-always-on;
+	};
 };
 
 &uart_AO {
@@ -101,4 +110,20 @@
 
 &usb1 {
 	status = "okay";
+};
+
+&sd_emmc_b {
+	status = "okay";
+	pinctrl-0 = <&sdcard_pins>;
+	pinctrl-names = "default";
+
+	bus-width = <4>;
+	cap-sd-highspeed;
+	max-frequency = <100000000>;
+
+	cd-gpios = <&gpio CARD_6 GPIO_ACTIVE_HIGH>;
+	cd-inverted;
+
+	vmmc-supply = <&vcc_3v3>;
+	voltage-ranges = <3300 3300>;
 };
