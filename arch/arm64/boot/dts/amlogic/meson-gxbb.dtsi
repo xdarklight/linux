@@ -355,6 +355,18 @@
 					};
 				};
 
+				sdio_pins: sdio {
+					mux {
+						groups = "sdio_d0",
+						       "sdio_d1",
+						       "sdio_d2",
+						       "sdio_d3",
+						       "sdio_cmd",
+						       "sdio_clk";
+						function = "sdio";
+					};
+				};
+
 				uart_a_pins: uart_a {
 					mux {
 						groups = "uart_tx_a",
