@@ -1,0 +1,21 @@
+* AMlogic Meson RTC
+
+Required properties:
+- compatible: should be one of the following describing the hardware:
+	* "amlogic,meson6-rtc"
+	* "amlogic,meson8-rtc"
+	* "amlogic,meson8b-rtc"
+
+- reg: physical register space for the controller's memory mapped registers.
+
+Optional properties:
+- resets: reset controller reference to allow reset of the controller
+- interrupts: single interrupt reference if interrupt support needed
+
+Example:
+
+	rtc: rtc@c8100740 {
+		compatible = "amlogic,meson6-rtc";
+		reg = <0xc8100740 0x14>;
+		status = "disabled";
+	};
