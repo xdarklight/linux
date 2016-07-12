@@ -1256,6 +1256,15 @@ config RTC_DRV_ASM9260
 	  This driver can also be built as a module. If so, the module
 	  will be called rtc-asm9260.
 
+config RTC_DRV_MESON
+	tristate "AMLogic Meson Real Time Clock"
+	depends on ARCH_MESON || COMPILE_TEST
+	help
+	   Support for AMLogic Meson RTC block.
+
+	   This driver can also be built as a module, if so, the module
+	   will be called "rtc-meson".
+
 config RTC_DRV_DAVINCI
 	tristate "TI DaVinci RTC"
 	depends on ARCH_DAVINCI_DM365 || COMPILE_TEST
