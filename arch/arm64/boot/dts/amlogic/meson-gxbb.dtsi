@@ -119,11 +119,49 @@
 		#clock-cells = <0>;
 	};
 
+	xtal_div2: xtal_div2-clk {
+		compatible = "fixed-factor-clock";
+		clocks = <&xtal>;
+		clock-output-names = "xtal_div2";
+		clock-div = <2>;
+		#clock-cells = <0>;
+	};
+
 	soc {
 		compatible = "simple-bus";
 		#address-cells = <2>;
 		#size-cells = <2>;
 		ranges;
+
+		usb-phys@c0000000 {
+			compatible = "simple-bus";
+			reg = <0x0 0xc0000000 0x0 0x40>;
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges = <0x0 0x0 0x0 0xc0000000 0x0 0x40>;
+
+			usb0_phy: usb_phy@0 {
+				compatible = "amlogic,meson-gxbb-usb2-otg-phy";
+				#phy-cells = <0>;
+				reg = <0x0 0x0 0x0 0x20>;
+				resets = <&reset 34>;
+				clocks = <&clkc CLKID_USB
+						&clkc CLKID_USB0_DDR_BRIDGE>;
+				clock-names = "usb_general", "usb_to_ddr";
+				status = "disabled";
+			};
+
+			usb1_phy: usb_phy@20 {
+				compatible = "amlogic,meson-gxbb-usb2-host-phy";
+				#phy-cells = <0>;
+				reg = <0x0 0x20 0x0 0x20>;
+				resets = <&reset 34>;
+				clocks = <&clkc CLKID_USB
+						&clkc CLKID_USB1_DDR_BRIDGE>;
+				clock-names = "usb_general", "usb_to_ddr";
+				status = "disabled";
+			};
+		};
 
 		cbus: cbus@c1100000 {
 			compatible = "simple-bus";
@@ -410,6 +448,30 @@
 				clock-names = "core", "clkin0", "clkin1";
 				status = "disabled";
 			};
+		};
+
+		usb0: usb-controller@c9000000 {
+			compatible = "amlogic,meson-gxbb-usb", "snps,dwc2";
+			reg = <0x0 0xc9000000 0x0 0x40000>;
+			interrupts = <GIC_SPI 62 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&clkc CLKID_USB0>;
+			clock-names = "otg";
+			phys = <&usb0_phy>;
+			phy-names = "usb2-phy";
+			dr_mode = "otg";
+			status = "disabled";
+		};
+
+		usb1: usb-controller@c9100000 {
+			compatible = "amlogic,meson-gxbb-usb", "snps,dwc2";
+			reg = <0x0 0xc9100000 0x0 0x40000>;
+			interrupts = <GIC_SPI 63 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&clkc CLKID_USB1>;
+			clock-names = "otg";
+			phys = <&usb1_phy>;
+			phy-names = "usb2-phy";
+			dr_mode = "host";
+			status = "disabled";
 		};
 
 		ethmac: ethernet@c9410000 {
