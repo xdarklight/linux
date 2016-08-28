@@ -79,6 +79,21 @@
 		reset-gpios = <&gpio BOOT_9 GPIO_ACTIVE_LOW>;
 	};
 
+	wifi32k: wifi32k {
+		compatible = "pwm-clock";
+		#clock-cells = <0>;
+		clock-frequency = <32768>;
+		pwms = <&pwm_ef 0 30518 0>; /* PWM_E at 32.768KHz */
+	};
+
+	wifi_pwrseq: pwrseq-simple {
+		compatible = "mmc-pwrseq-simple";
+		reset-gpios = <&gpio GPIOX_6 GPIO_ACTIVE_LOW>,
+				<&gpio GPIOX_20 GPIO_ACTIVE_HIGH>;
+		clocks = <&wifi32k>;
+		clock-names = "ext_clock";
+	};
+
 	usb_vbus: regulator-usb0-vbus {
 		compatible = "regulator-fixed";
 
@@ -110,6 +125,34 @@
 	status = "okay";
 	pinctrl-0 = <&eth_pins>;
 	pinctrl-names = "default";
+};
+
+&sd_emmc_a {
+	status = "okay";
+	pinctrl-0 = <&sdio_pins>;
+	pinctrl-names = "default";
+
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	bus-width = <4>;
+	cap-sd-highspeed;
+	cap-mmc-highspeed;
+	max-frequency = <200000000>;
+	non-removable;
+	disable-wp;
+	mmc-pwrseq = <&wifi_pwrseq>;
+	vmmc-supply = <&vcc_3v3>;
+	voltage-ranges = <3300 3300>;
+/*
+	brcmf: bcrmf@1 {
+		reg = <1>;
+		compatible = "brcm,bcm4329-fmac";
+		interrupt-parent = <&gpio>;
+		interrupts = <GPIOX_7 IRQ_TYPE_LEVEL_LOW>;
+		interrupt-names = "host-wake";
+	};
+*/
 };
 
 &sd_emmc_b {
@@ -146,6 +189,14 @@
 	voltage-ranges = <1800 3300>;
 	vmmc-supply = <&vcc_3v3>;
 	vmmcq-sumpply = <&vcc_1v8>;
+};
+
+&pwm_ef {
+	status = "okay";
+	pinctrl-0 = <&pwm_e_pins>;
+	pinctrl-names = "default";
+	clocks = <&clkc 6>; /* TODO: CLKID_FCLK_DIV4 */
+	clock-names = "clkin0";
 };
 
 &usb0_phy {
