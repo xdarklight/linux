@@ -123,7 +123,6 @@
 #define   STATUS_BUSY BIT(31)
 
 #define SD_EMMC_IRQ_EN 0x4c
-#define   IRQ_EN_MASK 0x3fff
 #define   IRQ_RXD_ERR_SHIFT 0
 #define   IRQ_RXD_ERR_MASK 0xff
 #define   IRQ_TXD_ERR BIT(8)
@@ -181,6 +180,8 @@ struct meson_host {
 	unsigned long clk_rate;
 	unsigned long clk_src_rate;
 	unsigned short clk_src_div;
+
+	u32 irq_mask;
 };
 
 #define reg_read(host, offset) readl(host->regs + offset)
@@ -457,28 +458,6 @@ static int meson_mmc_request_done(struct mmc_host *mmc, struct mmc_request *mrq)
 	return 0;
 }
 
-static int meson_mmc_cmd_invalid(struct mmc_host *mmc, struct mmc_command *cmd)
-{
-	cmd->error = -EINVAL;
-	meson_mmc_request_done(mmc, cmd->mrq);
-
-	return -EINVAL;
-}
-
-static int meson_mmc_check_cmd(struct mmc_host *mmc, struct mmc_command *cmd)
-{
-	int ret = 0;
-
-	/* FIXME: needs update for SDIO support */
-	if (cmd->opcode == SD_IO_SEND_OP_COND
-	    || cmd->opcode == SD_IO_RW_DIRECT
-	    || cmd->opcode == SD_IO_RW_EXTENDED) {
-		ret = meson_mmc_cmd_invalid(mmc, cmd);
-	}
-
-	return ret;
-}
-
 static void meson_mmc_start_cmd(struct mmc_host *mmc, struct mmc_command *cmd)
 {
 	struct meson_host *host = mmc_priv(mmc);
@@ -588,13 +567,10 @@ static void meson_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 
 	/* clear, ack, enable all interrupts */
 	reg_write(host, SD_EMMC_IRQ_EN, 0);
-	reg_write(host, SD_EMMC_STATUS, IRQ_EN_MASK);
-	reg_write(host, SD_EMMC_IRQ_EN, IRQ_EN_MASK);
+	reg_write(host, SD_EMMC_STATUS, host->irq_mask);
+	reg_write(host, SD_EMMC_IRQ_EN, host->irq_mask);
 
 	host->mrq = mrq;
-
-	if (meson_mmc_check_cmd(mmc, mrq->cmd))
-		return;
 
 	if (mrq->sbc)
 		meson_mmc_start_cmd(mmc, mrq->sbc);
@@ -629,6 +605,7 @@ static irqreturn_t meson_mmc_irq(int irq, void *dev_id)
 	struct mmc_request *mrq = host->mrq;
 	struct mmc_command *cmd = host->cmd;
 	u32 irq_en, status, raw_status;
+	bool sdio_irq = false;
 	irqreturn_t ret = IRQ_HANDLED;
 
 	if (WARN_ON(!host))
@@ -675,8 +652,9 @@ static irqreturn_t meson_mmc_irq(int irq, void *dev_id)
 		dev_dbg(host->dev, "Unhandled IRQ: Descriptor timeout\n");
 		cmd->error = -ETIMEDOUT;
 	}
+
 	if (status & IRQ_SDIO)
-		dev_dbg(host->dev, "Unhandled IRQ: SDIO.\n");
+		sdio_irq = true;
 
 	if (status & (IRQ_END_OF_CHAIN | IRQ_RESP_STATUS))
 		ret = IRQ_WAKE_THREAD;
@@ -697,6 +675,9 @@ static irqreturn_t meson_mmc_irq(int irq, void *dev_id)
 out:
 	/* ack all (enabled) interrupts */
 	reg_write(host, SD_EMMC_STATUS, status);
+
+	if (sdio_irq)
+		mmc_signal_sdio_irq(host->mmc);
 
 	if (ret == IRQ_HANDLED) {
 		meson_mmc_read_resp(host->mmc, cmd);
@@ -757,10 +738,34 @@ static int meson_mmc_get_cd(struct mmc_host *mmc)
 	return status;
 }
 
+static void meson_mcc_enable_sdio_irq(struct mmc_host *mmc, int enable)
+{
+	struct meson_host *host = mmc_priv(mmc);
+	unsigned long flags;
+	u32 irqen;
+
+	spin_lock_irqsave(&host->lock, flags);
+
+	irqen = reg_read(host, SD_EMMC_IRQ_EN);
+
+	if (enable) {
+		irqen |= IRQ_SDIO;
+		host->irq_mask |= IRQ_SDIO;
+	} else {
+		irqen &= ~IRQ_SDIO;
+		host->irq_mask &= ~IRQ_SDIO;
+	}
+
+	reg_write(host, SD_EMMC_IRQ_EN, irqen);
+
+	spin_unlock_irqrestore(&host->lock, flags);
+}
+
 static struct mmc_host_ops meson_mmc_ops = {
-	.request	= meson_mmc_request,
-	.set_ios	= meson_mmc_set_ios,
-	.get_cd         = meson_mmc_get_cd,
+	.request		= meson_mmc_request,
+	.set_ios		= meson_mmc_set_ios,
+	.get_cd         	= meson_mmc_get_cd,
+	.enable_sdio_irq	= meson_mcc_enable_sdio_irq,
 };
 
 static int meson_mmc_probe(struct platform_device *pdev)
@@ -847,26 +852,30 @@ static int meson_mmc_probe(struct platform_device *pdev)
 
 	clk_prepare_enable(host->core_clk);
 
+	host->irq_mask = IRQ_RXD_ERR_MASK | IRQ_TXD_ERR | IRQ_DESC_ERR |
+			 IRQ_RESP_ERR | IRQ_RESP_TIMEOUT | IRQ_DESC_TIMEOUT |
+			 IRQ_END_OF_CHAIN;
+
 	ret = meson_mmc_clk_init(host);
 	if (ret)
-		goto free_host;
+		goto free_host_clk_prepared;
 
 	/* Stop execution */
 	reg_write(host, SD_EMMC_START, 0);
 
 	/* clear, ack, enable all interrupts */
 	reg_write(host, SD_EMMC_IRQ_EN, 0);
-	reg_write(host, SD_EMMC_STATUS, IRQ_EN_MASK);
+	reg_write(host, SD_EMMC_STATUS, host->irq_mask);
 
 	mmc->ops = &meson_mmc_ops;
 	mmc_add_host(mmc);
 
 	return 0;
 
+free_host_clk_prepared:
+	clk_disable_unprepare(host->core_clk);
 free_host:
 	dev_dbg(host->dev, "Failed to probe: ret=%d\n", ret);
-	if (host->core_clk)
-		clk_disable_unprepare(host->core_clk);
 	mmc_free_host(mmc);
 	return ret;
 }
