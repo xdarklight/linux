@@ -457,28 +457,6 @@ static int meson_mmc_request_done(struct mmc_host *mmc, struct mmc_request *mrq)
 	return 0;
 }
 
-static int meson_mmc_cmd_invalid(struct mmc_host *mmc, struct mmc_command *cmd)
-{
-	cmd->error = -EINVAL;
-	meson_mmc_request_done(mmc, cmd->mrq);
-
-	return -EINVAL;
-}
-
-static int meson_mmc_check_cmd(struct mmc_host *mmc, struct mmc_command *cmd)
-{
-	int ret = 0;
-
-	/* FIXME: needs update for SDIO support */
-	if (cmd->opcode == SD_IO_SEND_OP_COND
-	    || cmd->opcode == SD_IO_RW_DIRECT
-	    || cmd->opcode == SD_IO_RW_EXTENDED) {
-		ret = meson_mmc_cmd_invalid(mmc, cmd);
-	}
-
-	return ret;
-}
-
 static void meson_mmc_start_cmd(struct mmc_host *mmc, struct mmc_command *cmd)
 {
 	struct meson_host *host = mmc_priv(mmc);
@@ -592,9 +570,6 @@ static void meson_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	reg_write(host, SD_EMMC_IRQ_EN, host->irq_mask);
 
 	host->mrq = mrq;
-
-	if (meson_mmc_check_cmd(mmc, mrq->cmd))
-		return;
 
 	if (mrq->sbc)
 		meson_mmc_start_cmd(mmc, mrq->sbc);
