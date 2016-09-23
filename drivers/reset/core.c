@@ -32,6 +32,7 @@ static LIST_HEAD(reset_controller_list);
  * @refcnt: Number of gets of this reset_control
  * @shared: Is this a shared (1), or an exclusive (0) reset_control?
  * @deassert_cnt: Number of times this reset line has been deasserted
+ * triggered_count: Number of times this reset line has been reset
  */
 struct reset_control {
 	struct reset_controller_dev *rcdev;
@@ -40,6 +41,7 @@ struct reset_control {
 	unsigned int refcnt;
 	int shared;
 	atomic_t deassert_count;
+	atomic_t triggered_count;
 };
 
 /**
@@ -134,17 +136,28 @@ EXPORT_SYMBOL_GPL(devm_reset_controller_register);
  * reset_control_reset - reset the controlled device
  * @rstc: reset controller
  *
- * Calling this on a shared reset controller is an error.
+ * On a shared reset line the actual reset pulse is only triggered once.
  */
 int reset_control_reset(struct reset_control *rstc)
 {
-	if (WARN_ON(rstc->shared))
-		return -EINVAL;
+	int ret;
 
-	if (rstc->rcdev->ops->reset)
-		return rstc->rcdev->ops->reset(rstc->rcdev, rstc->id);
+	if (!rstc->rcdev->ops->reset)
+		return -ENOTSUPP;
 
-	return -ENOTSUPP;
+	if (rstc->shared) {
+		if (WARN_ON(atomic_read(&rstc->deassert_count) != 0))
+			return -EINVAL;
+
+		if (atomic_read(&rstc->triggered_count) != 0)
+			return 0;
+	}
+
+	ret = rstc->rcdev->ops->reset(rstc->rcdev, rstc->id);
+	if (rstc->shared && !ret)
+		atomic_inc(&rstc->triggered_count);
+
+	return ret;
 }
 EXPORT_SYMBOL_GPL(reset_control_reset);
 
@@ -165,6 +178,9 @@ int reset_control_assert(struct reset_control *rstc)
 		return -ENOTSUPP;
 
 	if (rstc->shared) {
+		if (WARN_ON(atomic_read(&rstc->triggered_count) != 0))
+			return -EINVAL;
+
 		if (WARN_ON(atomic_read(&rstc->deassert_count) == 0))
 			return -EINVAL;
 
@@ -188,6 +204,9 @@ int reset_control_deassert(struct reset_control *rstc)
 		return -ENOTSUPP;
 
 	if (rstc->shared) {
+		if (WARN_ON(atomic_read(&rstc->triggered_count) != 0))
+			return -EINVAL;
+
 		if (atomic_inc_return(&rstc->deassert_count) != 1)
 			return 0;
 	}
