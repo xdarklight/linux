@@ -1,0 +1,12 @@
+The following properties are common to the IEEE 802.11 controllers:
+
+- enable-ieee80211-2ghz: indicates that the 2.4GHz frequency band should be
+  enabled for this device. This must not be used together with the
+  "disable-ieee80211-2ghz" at the same time.
+- enable-ieee80211-5ghz: indicates that the 5GHz frequency band should be
+  enabled for this device. This must not be used together with the
+  "disable-ieee80211-5ghz" at the same time.
+- disable-ieee80211-2ghz: indicates that the 2.4GHz frequency band should be
+  disabled for this device.
+- disable-ieee80211-5ghz: indicates that the 5GHz frequency band should be
+  disabled for this device
