@@ -18,6 +18,8 @@ Optional properties:
 			kernel firmware loader).
 - mac-address: See ethernet.txt in the parent directory
 - local-mac-address: See ethernet.txt in the parent directory
+- disable-ieee80211-2ghz: See ieee80211.txt in the current directory
+- disable-ieee80211-5ghz: See ieee80211.txt in the current directory
 
 
 In this example, the node is defined as child node of the PCI controller:
