@@ -16,6 +16,22 @@ Optional properties:
 			ath9k wireless chip (in this case the calibration /
 			EEPROM data will be loaded from userspace using the
 			kernel firmware loader).
+- qca,check-eeprom-endianness: When enabled, the driver checks if the
+				endianness of the EEPROM (using two checks,
+				one is based on the two magic bytes at the
+				start of the EEPROM and a second one which
+				relies on a flag within the EEPROM data)
+				matches the host system's native endianness.
+				The data will be swapped accordingly if there
+				is a mismatch.
+				Leaving this disabled means that the EEPROM
+				data will always be interpreted in the
+				system's native endianness.
+				Enable this option only when the EEPROMs
+				endianness identifiers are known to be
+				correct, because otherwise the EEPROM data
+				may be swapped and thus interpreted
+				incorrectly.
 - mac-address: See ethernet.txt in the parent directory
 - local-mac-address: See ethernet.txt in the parent directory
 - disable-ieee80211-2ghz: See ieee80211.txt in the current directory

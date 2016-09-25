@@ -576,6 +576,11 @@ static int ath9k_of_init(struct ath_softc *sc)
 	ah->disable_2ghz = of_ieee80211_is_2ghz_disabled(np);
 	ah->disable_5ghz = of_ieee80211_is_5ghz_disabled(np);
 
+	if (of_property_read_bool(np, "qca,check-eeprom-endianness"))
+		ah->ah_flags &= ~AH_NO_EEP_SWAP;
+	else
+		ah->ah_flags |= AH_NO_EEP_SWAP;
+
 	if (of_property_read_bool(np, "qca,no-eeprom")) {
 		/* ath9k-eeprom-<bus>-<id>.bin */
 		scnprintf(eeprom_name, sizeof(eeprom_name),
@@ -592,7 +597,6 @@ static int ath9k_of_init(struct ath_softc *sc)
 		ether_addr_copy(common->macaddr, mac);
 
 	ah->ah_flags &= ~AH_USE_EEPROM;
-	ah->ah_flags |= AH_NO_EEP_SWAP;
 
 	return 0;
 }
