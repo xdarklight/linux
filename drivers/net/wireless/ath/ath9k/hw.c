@@ -2466,6 +2466,9 @@ int ath9k_hw_fill_cap_info(struct ath_hw *ah)
 	if (eeval & AR5416_OPFLAGS_11A) {
 		if (ah->disable_5ghz)
 			ath_warn(common, "disabling 5GHz band\n");
+		else if (AR_SREV_9287(ah))
+			ath_warn(common,
+				 "5G band is not supported by HW but enabled in EEPROM\n");
 		else
 			pCap->hw_caps |= ATH9K_HW_CAP_5GHZ;
 	}
