@@ -21,6 +21,7 @@
 #include <linux/ath9k_platform.h>
 #include <linux/module.h>
 #include <linux/of.h>
+#include <linux/of_ieee80211.h>
 #include <linux/of_net.h>
 #include <linux/relay.h>
 #include <net/ieee80211_radiotap.h>
@@ -571,6 +572,9 @@ static int ath9k_of_init(struct ath_softc *sc)
 		return 0;
 
 	ath_dbg(common, CONFIG, "parsing configuration from OF node\n");
+
+	ah->disable_2ghz = of_ieee80211_is_2ghz_disabled(np);
+	ah->disable_5ghz = of_ieee80211_is_5ghz_disabled(np);
 
 	if (of_property_read_bool(np, "qca,no-eeprom")) {
 		/* ath9k-eeprom-<bus>-<id>.bin */
