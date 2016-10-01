@@ -23,6 +23,14 @@
 #include <net/cfg80211.h>
 #include "ar9003_eeprom.h"
 
+/* helpers to swap EEPROM fields. We have to force u16/u32 here as the fields
+ * in the eeprom structs are __le16/__le32. These macros are used when we
+ * have a Big Endian EEPROM (according to AR5416_EEPMISC_BIG_ENDIAN) and need
+ * to convert the fields to __le16/__le32.
+ */
+#define EEPROM_FIELD_SWAB16(var) (var = cpu_to_le16(swab16((__force u16)var)))
+#define EEPROM_FIELD_SWAB32(var) (var = cpu_to_le32(swab32((__force u32)var)))
+
 #ifdef __BIG_ENDIAN
 #define AR5416_EEPROM_MAGIC 0x5aa5
 #else
@@ -270,19 +278,19 @@ enum ath9k_hal_freq_band {
 };
 
 struct base_eep_header {
-	u16 length;
-	u16 checksum;
-	u16 version;
+	__le16 length;
+	__le16 checksum;
+	__le16 version;
 	u8 opCapFlags;
 	u8 eepMisc;
-	u16 regDmn[2];
+	__le16 regDmn[2];
 	u8 macAddr[6];
 	u8 rxMask;
 	u8 txMask;
-	u16 rfSilent;
-	u16 blueToothOptions;
-	u16 deviceCap;
-	u32 binBuildNumber;
+	__le16 rfSilent;
+	__le16 blueToothOptions;
+	__le16 deviceCap;
+	__le32 binBuildNumber;
 	u8 deviceType;
 	u8 pwdclkind;
 	u8 fastClk5g;
@@ -300,33 +308,33 @@ struct base_eep_header {
 } __packed;
 
 struct base_eep_header_4k {
-	u16 length;
-	u16 checksum;
-	u16 version;
+	__le16 length;
+	__le16 checksum;
+	__le16 version;
 	u8 opCapFlags;
 	u8 eepMisc;
-	u16 regDmn[2];
+	__le16 regDmn[2];
 	u8 macAddr[6];
 	u8 rxMask;
 	u8 txMask;
-	u16 rfSilent;
-	u16 blueToothOptions;
-	u16 deviceCap;
-	u32 binBuildNumber;
+	__le16 rfSilent;
+	__le16 blueToothOptions;
+	__le16 deviceCap;
+	__le32 binBuildNumber;
 	u8 deviceType;
 	u8 txGainType;
 } __packed;
 
 
 struct spur_chan {
-	u16 spurChan;
+	__le16 spurChan;
 	u8 spurRangeLow;
 	u8 spurRangeHigh;
 } __packed;
 
 struct modal_eep_header {
-	u32 antCtrlChain[AR5416_MAX_CHAINS];
-	u32 antCtrlCommon;
+	__le32 antCtrlChain[AR5416_MAX_CHAINS];
+	__le32 antCtrlCommon;
 	u8 antennaGainCh[AR5416_MAX_CHAINS];
 	u8 switchSettling;
 	u8 txRxAttenCh[AR5416_MAX_CHAINS];
@@ -361,7 +369,7 @@ struct modal_eep_header {
 	u8 db_ch1;
 	u8 lna_ctl;
 	u8 miscBits;
-	u16 xpaBiasLvlFreq[3];
+	__le16 xpaBiasLvlFreq[3];
 	u8 futureModal[6];
 
 	struct spur_chan spurChans[AR_EEPROM_MODAL_SPURS];
@@ -375,8 +383,8 @@ struct calDataPerFreqOpLoop {
 } __packed;
 
 struct modal_eep_4k_header {
-	u32 antCtrlChain[AR5416_EEP4K_MAX_CHAINS];
-	u32 antCtrlCommon;
+	__le32 antCtrlChain[AR5416_EEP4K_MAX_CHAINS];
+	__le32 antCtrlCommon;
 	u8 antennaGainCh[AR5416_EEP4K_MAX_CHAINS];
 	u8 switchSettling;
 	u8 txRxAttenCh[AR5416_EEP4K_MAX_CHAINS];
@@ -440,19 +448,19 @@ struct modal_eep_4k_header {
 } __packed;
 
 struct base_eep_ar9287_header {
-	u16 length;
-	u16 checksum;
-	u16 version;
+	__le16 length;
+	__le16 checksum;
+	__le16 version;
 	u8 opCapFlags;
 	u8 eepMisc;
-	u16 regDmn[2];
+	__le16 regDmn[2];
 	u8 macAddr[6];
 	u8 rxMask;
 	u8 txMask;
-	u16 rfSilent;
-	u16 blueToothOptions;
-	u16 deviceCap;
-	u32 binBuildNumber;
+	__le16 rfSilent;
+	__le16 blueToothOptions;
+	__le16 deviceCap;
+	__le32 binBuildNumber;
 	u8 deviceType;
 	u8 openLoopPwrCntl;
 	int8_t pwrTableOffset;
@@ -462,8 +470,8 @@ struct base_eep_ar9287_header {
 } __packed;
 
 struct modal_eep_ar9287_header {
-	u32 antCtrlChain[AR9287_MAX_CHAINS];
-	u32 antCtrlCommon;
+	__le32 antCtrlChain[AR9287_MAX_CHAINS];
+	__le32 antCtrlCommon;
 	int8_t antennaGainCh[AR9287_MAX_CHAINS];
 	u8 switchSettling;
 	u8 txRxAttenCh[AR9287_MAX_CHAINS];
