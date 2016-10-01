@@ -634,23 +634,6 @@ struct ar9287_eeprom {
 	u8 padding;
 } __packed;
 
-enum reg_ext_bitmap {
-	REG_EXT_FCC_MIDBAND = 0,
-	REG_EXT_JAPAN_MIDBAND = 1,
-	REG_EXT_FCC_DFS_HT40 = 2,
-	REG_EXT_JAPAN_NONDFS_HT40 = 3,
-	REG_EXT_JAPAN_DFS_HT40 = 4
-};
-
-struct ath9k_country_entry {
-	u16 countryCode;
-	u16 regDmnEnum;
-	u16 regDmn5G;
-	u16 regDmn2G;
-	u8 isMultidomain;
-	u8 iso[3];
-};
-
 struct eeprom_ops {
 	int (*check_eeprom)(struct ath_hw *hw);
 	u32 (*get_eeprom)(struct ath_hw *hw, enum eeprom_param param);
