@@ -188,3 +188,19 @@
 &ethmac {
 	status = "okay";
 };
+
+&usb2_phys {
+	status = "okay";
+};
+
+&usb3_phy0 {
+	status = "okay";
+};
+
+&usb0 {
+	status = "okay";
+};
+
+&usb1 {
+	status = "okay";
+};
