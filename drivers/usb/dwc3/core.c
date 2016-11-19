@@ -471,7 +471,7 @@ static int dwc3_phy_setup(struct dwc3 *dwc)
 	 */
 	if (dwc->revision > DWC3_REVISION_194A)
 		reg |= DWC3_GUSB3PIPECTL_SUSPHY;
-
+printk("dwc3: revision 0x%08x\n", dwc->revision);
 	if (dwc->u2ss_inp3_quirk)
 		reg |= DWC3_GUSB3PIPECTL_U2SSINP3OK;
 
@@ -501,6 +501,13 @@ static int dwc3_phy_setup(struct dwc3 *dwc)
 
 	if (dwc->dis_del_phy_power_chg_quirk)
 		reg &= ~DWC3_GUSB3PIPECTL_DEPOCHANGE;
+
+	{
+		int i;
+		
+		for (i = 0; i < 4; i++)
+			printk("dwc3: before reset - PHY#%d = 0x%08x\n", i, DWC3_GUSB2PHYCFG(i));
+	}
 
 	dwc3_writel(dwc->regs, DWC3_GUSB3PIPECTL(0), reg);
 
@@ -575,6 +582,13 @@ static int dwc3_phy_setup(struct dwc3 *dwc)
 		reg &= ~DWC3_GUSB2PHYCFG_U2_FREECLK_EXISTS;
 
 	dwc3_writel(dwc->regs, DWC3_GUSB2PHYCFG(0), reg);
+
+	{
+		int i;
+		
+		for (i = 0; i < 4; i++)
+			printk("dwc3: after reset - PHY#%d = 0x%08x\n", i, DWC3_GUSB2PHYCFG(i));
+	}
 
 	return 0;
 }
