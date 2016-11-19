@@ -48,6 +48,56 @@
 
 / {
 	compatible = "amlogic,meson-gxl";
+
+	soc {
+
+		usb0: usb@c9000000 {
+			compatible = "snps,dwc3";
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0x0 0xc9000000 0x0 0x100000>;
+			interrupts = <GIC_SPI 30 IRQ_TYPE_LEVEL_HIGH>;
+			dr_mode = "host";
+			maximum-speed = "high-speed";
+			snps,dis_u2_susphy_quirk;
+			status = "disabled";
+
+			dwc3_roothub: roothub@0 {
+				compatible = "usb1d6b,3", "usb1d6b,2";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				reg = <0>;
+
+				port@1 {
+					reg = <1>;
+					phys = <&usb2_phy0>;
+					phy-names = "usb2-phy";
+				};
+
+				port@2 {
+					reg = <2>;
+					phys = <&usb2_phy1>;
+					phy-names = "usb2-phy";
+				};
+			};
+		};
+	};
+};
+
+&apb {
+	usb2_phy0: phy@78000 {
+		compatible = "amlogic,meson-gxl-usb2-phy";
+		#phy-cells = <0>;
+		reg = <0x0 0x78000 0x0 0x20>;
+		status = "okay";
+	};
+
+	usb2_phy1: phy@78020 {
+		compatible = "amlogic,meson-gxl-usb2-phy";
+		#phy-cells = <0>;
+		reg = <0x0 0x78020 0x0 0x20>;
+		status = "okay";
+	};
 };
 
 &ethmac {
