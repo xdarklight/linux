@@ -184,8 +184,10 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	/* If seting 64-bit DMA mask fails, fall back to 32-bit DMA mask */
 	if (ret) {
 		ret = dma_set_mask_and_coherent(sysdev, DMA_BIT_MASK(32));
-		if (ret)
+		if (ret) {
+			dev_err(sysdev, "No suitable DMA mask found\n");
 			return ret;
+		}
 	}
 
 	hcd = __usb_create_hcd(driver, sysdev, &pdev->dev,
