@@ -974,8 +974,8 @@ static void __dwc3_ep0_do_control_data(struct dwc3 *dwc,
 		u32	transfer_size = 0;
 		u32	maxpacket;
 
-		ret = usb_gadget_map_request(&dwc->gadget, &req->request,
-				dep->number);
+		ret = usb_gadget_map_request_by_dev(dwc->sysdev,
+				&req->request, dep->number);
 		if (ret) {
 			dwc3_trace(trace_dwc3_ep0, "failed to map request");
 			return;
@@ -1002,8 +1002,8 @@ static void __dwc3_ep0_do_control_data(struct dwc3 *dwc,
 				dwc->ep0_bounce_addr, transfer_size,
 				DWC3_TRBCTL_CONTROL_DATA, false);
 	} else {
-		ret = usb_gadget_map_request(&dwc->gadget, &req->request,
-				dep->number);
+		ret = usb_gadget_map_request_by_dev(dwc->sysdev,
+				&req->request, dep->number);
 		if (ret) {
 			dwc3_trace(trace_dwc3_ep0, "failed to map request");
 			return;
