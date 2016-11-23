@@ -259,6 +259,7 @@ struct scpi_chan {
 	struct mbox_chan *chan;
 	void __iomem *tx_payload;
 	void __iomem *rx_payload;
+	resource_size_t max_payload_len;
 	struct list_head rx_pending;
 	struct list_head xfers_list;
 	struct scpi_xfer *xfers;
@@ -470,6 +471,20 @@ static void scpi_tx_prepare(struct mbox_client *c, void *msg)
 	if (t->rx_buf) {
 		if (!(++ch->token))
 			++ch->token;
+
+		/* clear the RX buffer as it is shared across all commands on
+		 * the same channel (to make sure we're not leaking data from
+		 * the previous response into the current command if the SCPI
+		 * firmware writes less data than requested).
+		 * This is especially important for pre-v1.0 SCPI firmwares
+		 * where some fields in the responses do not exist (while they
+		 * exist but are optional in newer versions). One example for
+		 * this problem is sensor_value.hi_val, which would contain
+		 * ("leak") the second 4 bytes of the RX buffer from the
+		 * previous command.
+		 */
+		memset_io(ch->rx_payload, 0, ch->max_payload_len);
+
 		ADD_SCPI_TOKEN(t->cmd, ch->token);
 		spin_lock_irqsave(&ch->rx_lock, flags);
 		list_add_tail(&t->node, &ch->rx_pending);
@@ -921,7 +936,9 @@ static int scpi_probe(struct platform_device *pdev)
 			ret = -EADDRNOTAVAIL;
 			goto err;
 		}
-		pchan->tx_payload = pchan->rx_payload + (size >> 1);
+
+		pchan->max_payload_len = size / 2;
+		pchan->tx_payload = pchan->rx_payload + pchan->max_payload_len;
 
 		cl->dev = dev;
 		cl->rx_callback = scpi_handle_remote_msg;
