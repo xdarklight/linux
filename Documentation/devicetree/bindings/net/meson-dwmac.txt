@@ -25,6 +25,20 @@ Required properties on Meson8b and newer:
 		- "clkin0" - first parent clock of the internal mux
 		- "clkin1" - second parent clock of the internal mux
 
+Optional properties on Meson8b and newer:
+- amlogic,tx-delay-ns:	The internal RGMII TX clock delay (provided
+			by this driver) in nanoseconds. Allowed values
+			are: 0ns, 2ns, 4ns, 6ns.
+			This must be configured when the phy-mode is
+			"rgmii" (typically a value of 2ns is used in
+			this case).
+			When phy-mode is set to "rgmii-id" or
+			"rgmii-txid" the TX clock delay is already
+			provided by the PHY. In that case this
+			property should be set to 0ns (which disables
+			the TX clock delay in the MAC to prevent the
+			clock from going off because both PHY and MAC
+			are adding a delay).
 
 Example for Meson6:
 
