@@ -538,6 +538,11 @@ static int scpi_send_message(u8 idx, void *tx_buf, unsigned int tx_len,
 			scpi_info->num_chans;
 	scpi_chan = scpi_info->channels + chan;
 
+	if (tx_len > scpi_chan->max_payload_len)
+		return -EINVAL;
+	if (rx_len > scpi_chan->max_payload_len)
+		return -EINVAL;
+
 	msg = get_scpi_xfer(scpi_chan);
 	if (!msg)
 		return -ENOMEM;
