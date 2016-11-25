@@ -1,0 +1,26 @@
+* Amlogic Meson GXL and GXM USB3 PHY and OTG detection binding
+
+Required properties:
+- compatible:	Should be "amlogic,meson-gxl-usb3-phy"
+- reg:		The base address and length of the registers
+- #phys-cells:	must be 0 (see phy-bindings.txt in this directory)
+- interrupts:	describes the OTG device/host mode detection interrupt
+
+Optional properties:
+- phys:		the USB2 PHY whose mode will be controlled by the OTG
+		detection logic of the USB3 PHY, see phy-bindings.txt
+		in this directory
+- phy-names:	must be "usb2-phy" when a USB2 PHY is configured, see
+		phy-bindings.txt in this directory
+- phy-supply:	see phy-bindings.txt in this directory
+
+
+Example:
+	usb3_phy0: phy@78080 {
+		compatible = "amlogic,meson-gxl-usb3-phy";
+		#phy-cells = <0>;
+		reg = <0x0 0x78080 0x0 0x20>;
+		interrupts = <GIC_SPI 16 IRQ_TYPE_LEVEL_HIGH>;
+		phys = <&usb2_phy0>;
+		phy-names = "usb2-phy";
+	};
