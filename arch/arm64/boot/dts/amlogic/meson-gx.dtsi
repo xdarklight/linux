@@ -371,6 +371,12 @@
 			interrupt-names = "macirq";
 			phy-mode = "rgmii";
 			status = "disabled";
+
+			mdio0: mdio {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				compatible = "snps,dwmac-mdio";
+			};
 		};
 
 		apb: apb@d0000000 {
