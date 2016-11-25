@@ -49,6 +49,19 @@
 / {
 	compatible = "amlogic,q200", "amlogic,s912", "amlogic,meson-gxm";
 	model = "Amlogic Meson GXM (S912) Q200 Development Board";
+
+	usb_pwr: regulator-usb-pwrs {
+		compatible = "regulator-fixed";
+
+		regulator-name = "USB_PWR";
+
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+
+		/* signal name in schematic: USB_PWR_EN */
+		gpio = <&gpio GPIODV_24 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+	};
 };
 
 /* Q200 has exclusive choice between internal or external PHY */
@@ -76,4 +89,8 @@
 		reg = <0>;
 		max-speed = <1000>;
 	};
+};
+
+&usb2_phy0 {
+	phy-supply = <&usb_pwr>;
 };
