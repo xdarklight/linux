@@ -1,0 +1,25 @@
+* Amlogic Meson GXL and GXM USB2 PHY binding
+
+This describes the USB2 PHY block which provides multiple USB2 PHY ports.
+
+Required properties:
+- compatible:	Should be "amlogic,meson-gxl-usb2-phy"
+- reg:		The base address and length of the registers
+- #phys-cells:	should be 1 (see phy-bindings.txt in this directory)
+- clocks:	phandle and clock identifier for the phy clocks
+- clock-names:	"usb" and "usb_ddr"
+- resets:	reference to the reset controller
+
+Optional properties:
+- phy-supply:	see phy-bindings.txt in this directory
+
+
+Example:
+	usb2_phys: phy@78000 {
+		compatible = "amlogic,meson-gxl-usb2-phy";
+		#phy-cells = <1>;
+		reg = <0x0 0x78000 0x0 0x80>;
+		clocks = <&clkc CLKID_USB1>, <&clkc CLKID_USB1_DDR_BRIDGE>;
+		clock-names = "usb", "usb_ddr";
+		resets = <&reset RESET_USB_OTG>;
+	};
