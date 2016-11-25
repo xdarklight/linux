@@ -64,6 +64,8 @@
 	snps,reset-delays-us = <0 10000 1000000>;
 	snps,reset-active-low;
 
+	amlogic,tx-delay-ns = <2>;
+
 	/* External PHY is in RGMII */
 	phy-mode = "rgmii";
 };
