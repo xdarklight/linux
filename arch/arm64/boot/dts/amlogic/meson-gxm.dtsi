@@ -117,6 +117,23 @@
 	};
 };
 
+&apb {
+	usb2_phy2: phy@78040 {
+		compatible = "amlogic,meson-gxl-usb2-phy";
+		#phy-cells = <0>;
+		reg = <0x0 0x78040 0x0 0x20>;
+		status = "disabled";
+	};
+};
+
+&dwc3_roothub {
+	port@3 {
+		reg = <3>;
+		phys = <&usb2_phy2>;
+		phy-names = "usb2-phy";
+	};
+};
+
 &saradc {
 	compatible = "amlogic,meson-gxm-saradc", "amlogic,meson-saradc";
 };
