@@ -34,6 +34,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/of.h>
 #include <linux/acpi.h>
+#include <linux/phy/phy-hub.h>
 #include <linux/pinctrl/consumer.h>
 
 #include <linux/usb/ch9.h>
@@ -788,6 +789,38 @@ err0:
 	return ret;
 }
 
+static bool dwc3_core_is_generic_phy_absent(struct phy *phy)
+{
+	if (!phy)
+		return true;
+
+	if (!IS_ERR(phy))
+		return false;
+
+	return PTR_ERR(phy) == -ENOSYS || PTR_ERR(phy) == -ENODEV;
+}
+
+static struct phy *dwc3_core_get_generic_phy(struct dwc3 *dwc,
+					     const char *con_id)
+{
+	struct phy *phy;
+	struct device_node *roothub_node;
+
+	roothub_node = usb_of_get_child_node(dwc->dev->of_node, 0);
+
+	phy = phy_hub_create_from_child_nodes(dwc->dev, roothub_node, con_id);
+	if (dwc3_core_is_generic_phy_absent(phy)) {
+		/* fall back to parsing the PHY of the dwc3 node */
+		dev_info(dwc->dev, "fall back to parsing the PHY of the dwc3 node\n");
+		phy = devm_phy_get(dwc->dev, con_id);
+
+		if (dwc3_core_is_generic_phy_absent(phy))
+			return NULL;
+	}
+
+	return phy;
+}
+
 static int dwc3_core_get_phy(struct dwc3 *dwc)
 {
 	struct device		*dev = dwc->dev;
@@ -826,30 +859,16 @@ static int dwc3_core_get_phy(struct dwc3 *dwc)
 		}
 	}
 
-	dwc->usb2_generic_phy = devm_phy_get(dev, "usb2-phy");
+	dwc->usb2_generic_phy = dwc3_core_get_generic_phy(dwc, "usb2-phy");
 	if (IS_ERR(dwc->usb2_generic_phy)) {
-		ret = PTR_ERR(dwc->usb2_generic_phy);
-		if (ret == -ENOSYS || ret == -ENODEV) {
-			dwc->usb2_generic_phy = NULL;
-		} else if (ret == -EPROBE_DEFER) {
-			return ret;
-		} else {
-			dev_err(dev, "no usb2 phy configured\n");
-			return ret;
-		}
+		dev_err(dev, "no usb2 phy hub configured\n");
+		return PTR_ERR(dwc->usb2_generic_phy);
 	}
 
-	dwc->usb3_generic_phy = devm_phy_get(dev, "usb3-phy");
-	if (IS_ERR(dwc->usb3_generic_phy)) {
-		ret = PTR_ERR(dwc->usb3_generic_phy);
-		if (ret == -ENOSYS || ret == -ENODEV) {
-			dwc->usb3_generic_phy = NULL;
-		} else if (ret == -EPROBE_DEFER) {
-			return ret;
-		} else {
-			dev_err(dev, "no usb3 phy configured\n");
-			return ret;
-		}
+	dwc->usb3_generic_phy = dwc3_core_get_generic_phy(dwc, "usb3-phy");
+	if (IS_ERR(dwc->usb2_generic_phy)) {
+		dev_err(dev, "no usb3 phy configured\n");
+		return PTR_ERR(dwc->usb3_generic_phy);
 	}
 
 	return 0;

@@ -117,8 +117,7 @@ struct phy_meson_gxl_usb3_priv {
 	struct regmap		*regmap;
 	struct delayed_work	otg_work;
 	struct phy		*this_phy;
-	int			num_usb2_phys;
-	struct phy		**usb2_phys;
+	struct phy		*usb2_phy;
 };
 
 static const struct regmap_config phy_meson_gxl_usb3_regmap_conf = {
@@ -133,7 +132,7 @@ static int phy_meson_gxl_usb3_update_mode(struct phy *phy)
 	struct phy_meson_gxl_usb3_priv *priv = phy_get_drvdata(phy);
 	u32 val;
 	enum phy_mode mode;
-	int i, ret;
+	int ret;
 
 	ret = regmap_read(priv->regmap, USB_R5, &val);
 	if (ret)
@@ -154,18 +153,15 @@ static int phy_meson_gxl_usb3_update_mode(struct phy *phy)
 				   0);
 	}
 
-	/* inform the USB2 PHY that we have changed the mode */
-	for (i = 0; i < priv->num_usb2_phys; i++) {
-		ret = phy_set_mode(priv->usb2_phys[i], mode);
-		if (ret) {
-			dev_err(&phy->dev,
-				"Failed to update usb2-phy #%d mode to %d\n",
-				i, mode);
-			return ret;
-		}
+	/* inform our companion USB2 PHY that we have changed the mode */
+	ret = phy_set_mode(priv->usb2_phy, mode);
+	if (ret) {
+		dev_err(&phy->dev, "Failed to update usb2-phy mode to %d\n",
+			mode);
+		return ret;
 	}
 
-	return ret;
+	return 0;
 }
 
 static void phy_meson_gxl_usb3_work(struct work_struct *data)
@@ -180,55 +176,9 @@ static void phy_meson_gxl_usb3_work(struct work_struct *data)
 	regmap_update_bits(priv->regmap, USB_R5, USB_R5_ID_DIG_IRQ, 0);
 }
 
-static int phy_meson_gxl_usb3_init(struct phy *phy)
-{
-	struct phy_meson_gxl_usb3_priv *priv = phy_get_drvdata(phy);
-	int i, ret;
-
-	for (i = 0; i < priv->num_usb2_phys; i++) {
-		ret = phy_init(priv->usb2_phys[i]);
-		if (ret) {
-			dev_err(&phy->dev,
-				"Failed to initialize related usb2-phy #%d\n",
-				i);
-			return ret;
-		}
-	}
-
-	return 0;
-}
-
-static int phy_meson_gxl_usb3_exit(struct phy *phy)
-{
-	struct phy_meson_gxl_usb3_priv *priv = phy_get_drvdata(phy);
-	int i, ret;
-
-	for (i = 0; i < priv->num_usb2_phys; i++) {
-		ret = phy_exit(priv->usb2_phys[i]);
-		if (ret) {
-			dev_err(&phy->dev,
-				"Failed to exit related usb2-phy #%d\n", i);
-			return ret;
-		}
-	}
-
-	return 0;
-}
-
 static int phy_meson_gxl_usb3_power_on(struct phy *phy)
 {
 	struct phy_meson_gxl_usb3_priv *priv = phy_get_drvdata(phy);
-	int i, ret;
-
-	for (i = 0; i < priv->num_usb2_phys; i++) {
-		ret = phy_power_on(priv->usb2_phys[i]);
-		if (ret) {
-			dev_err(&phy->dev,
-				"Failed to power on related usb2-phy #%d\n",
-				i);
-			return ret;
-		}
-	}
 
 	regmap_update_bits(priv->regmap, USB_R1,
 			   USB_R1_U3H_FLADJ_30MHZ_REG_MASK,
@@ -242,24 +192,6 @@ static int phy_meson_gxl_usb3_power_on(struct phy *phy)
 			   0xff << USB_R5_ID_DIG_TH_SHIFT);
 
 	return phy_meson_gxl_usb3_update_mode(phy);
-}
-
-static int phy_meson_gxl_usb3_power_off(struct phy *phy)
-{
-	struct phy_meson_gxl_usb3_priv *priv = phy_get_drvdata(phy);
-	int i, ret;
-
-	for (i = 0; i < priv->num_usb2_phys; i++) {
-		ret = phy_power_off(priv->usb2_phys[i]);
-		if (ret) {
-			dev_err(&phy->dev,
-				"Failed to power off related usb2-phy #%d\n",
-				i);
-			return ret;
-		}
-	}
-
-	return 0;
 }
 
 static irqreturn_t phy_meson_gxl_usb3_irq(int irq, void *data)
@@ -282,23 +214,19 @@ static irqreturn_t phy_meson_gxl_usb3_irq(int irq, void *data)
 }
 
 static const struct phy_ops phy_meson_gxl_usb3_ops = {
-	.init		= phy_meson_gxl_usb3_init,
-	.exit		= phy_meson_gxl_usb3_exit,
 	.power_on	= phy_meson_gxl_usb3_power_on,
-	.power_off	= phy_meson_gxl_usb3_power_off,
 	.owner		= THIS_MODULE,
 };
 
 static int phy_meson_gxl_usb3_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	struct device_node *np = dev->of_node;
 	struct phy_meson_gxl_usb3_priv *priv;
 	struct resource *res;
 	struct phy *phy;
 	struct phy_provider *phy_provider;
 	void __iomem *base;
-	int i, irq;
+	int irq;
 
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
@@ -328,23 +256,13 @@ static int phy_meson_gxl_usb3_probe(struct platform_device *pdev)
 		}
 	}
 
-	priv->num_usb2_phys = of_count_phandle_with_args(np, "phys",
-							 "#phy-cells");
-
-	priv->usb2_phys = devm_kcalloc(dev, priv->num_usb2_phys,
-				       sizeof(*priv->usb2_phys), GFP_KERNEL);
-	if (!priv->usb2_phys)
-		return -ENOMEM;
-
-	for (i = 0; i < priv->num_usb2_phys; i++) {
-		priv->usb2_phys[i] = devm_of_phy_get_by_index(dev, np, i);
-		if (IS_ERR(priv->usb2_phys[i])) {
-			dev_err(dev, "failed to get related usb2-phy #%d", i);
-			return PTR_ERR(priv->usb2_phys[i]);
-		}
+	priv->usb2_phy = devm_phy_optional_get(dev, "usb2-phy");
+	if (IS_ERR(priv->usb2_phy)) {
+		dev_err(dev, "failed to get related usb2-phy\n");
+		return PTR_ERR(priv->usb2_phy);
 	}
 
-	phy = devm_phy_create(dev, np, &phy_meson_gxl_usb3_ops);
+	phy = devm_phy_create(dev, dev->of_node, &phy_meson_gxl_usb3_ops);
 	if (IS_ERR(phy)) {
 		dev_err(dev, "failed to create PHY\n");
 		return PTR_ERR(phy);
