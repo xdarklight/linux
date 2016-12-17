@@ -56,6 +56,20 @@ Optional properties:
 
  - <DEPRECATED> tx-fifo-resize: determines if the FIFO *has* to be reallocated.
 
+Sub-nodes:
+- one or more nodes with reg 1-31 for each port to which a device is connected.
+  See usb-device.txt in the current directory for more information.
+- optionally there can be a node for the root-hub with the following
+  properties (see usb-device.txt for more information):
+    - compatible: should be at least one of "usb1d6b,3", "usb1d6b,2"
+    - address-cells: must be 1
+    - size-cells: must be 0
+    - reg: must be 0
+    - one sub-node per port, which supports the following properties:
+      - phys: from the *Generic PHY* bindings
+      - phy-names: from the *Generic PHY* bindings; supported names are
+                   "usb2-phy" or "usb3-phy".
+
 This is usually a subnode to DWC3 glue to which it is connected.
 
 dwc3@4a030000 {
@@ -63,4 +77,24 @@ dwc3@4a030000 {
 	reg = <0x4a030000 0xcfff>;
 	interrupts = <0 92 4>
 	usb-phy = <&usb2_phy>, <&usb3,phy>;
+
+	/* optional, configure a PHY for each port on the internal root-hub */
+	dwc3_roothub: roothub@0 {
+		compatible = "usb1d6b,3", "usb1d6b,2";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		reg = <0>;
+
+		port@1 {
+			reg = <1>;
+			usb-phy = <&usb2_phy1>, <&usb3_phy1>;
+			phy-names = "usb2-phy", "usb3-phy";
+		};
+
+		port@2 {
+			reg = <2>;
+			usb-phy = <&usb2_phy2>, <&usb3_phy2>;
+			phy-names = "usb2-phy", "usb3-phy";
+		};
+	};
 };
