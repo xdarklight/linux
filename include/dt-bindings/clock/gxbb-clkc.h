@@ -14,6 +14,7 @@
 #define CLKID_MPLL2		15
 #define CLKID_SPI		34
 #define CLKID_I2C		22
+#define CLKID_SAR_ADC		23
 #define CLKID_ETH		36
 #define CLKID_USB0		50
 #define CLKID_USB1		51
@@ -24,5 +25,8 @@
 #define CLKID_SD_EMMC_A		94
 #define CLKID_SD_EMMC_B		95
 #define CLKID_SD_EMMC_C		96
+#define CLKID_SAR_ADC_CLK	97
+#define CLKID_SAR_ADC_SEL	98
+#define CLKID_SAR_ADC_DIV	99
 
 #endif /* __GXBB_CLKC_H */
