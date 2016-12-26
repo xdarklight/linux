@@ -31,7 +31,6 @@
 #include <asm/memory.h>
 #include <asm/ptrace.h>
 #include <asm/thread_info.h>
-#include <linux/uaccess.h>
 #include <asm/unistd.h>
 
 /*
