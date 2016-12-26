@@ -191,7 +191,7 @@
 #define CLKID_PERIPHS		  20
 #define CLKID_SPICC		  21
 /* CLKID_I2C */
-#define CLKID_SAR_ADC		  23
+/* #define CLKID_SAR_ADC */
 #define CLKID_SMART_CARD	  24
 #define CLKID_RNG0		  25
 #define CLKID_UART0		  26
@@ -265,8 +265,11 @@
 /* CLKID_SD_EMMC_A */
 /* CLKID_SD_EMMC_B */
 /* CLKID_SD_EMMC_C */
+/* CLKID_SAR_ADC_CLK */
+/* CLKID_SAR_ADC_SEL */
+/* CLKID_SAR_ADC_DIV */
 
-#define NR_CLKS			  97
+#define NR_CLKS			  100
 
 /* include the CLKIDs that have been made part of the stable DT binding */
 #include <dt-bindings/clock/gxbb-clkc.h>
