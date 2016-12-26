@@ -237,6 +237,13 @@
 				status = "disabled";
 			};
 
+			saradc: adc@8680 {
+				compatible = "amlogic,meson-saradc";
+				status = "okay"; /* TODO */
+				interrupts = <GIC_SPI 9 IRQ_TYPE_EDGE_RISING>;
+				reg = <0x0 0x8680 0x0 0x30>;
+			};
+
 			pwm_ef: pwm@86c0 {
 				compatible = "amlogic,meson-gx-pwm", "amlogic,meson-gxbb-pwm";
 				reg = <0x0 0x086c0 0x0 0x10>;
