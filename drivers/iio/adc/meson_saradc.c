@@ -168,16 +168,16 @@
 
 #define SAR_ADC_MAX_FIFO_SIZE		32
 #define SAR_ADC_NUM_CHANNELS		ARRAY_SIZE(meson_saradc_iio_channels)
-#define SAR_ADC_NOMINAL_SHIFT		12
 #define SAR_ADC_VALUE_MASK(_priv)	(BIT(_priv->resolution) - 1)
 
-#define MESON_SAR_ADC_VOLTAGE_CHAN(_num, _type) {			\
+#define MESON_SAR_ADC_CHAN(_chan, _type) {				\
 	.type = _type,							\
 	.indexed = true,						\
-	.channel = _num,						\
+	.channel = _chan,						\
 	.info_mask_separate = BIT(IIO_CHAN_INFO_RAW) |			\
+				BIT(IIO_CHAN_INFO_SCALE) |		\
 				BIT(IIO_CHAN_INFO_AVERAGE_RAW),		\
-	.datasheet_name = "CHAN"#_num,					\
+	.datasheet_name = "CHAN"#_chan,					\
 }
 
 /* the hardware supports IIO_VOLTAGE for channel 6 as well. we can ignore that
@@ -185,15 +185,24 @@
  * itself and there are enough other usable channels left.
  */
 static const struct iio_chan_spec meson_saradc_iio_channels[] = {
-	MESON_SAR_ADC_VOLTAGE_CHAN(0, IIO_VOLTAGE),
-	MESON_SAR_ADC_VOLTAGE_CHAN(1, IIO_VOLTAGE),
-	MESON_SAR_ADC_VOLTAGE_CHAN(2, IIO_VOLTAGE),
-	MESON_SAR_ADC_VOLTAGE_CHAN(3, IIO_VOLTAGE),
-	MESON_SAR_ADC_VOLTAGE_CHAN(4, IIO_VOLTAGE),
-	MESON_SAR_ADC_VOLTAGE_CHAN(5, IIO_VOLTAGE),
-	MESON_SAR_ADC_VOLTAGE_CHAN(6, IIO_TEMP),
-	MESON_SAR_ADC_VOLTAGE_CHAN(7, IIO_VOLTAGE),
+	MESON_SAR_ADC_CHAN(0, IIO_VOLTAGE),
+	MESON_SAR_ADC_CHAN(1, IIO_VOLTAGE),
+	MESON_SAR_ADC_CHAN(2, IIO_VOLTAGE),
+	MESON_SAR_ADC_CHAN(3, IIO_VOLTAGE),
+	MESON_SAR_ADC_CHAN(4, IIO_VOLTAGE),
+	MESON_SAR_ADC_CHAN(5, IIO_VOLTAGE),
+	MESON_SAR_ADC_CHAN(6, IIO_TEMP),
+	MESON_SAR_ADC_CHAN(7, IIO_VOLTAGE),
 	IIO_CHAN_SOFT_TIMESTAMP(8),
+};
+
+enum meson_saradc_ch7_mux_mode {
+	CHAN7_MUX_VSS = 0x0,
+	CHAN7_MUX_VDD_DIV4 = 0x1,
+	CHAN7_MUX_VDD_DIV2 = 0x2,
+	CHAN7_MUX_VDD_DIV4_MUL3 = 0x3,
+	CHAN7_MUX_VDD = 0x4,
+	CHAN7_MUX_CH7_INPUT = 0x7,
 };
 
 enum meson_saradc_avg_mode {
@@ -209,30 +218,18 @@ enum meson_saradc_num_samples {
 	EIGHT_SAMPLES = 0x3,
 };
 
-enum meson_saradc_chan7_mux_sel {
-	CHAN7_VSS = 0x0,
-	CHAN7_VDD_DIV4 = 0x1,
-	CHAN7_VDD_DIV2 = 0x2,
-	CHAN7_VDD_MUL3_DIV4 = 0x3,
-	CHAN7_VDD = 0x4,
-	CHAN7_NUM_MUXES
-};
-
 struct meson_saradc_priv {
-	struct regmap		*regmap;
-	struct clk		*clkin;
-	struct clk		*core_clk;
-	struct clk		*adc_sel_clk;
-	struct clk		*adc_clk;
-	struct clk_gate		clk_gate;
-	struct clk		*adc_div_clk;
-	struct clk_divider	clk_div;
-	struct completion	completion;
-	u8			resolution;
-	bool			bl30_managed;
-	int			ref_val;
-	int			ref_nominal;
-	int			coef;
+	struct regmap			*regmap;
+	struct clk			*clkin;
+	struct clk			*core_clk;
+	struct clk			*adc_sel_clk;
+	struct clk			*adc_clk;
+	struct clk_gate			clk_gate;
+	struct clk			*adc_div_clk;
+	struct clk_divider		clk_div;
+	struct completion		completion;
+	u8				resolution;
+	bool				bl30_managed;
 };
 
 static const struct regmap_config meson_saradc_regmap_config = {
@@ -241,31 +238,6 @@ static const struct regmap_config meson_saradc_regmap_config = {
 	.reg_stride = 4,
 	.max_register = SAR_ADC_REG13,
 };
-
-static int meson_saradc_get_calibrated_value(struct iio_dev *indio_dev,
-					     int val)
-{
-	struct meson_saradc_priv *priv = iio_priv(indio_dev);
-	int nominal, max_val;
-
-	max_val = SAR_ADC_VALUE_MASK(priv);
-
-	/* skip value adjustment if we are not calibrated yet (coef == 0) */
-	if (priv->coef > 0 && val > 0) {
-		/* coef = ((val - ref_nominal) << 10) / (val - ref_val)
-		 * nominal = ((val - ref_val) * coef >> 10) + ref_nominal */
-		nominal = (val - priv->ref_val) * priv->coef;
-		nominal >>= SAR_ADC_NOMINAL_SHIFT;
-		nominal += priv->ref_nominal;
-	} else {
-		nominal = val;
-	}
-
-	if (nominal < 0)
-		return 0;
-	else
-		return min(max_val, nominal);
-}
 
 static unsigned int meson_saradc_get_fifo_count(struct iio_dev *indio_dev)
 {
@@ -331,7 +303,7 @@ static void meson_saradc_set_averaging(struct iio_dev *indio_dev,
 				       enum meson_saradc_num_samples samples)
 {
 	struct meson_saradc_priv *priv = iio_priv(indio_dev);
-	u32 val;
+	int val;
 
 	val = samples << SAR_ADC_AVG_CNTL_NUM_SAMPLES_SHIFT(chan->channel);
 	regmap_update_bits(priv->regmap, SAR_ADC_AVG_CNTL,
@@ -347,7 +319,6 @@ static void meson_saradc_enable_channel(struct iio_dev *indio_dev,
 					const struct iio_chan_spec *chan)
 {
 	struct meson_saradc_priv *priv = iio_priv(indio_dev);
-	int ch = chan->channel;
 
 	/* the SAR ADC engine allows sampling multiple channels at the same
 	 * time. to keep it simple we're only working with one *internal*
@@ -357,21 +328,35 @@ static void meson_saradc_enable_channel(struct iio_dev *indio_dev,
 		SAR_ADC_CHAN_LIST_MAX_INDEX_MASK,
 		FIELD_PREP(SAR_ADC_CHAN_LIST_MAX_INDEX_MASK, 0));
 
-	/* this is the mapping between internal and external channel:
-	 * we are always mapping the active (external) channel to (internal
-	 * channel) 0.
+	/* this is the mapping between channel index (in our case always 0)
+	 * and the actual input channel.
 	 */
 	regmap_update_bits(priv->regmap, SAR_ADC_CHAN_LIST,
 		SAR_ADC_CHAN_LIST_CHAN_MASK(0),
-		FIELD_PREP(SAR_ADC_CHAN_LIST_CHAN_MASK(0), ch));
+		FIELD_PREP(SAR_ADC_CHAN_LIST_CHAN_MASK(0), chan->channel));
 
 	regmap_update_bits(priv->regmap, SAR_ADC_DETECT_IDLE_SW,
 		SAR_ADC_DETECT_IDLE_SW_DETECT_MODE_MUX_MASK,
-		FIELD_PREP(SAR_ADC_DETECT_IDLE_SW_DETECT_MODE_MUX_MASK, ch));
+		FIELD_PREP(SAR_ADC_DETECT_IDLE_SW_DETECT_MODE_MUX_MASK,
+			   chan->channel));
 
 	regmap_update_bits(priv->regmap, SAR_ADC_DETECT_IDLE_SW,
 		SAR_ADC_DETECT_IDLE_SW_IDLE_MODE_MUX_SEL_MASK,
-		FIELD_PREP(SAR_ADC_DETECT_IDLE_SW_IDLE_MODE_MUX_SEL_MASK, ch));
+		FIELD_PREP(SAR_ADC_DETECT_IDLE_SW_IDLE_MODE_MUX_SEL_MASK,
+			   chan->channel));
+}
+
+static void meson_saradc_set_channel7_mux(struct iio_dev *indio_dev,
+					  enum meson_saradc_ch7_mux_mode mode)
+{
+	struct meson_saradc_priv *priv = iio_priv(indio_dev);
+
+	regmap_update_bits(priv->regmap, SAR_ADC_REG3,
+			   SAR_ADC_REG3_CTRL_CHAN7_MUX_SEL_MASK,
+			   FIELD_PREP(SAR_ADC_REG3_CTRL_CHAN7_MUX_SEL_MASK,
+				      CHAN7_MUX_VDD));
+
+	usleep_range(10, 20);
 }
 
 static void meson_saradc_start_sample_engine(struct iio_dev *indio_dev)
@@ -433,11 +418,14 @@ static void meson_saradc_unlock(struct iio_dev *indio_dev)
 }
 
 static int meson_saradc_get_sample(struct iio_dev *indio_dev,
-				   const struct iio_chan_spec *chan, int *val)
+				   const struct iio_chan_spec *chan,
+				   enum meson_saradc_avg_mode avg_mode,
+				   enum meson_saradc_num_samples avg_samples,
+				   int *val)
 {
 	int ret, tmp;
 
-	meson_saradc_lock(indio_dev);
+	meson_saradc_set_averaging(indio_dev, chan, avg_mode, avg_samples);
 
 	meson_saradc_enable_channel(indio_dev, chan);
 
@@ -448,46 +436,68 @@ static int meson_saradc_get_sample(struct iio_dev *indio_dev,
 	ret = meson_saradc_read_raw_sample(indio_dev, chan, val);
 	meson_saradc_stop_sample_engine(indio_dev);
 
-	meson_saradc_unlock(indio_dev);
-
 	if (ret) {
-		dev_err(&indio_dev->dev,
-			"failed to read sample for channel %d: %d\n",
-			chan->channel, ret);
+		dev_warn(&indio_dev->dev,
+			 "failed to read sample for channel %d: %d\n",
+			  chan->channel, ret);
 		return ret;
 	}
 
-	*val = meson_saradc_get_calibrated_value(indio_dev, *val);
-
-	return 0;
+	return IIO_VAL_INT;
 }
 
 static int meson_saradc_iio_info_read_raw(struct iio_dev *indio_dev,
 					  const struct iio_chan_spec *chan,
 					  int *val, int *val2, long mask)
 {
+	struct meson_saradc_priv *priv = iio_priv(indio_dev);
+	const struct iio_chan_spec *vdd_chan;
 	int ret;
 
+	meson_saradc_lock(indio_dev);
+
 	switch (mask) {
-	case IIO_CHAN_INFO_AVERAGE_RAW:
-		meson_saradc_set_averaging(indio_dev, chan, MEAN_AVERAGING,
-					   EIGHT_SAMPLES);
+	case IIO_CHAN_INFO_RAW:
+		ret = meson_saradc_get_sample(indio_dev, chan, NO_AVERAGING,
+					      ONE_SAMPLE, val);
 		break;
 
-	case IIO_CHAN_INFO_RAW:
-		meson_saradc_set_averaging(indio_dev, chan, NO_AVERAGING,
-					   ONE_SAMPLE);
+	case IIO_CHAN_INFO_SCALE:
+		vdd_chan = &meson_saradc_iio_channels[7];
+
+		/* use VDD as scale */
+		meson_saradc_set_channel7_mux(indio_dev, CHAN7_MUX_VDD);
+
+		ret = meson_saradc_get_sample(indio_dev, vdd_chan,
+					      NO_AVERAGING, ONE_SAMPLE, val);
+
+		/* always revert back to CH7 input */
+		regmap_update_bits(priv->regmap, SAR_ADC_REG3,
+				   SAR_ADC_REG3_CTRL_CHAN7_MUX_SEL_MASK,
+				   FIELD_PREP(SAR_ADC_REG3_CTRL_CHAN7_MUX_SEL_MASK,
+					      CHAN7_MUX_CH7_INPUT));
+
+		if (ret < 0)
+			goto err;
+
+		*val2 = priv->resolution;
+		ret = IIO_VAL_FRACTIONAL_LOG2;
+		break;
+
+	case IIO_CHAN_INFO_AVERAGE_RAW:
+		ret = meson_saradc_get_sample(indio_dev, chan, MEAN_AVERAGING,
+					      EIGHT_SAMPLES, val);
 		break;
 
 	default:
-		return -EINVAL;
+		ret = -EINVAL;
+		break;
 	}
 
-	ret = meson_saradc_get_sample(indio_dev, chan, val);
-	if (ret)
-		return ret;
+err:
+	meson_saradc_unlock(indio_dev);
 
-	return IIO_VAL_INT;
+	return ret;
 }
 
 static irqreturn_t meson_saradc_isr(int irq, void *data)
@@ -538,8 +548,7 @@ static int meson_saradc_clk_init(struct iio_dev *indio_dev, void __iomem *base)
 	priv->clk_gate.bit_idx = fls(SAR_ADC_REG3_ADC_EN);
 	priv->clk_gate.hw.init = &init;
 
-	priv->adc_clk = devm_clk_register(&indio_dev->dev,
-					       &priv->clk_gate.hw);
+	priv->adc_clk = devm_clk_register(&indio_dev->dev, &priv->clk_gate.hw);
 	if (WARN_ON(IS_ERR(priv->adc_clk)))
 		return PTR_ERR(priv->adc_clk);
 
@@ -634,7 +643,9 @@ static int meson_saradc_hw_enable(struct iio_dev *indio_dev)
 			   SAR_ADC_REG11_BANDGAP_EN, SAR_ADC_REG11_BANDGAP_EN);
 	regmap_update_bits(priv->regmap, SAR_ADC_REG3, SAR_ADC_REG3_ADC_EN,
 			   SAR_ADC_REG3_ADC_EN);
+
 	udelay(5);
+
 	regmap_update_bits(priv->regmap, SAR_ADC_REG3, SAR_ADC_REG3_CLK_EN, // FIXME: should not be needed
 			   SAR_ADC_REG3_CLK_EN);
 
@@ -657,64 +668,6 @@ static void meson_saradc_hw_disable(struct iio_dev *indio_dev)
 	regmap_update_bits(priv->regmap, SAR_ADC_REG3, SAR_ADC_REG3_ADC_EN, 0);
 	regmap_update_bits(priv->regmap, SAR_ADC_REG11,
 			   SAR_ADC_REG11_BANDGAP_EN, 0);
-}
-
-static int meson_saradc_calibrate(struct iio_dev *indio_dev)
-{
-	struct meson_saradc_priv *priv = iio_priv(indio_dev);
-	const struct iio_chan_spec *chan7 = &meson_saradc_iio_channels[7];
-	int i, ret, mux, nominal[CHAN7_NUM_MUXES], val[CHAN7_NUM_MUXES];
-
-	/* chan 7 allows selecting VSS, VDD and various VDD dividers. This is
-	 * used for calibration based on the board's power supply, without
-	 * requiring any "board designer supplied" reference values.
-	 */
-	nominal[CHAN7_VSS] = 0;
-	nominal[CHAN7_VDD_DIV4] = SAR_ADC_VALUE_MASK(priv) / 4;
-	nominal[CHAN7_VDD_DIV2] = SAR_ADC_VALUE_MASK(priv) / 2;
-	nominal[CHAN7_VDD_MUL3_DIV4] = SAR_ADC_VALUE_MASK(priv) * 3 / 4;
-	nominal[CHAN7_VDD] = SAR_ADC_VALUE_MASK(priv);
-
-	for (i = 0; i < CHAN7_NUM_MUXES; i++) {
-		mux = FIELD_PREP(SAR_ADC_REG3_CTRL_CHAN7_MUX_SEL_MASK, i);
-		regmap_update_bits(priv->regmap, SAR_ADC_REG3,
-				   SAR_ADC_REG3_CTRL_CHAN7_MUX_SEL_MASK, mux);
-
-		/* wait for HW to settle after the updating the chan7 mux,
-		 * otherwise we may still be reading the values of a previous
-		 * mux setting. */
-		usleep_range(10, 20);
-
-		ret = meson_saradc_iio_info_read_raw(indio_dev, chan7, &val[i],
-						     NULL, IIO_CHAN_INFO_RAW);
-		if (ret < 0)
-			return ret;
-
-		dev_dbg(&indio_dev->dev,
-			"calibration chan7 mux%d: nominal = %d, value = %d\n",
-			i, nominal[i], val[i]);
-
-		if (val[i] < 0)
-			return -EINVAL;
-	}
-
-	priv->ref_val = val[CHAN7_VDD_DIV2];
-	priv->ref_nominal = nominal[CHAN7_VDD_DIV2];
-	if (val[CHAN7_VDD_MUL3_DIV4] > val[CHAN7_VDD_DIV4]) {
-		priv->coef = nominal[CHAN7_VDD_MUL3_DIV4] - nominal[CHAN7_VDD_DIV4];
-		priv->coef <<= SAR_ADC_NOMINAL_SHIFT;
-		priv->coef /= val[CHAN7_VDD_MUL3_DIV4] - val[CHAN7_VDD_DIV4];
-	}
-
-	/* clear mux selection (revert back to channel 7 input) */
-	regmap_update_bits(priv->regmap, SAR_ADC_REG3,
-			   SAR_ADC_REG3_CTRL_CHAN7_MUX_SEL_MASK,
-			   SAR_ADC_REG3_CTRL_CHAN7_MUX_SEL_MASK);
-
-	dev_dbg(&indio_dev->dev, "calibration finished, coef=%d\n",
-		priv->coef);
-
-	return 0;
 }
 
 static const struct iio_info meson_saradc_iio_info = {
@@ -818,6 +771,7 @@ static int meson_saradc_probe(struct platform_device *pdev)
 	priv->adc_sel_clk = devm_clk_get(&pdev->dev, "adc_sel");
 	if (IS_ERR(priv->adc_sel_clk)) {
 		if (PTR_ERR(priv->adc_sel_clk) == -ENOENT) {
+			/* optional because it only exists on GXBB or newer */
 			priv->adc_sel_clk = NULL;
 		} else {
 			dev_err(&pdev->dev, "failed to get adc_sel clk\n");
@@ -825,7 +779,7 @@ static int meson_saradc_probe(struct platform_device *pdev)
 		}
 	}
 
-	/* on older SoCs the SAR ADC provides the adc_clk and adc_div: */
+	/* on pre-GXBB SoCs the SAR ADC itself provides these clocks: */
 	if (!priv->adc_clk && !priv->adc_div_clk) {
 		ret = meson_saradc_clk_init(indio_dev, base);
 		if (ret)
@@ -839,10 +793,6 @@ static int meson_saradc_probe(struct platform_device *pdev)
 	ret = meson_saradc_hw_enable(indio_dev);
 	if (ret)
 		goto err_init;
-
-	ret = meson_saradc_calibrate(indio_dev);
-	if (ret)
-		goto err_hw;
 
 	platform_set_drvdata(pdev, indio_dev);
 
