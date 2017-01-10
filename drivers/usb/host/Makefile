@@ -31,6 +31,8 @@ ifneq ($(CONFIG_USB), )
 	obj-$(CONFIG_PCI)	+= pci-quirks.o
 endif
 
+obj-$(CONFIG_USB_PLATFORM_ROOTHUB)	+= platform-roothub.o
+
 obj-$(CONFIG_USB_EHCI_HCD)	+= ehci-hcd.o
 obj-$(CONFIG_USB_EHCI_PCI)	+= ehci-pci.o
 obj-$(CONFIG_USB_EHCI_HCD_PLATFORM)	+= ehci-platform.o
