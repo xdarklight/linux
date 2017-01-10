@@ -805,6 +805,9 @@ config USB_HCD_SSB
 
 	  If unsure, say N.
 
+config USB_PLATFORM_ROOTHUB
+	bool
+
 config USB_HCD_TEST_MODE
 	bool "HCD test mode support"
 	---help---
