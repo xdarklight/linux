@@ -1725,6 +1725,8 @@ struct xhci_hcd {
 	int		msix_count;
 	/* optional clock */
 	struct clk		*clk;
+	/* optional platform root-hub */
+	struct platform_roothub	*platform_roothub;
 	/* data structures */
 	struct xhci_device_context_array *dcbaa;
 	struct xhci_ring	*cmd_ring;
