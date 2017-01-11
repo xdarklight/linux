@@ -21,6 +21,7 @@
 #include <linux/slab.h>
 #include <linux/acpi.h>
 
+#include "platform-roothub.h"
 #include "xhci.h"
 #include "xhci-plat.h"
 #include "xhci-mvebu.h"
@@ -285,9 +286,19 @@ static int xhci_plat_probe(struct platform_device *pdev)
 			goto put_usb3_hcd;
 	}
 
+	xhci->platform_roothub = platform_roothub_init(sysdev);
+	if (IS_ERR(xhci->platform_roothub)) {
+		ret = PTR_ERR(xhci->platform_roothub);
+		goto disable_usb_phy;
+	}
+
+	ret = platform_roothub_power_on(xhci->platform_roothub);
+	if (ret)
+		goto exit_plat_roothub;
+
 	ret = usb_add_hcd(hcd, irq, IRQF_SHARED);
 	if (ret)
-		goto disable_usb_phy;
+		goto disable_plat_roothub;
 
 	if (HCC_MAX_PSA(xhci->hcc_params) >= 4)
 		xhci->shared_hcd->can_do_streams = 1;
@@ -310,6 +321,12 @@ static int xhci_plat_probe(struct platform_device *pdev)
 
 dealloc_usb2_hcd:
 	usb_remove_hcd(hcd);
+
+disable_plat_roothub:
+	platform_roothub_power_off(xhci->platform_roothub);
+
+exit_plat_roothub:
+	platform_roothub_exit(xhci->platform_roothub);
 
 disable_usb_phy:
 	usb_phy_shutdown(hcd->usb_phy);
@@ -341,6 +358,9 @@ static int xhci_plat_remove(struct platform_device *dev)
 
 	usb_remove_hcd(xhci->shared_hcd);
 	usb_phy_shutdown(hcd->usb_phy);
+
+	platform_roothub_power_off(xhci->platform_roothub);
+	platform_roothub_exit(xhci->platform_roothub);
 
 	usb_remove_hcd(hcd);
 	usb_put_hcd(xhci->shared_hcd);
@@ -374,7 +394,14 @@ static int __maybe_unused xhci_plat_suspend(struct device *dev)
 	if (!device_may_wakeup(dev) && !IS_ERR(xhci->clk))
 		clk_disable_unprepare(xhci->clk);
 
-	return ret;
+	if (ret)
+		return ret;
+
+	ret = platform_roothub_power_off(xhci->platform_roothub);
+	if (ret)
+		return ret;
+
+	return 0;
 }
 
 static int __maybe_unused xhci_plat_resume(struct device *dev)
@@ -385,6 +412,10 @@ static int __maybe_unused xhci_plat_resume(struct device *dev)
 
 	if (!device_may_wakeup(dev) && !IS_ERR(xhci->clk))
 		clk_prepare_enable(xhci->clk);
+
+	ret = platform_roothub_power_on(xhci->platform_roothub);
+	if (ret)
+		return ret;
 
 	ret = xhci_priv_resume_quirk(hcd);
 	if (ret)
