@@ -248,6 +248,12 @@ static int xhci_plat_probe(struct platform_device *pdev)
 		goto disable_clk;
 	}
 
+	xhci->platform_roothub = platform_roothub_init(sysdev);
+	if (IS_ERR(xhci->platform_roothub)) {
+		ret = PTR_ERR(xhci->platform_roothub);
+		goto disable_clk;
+	}
+
 	if (device_property_read_bool(sysdev, "usb3-lpm-capable"))
 		xhci->quirks |= XHCI_LPM_SUPPORT;
 
@@ -266,9 +272,13 @@ static int xhci_plat_probe(struct platform_device *pdev)
 			goto put_usb3_hcd;
 	}
 
-	ret = usb_add_hcd(hcd, irq, IRQF_SHARED);
+	ret = platform_roothub_power_on(xhci->platform_roothub);
 	if (ret)
 		goto disable_usb_phy;
+
+	ret = usb_add_hcd(hcd, irq, IRQF_SHARED);
+	if (ret)
+		goto disable_platform_roothub;
 
 	ret = usb_add_hcd(xhci->shared_hcd, irq, IRQF_SHARED);
 	if (ret)
@@ -279,6 +289,9 @@ static int xhci_plat_probe(struct platform_device *pdev)
 
 dealloc_usb2_hcd:
 	usb_remove_hcd(hcd);
+
+disable_platform_roothub:
+	platform_roothub_power_off(xhci->platform_roothub);
 
 disable_usb_phy:
 	usb_phy_shutdown(hcd->usb_phy);
@@ -305,6 +318,8 @@ static int xhci_plat_remove(struct platform_device *dev)
 	usb_remove_hcd(xhci->shared_hcd);
 	usb_phy_shutdown(hcd->usb_phy);
 
+	platform_roothub_power_off(xhci->platform_roothub);
+
 	usb_remove_hcd(hcd);
 	usb_put_hcd(xhci->shared_hcd);
 
@@ -320,6 +335,7 @@ static int xhci_plat_suspend(struct device *dev)
 {
 	struct usb_hcd	*hcd = dev_get_drvdata(dev);
 	struct xhci_hcd	*xhci = hcd_to_xhci(hcd);
+	int ret;
 
 	/*
 	 * xhci_suspend() needs `do_wakeup` to know whether host is allowed
@@ -329,15 +345,30 @@ static int xhci_plat_suspend(struct device *dev)
 	 * reconsider this when xhci_plat_suspend enlarges its scope, e.g.,
 	 * also applies to runtime suspend.
 	 */
-	return xhci_suspend(xhci, device_may_wakeup(dev));
+	ret = xhci_suspend(xhci, device_may_wakeup(dev));
+	if (ret)
+		return ret;
+
+	platform_roothub_power_off(xhci->platform_roothub);
+
+	return 0;
 }
 
 static int xhci_plat_resume(struct device *dev)
 {
 	struct usb_hcd	*hcd = dev_get_drvdata(dev);
 	struct xhci_hcd	*xhci = hcd_to_xhci(hcd);
+	int ret;
 
-	return xhci_resume(xhci, 0);
+	ret = platform_roothub_power_on(xhci->platform_roothub);
+	if (ret)
+		return ret;
+
+	ret = xhci_resume(xhci, 0);
+	if (ret)
+		return ret;
+
+	return 0;
 }
 
 static const struct dev_pm_ops xhci_plat_pm_ops = {
