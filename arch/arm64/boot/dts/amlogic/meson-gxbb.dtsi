@@ -73,6 +73,8 @@
 
 		usb0: usb@c9000000 {
 			compatible = "amlogic,meson-gxbb-usb", "snps,dwc2";
+			#address-cells = <1>;
+			#size-cells = <0>;
 			reg = <0x0 0xc9000000 0x0 0x40000>;
 			interrupts = <GIC_SPI 30 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&clkc CLKID_USB0_DDR_BRIDGE>;
@@ -85,6 +87,8 @@
 
 		usb1: usb@c9100000 {
 			compatible = "amlogic,meson-gxbb-usb", "snps,dwc2";
+			#address-cells = <1>;
+			#size-cells = <0>;
 			reg = <0x0 0xc9100000 0x0 0x40000>;
 			interrupts = <GIC_SPI 31 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&clkc CLKID_USB1_DDR_BRIDGE>;
