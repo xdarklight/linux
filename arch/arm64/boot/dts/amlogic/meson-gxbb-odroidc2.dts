@@ -199,6 +199,13 @@
 
 &usb1 {
 	status = "okay";
+
+	hub@1 {
+		compatible = "usb5e3,610";
+		reg = <1>;
+		reset-gpios = <&gpio GPIOAO_4 GPIO_ACTIVE_LOW>;
+		reset-duration-us = <3000>;
+	};
 };
 
 /* SD */
