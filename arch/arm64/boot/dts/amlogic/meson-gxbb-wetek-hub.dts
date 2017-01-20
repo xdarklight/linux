@@ -59,8 +59,8 @@
 			panic-indicator;
 		};
 	};
+};
 
-	cvbs-connector {
-		status = "disabled";
-	};
+&cvbs_connector {
+	status = "disabled";
 };
