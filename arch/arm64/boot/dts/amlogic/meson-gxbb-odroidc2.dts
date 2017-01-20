@@ -137,12 +137,6 @@
 	};
 };
 
-&uart_AO {
-	status = "okay";
-	pinctrl-0 = <&uart_ao_a_pins>;
-	pinctrl-names = "default";
-};
-
 &ethmac {
 	status = "okay";
 	pinctrl-0 = <&eth_rgmii_pins>;
@@ -161,33 +155,16 @@
 	};
 };
 
-&ir {
-	status = "okay";
-	pinctrl-0 = <&remote_input_ao_pins>;
-	pinctrl-names = "default";
-};
-
 &i2c_A {
 	status = "okay";
 	pinctrl-0 = <&i2c_a_pins>;
 	pinctrl-names = "default";
 };
 
-&usb0_phy {
+&ir {
 	status = "okay";
-	phy-supply = <&usb_otg_pwr>;
-};
-
-&usb1_phy {
-	status = "okay";
-};
-
-&usb0 {
-	status = "okay";
-};
-
-&usb1 {
-	status = "okay";
+	pinctrl-0 = <&remote_input_ao_pins>;
+	pinctrl-names = "default";
 };
 
 /* SD */
@@ -226,4 +203,27 @@
 	mmc-pwrseq = <&emmc_pwrseq>;
 	vmmc-supply = <&vcc3v3>;
 	vqmmc-supply = <&vcc1v8>;
+};
+
+&uart_AO {
+	status = "okay";
+	pinctrl-0 = <&uart_ao_a_pins>;
+	pinctrl-names = "default";
+};
+
+&usb0_phy {
+	status = "okay";
+	phy-supply = <&usb_otg_pwr>;
+};
+
+&usb1_phy {
+	status = "okay";
+};
+
+&usb0 {
+	status = "okay";
+};
+
+&usb1 {
+	status = "okay";
 };
