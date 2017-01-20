@@ -111,11 +111,10 @@
 	};
 };
 
-&uart_AO {
+&ethmac {
 	status = "okay";
-	pinctrl-0 = <&uart_ao_a_pins>;
+	pinctrl-0 = <&eth_rgmii_pins>;
 	pinctrl-names = "default";
-
 };
 
 &ir {
@@ -124,27 +123,12 @@
 	pinctrl-names = "default";
 };
 
-&ethmac {
+&pwm_ef {
 	status = "okay";
-	pinctrl-0 = <&eth_rgmii_pins>;
+	pinctrl-0 = <&pwm_e_pins>;
 	pinctrl-names = "default";
-};
-
-&usb0_phy {
-	status = "okay";
-	phy-supply = <&usb_vbus>;
-};
-
-&usb1_phy {
-	status = "okay";
-};
-
-&usb0 {
-	status = "okay";
-};
-
-&usb1 {
-	status = "okay";
+	clocks = <&clkc CLKID_FCLK_DIV4>;
+	clock-names = "clkin0";
 };
 
 /* Wireless SDIO Module */
@@ -210,10 +194,25 @@
 	vmmcq-sumpply = <&vcc_1v8>;
 };
 
-&pwm_ef {
+&uart_AO {
 	status = "okay";
-	pinctrl-0 = <&pwm_e_pins>;
+	pinctrl-0 = <&uart_ao_a_pins>;
 	pinctrl-names = "default";
-	clocks = <&clkc CLKID_FCLK_DIV4>;
-	clock-names = "clkin0";
+};
+
+&usb0_phy {
+	status = "okay";
+	phy-supply = <&usb_vbus>;
+};
+
+&usb1_phy {
+	status = "okay";
+};
+
+&usb0 {
+	status = "okay";
+};
+
+&usb1 {
+	status = "okay";
 };
