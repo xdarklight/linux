@@ -125,4 +125,3 @@
 &vpu {
 	compatible = "amlogic,meson-gxm-vpu", "amlogic,meson-gx-vpu";
 };
-
