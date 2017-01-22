@@ -53,13 +53,6 @@
 	leds {
 		compatible = "gpio-leds";
 
-		system {
-			label = "wetek-play:system-status";
-			gpios = <&gpio_ao GPIOAO_13 GPIO_ACTIVE_HIGH>;
-			default-state = "on";
-			panic-indicator;
-		};
-
 		wifi {
 			label = "wetek-play:wifi-status";
 			gpios = <&gpio GPIODV_26 GPIO_ACTIVE_HIGH>;
@@ -70,6 +63,18 @@
 			label = "wetek-play:ethernet-status";
 			gpios = <&gpio GPIODV_27 GPIO_ACTIVE_HIGH>;
 			default-state = "off";
+		};
+	};
+
+	pwmleds {
+		compatible = "pwm-leds";
+
+		system {
+			label = "wetek-play:system-status";
+			pwms = <&pwm_AO_ab 1 7812500 0>;
+			max-brightness = <255>;
+			linux,default-trigger = "default-on";
+			panic-indicator;
 		};
 	};
 
@@ -117,4 +122,12 @@
 	status = "okay";
 	pinctrl-0 = <&i2c_a_pins>;
 	pinctrl-names = "default";
+};
+
+&pwm_AO_ab {
+	status = "okay";
+	pinctrl-0 = <&pwm_ao_b_pins>;
+	pinctrl-names = "default";
+	clocks = <&clkc CLKID_FCLK_DIV4>;
+	clock-names = "clkin0";
 };

@@ -76,11 +76,13 @@
 		enable-active-high;
 	};
 
-	leds {
-		compatible = "gpio-leds";
+	pwmleds {
+		compatible = "pwm-leds";
+
 		blue {
 			label = "c2:blue:alive";
-			gpios = <&gpio_ao GPIOAO_13 GPIO_ACTIVE_LOW>;
+			pwms = <&pwm_AO_ab 1 7812500 0>;
+			max-brightness = <255>;
 			linux,default-trigger = "heartbeat";
 			default-state = "off";
 		};
@@ -265,6 +267,14 @@
 
 &usb1 {
 	status = "okay";
+};
+
+&pwm_AO_ab {
+	status = "okay";
+	pinctrl-0 = <&pwm_ao_b_pins>;
+	pinctrl-names = "default";
+	clocks = <&clkc CLKID_FCLK_DIV4>;
+	clock-names = "clkin0";
 };
 
 /* SD */
