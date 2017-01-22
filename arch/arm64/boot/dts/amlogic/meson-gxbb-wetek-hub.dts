@@ -49,13 +49,14 @@
 	compatible = "wetek,hub", "amlogic,meson-gxbb";
 	model = "WeTek Hub";
 
-	leds {
-		compatible = "gpio-leds";
+	pwmleds {
+		compatible = "pwm-leds";
 
 		system {
-			label = "wetek-play:system-status";
-			gpios = <&gpio_ao GPIOAO_13 GPIO_ACTIVE_HIGH>;
-			default-state = "on";
+			label = "wetek-hub:system-status";
+			pwms = <&pwm_AO_ab 1 7812500 0>;
+			max-brightness = <255>;
+			linux,default-trigger = "default-on";
 			panic-indicator;
 		};
 	};
@@ -89,4 +90,12 @@
 			reg = <0>;
 		};
 	};
+};
+
+&pwm_AO_ab {
+	status = "okay";
+	pinctrl-0 = <&pwm_ao_b_pins>;
+	pinctrl-names = "default";
+	clocks = <&clkc CLKID_FCLK_DIV4>;
+	clock-names = "clkin0";
 };
