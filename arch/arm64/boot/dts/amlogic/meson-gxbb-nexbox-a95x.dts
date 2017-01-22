@@ -65,12 +65,14 @@
 		reg = <0x0 0x0 0x0 0x40000000>;
 	};
 
-	leds {
-		compatible = "gpio-leds";
+	pwmleds {
+		compatible = "pwm-leds";
+
 		blue {
 			label = "a95x:system-status";
-			gpios = <&gpio_ao GPIOAO_13 GPIO_ACTIVE_LOW>;
-			linux,default-trigger = "heartbeat";
+			pwms = <&pwm_AO_ab 1 7812500 0>;
+			max-brightness = <255>;
+			linux,default-trigger = "default-on";
 			default-state = "off";
 		};
 	};
@@ -258,6 +260,14 @@
 	mmc-pwrseq = <&emmc_pwrseq>;
 	vmmc-supply = <&vcc_3v3>;
 	vqmmc-supply = <&vddio_boot>;
+};
+
+&pwm_AO_ab {
+	status = "okay";
+	pinctrl-0 = <&pwm_ao_b_pins>;
+	pinctrl-names = "default";
+	clocks = <&clkc CLKID_FCLK_DIV4>;
+	clock-names = "clkin0";
 };
 
 &pwm_ef {
