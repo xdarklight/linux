@@ -85,13 +85,14 @@
 		};
 	};
 
-	leds {
-		compatible = "gpio-leds";
+	pwmleds {
+		compatible = "pwm-leds";
 
 		power {
 			label = "vim:red:power";
-			gpios = <&gpio_ao GPIOAO_9 GPIO_ACTIVE_HIGH>;
-			default-state = "on";
+			pwms = <&pwm_AO_ab 1 7812500 0>;
+			max-brightness = <255>;
+			linux,default-trigger = "default-on";
 		};
 	};
 
@@ -127,6 +128,14 @@
 
 &ir {
 	linux,rc-map-name = "rc-geekbox";
+};
+
+&pwm_AO_ab {
+	status = "okay";
+	pinctrl-0 = <&pwm_ao_b_pins>;
+	pinctrl-names = "default";
+	clocks = <&clkc CLKID_FCLK_DIV4>;
+	clock-names = "clkin0";
 };
 
 &pwm_ef {
