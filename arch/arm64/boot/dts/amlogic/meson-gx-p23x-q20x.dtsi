@@ -116,14 +116,23 @@
 /* Wireless SDIO Module */
 &sd_emmc_a {
 	status = "okay";
-	pinctrl-0 = <&sdio_pins>;
+	pinctrl-0 = <&sdio_pins>, <&sdio_irq_pins>;
 	pinctrl-names = "default";
 	#address-cells = <1>;
 	#size-cells = <0>;
 
 	bus-width = <4>;
 	cap-sd-highspeed;
+	cap-mmc-highspeed;
 	max-frequency = <100000000>;
+	sd-uhs-sdr12;
+	sd-uhs-sdr25;
+	sd-uhs-sdr50;
+	sd-uhs-sdr104;
+
+	//cap-sdio-irq;
+	keep-power-in-suspend;
+	wakeup-source;
 
 	non-removable;
 	disable-wp;
