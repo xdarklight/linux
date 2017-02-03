@@ -57,6 +57,8 @@
 #define   CLK_PHASE_180 2
 #define   CLK_PHASE_270 3
 #define   CLK_ALWAYS_ON BIT(24)
+#define   CLK_SDIO_IRQ_SLEEP BIT(25)
+#define   CLK_SDIO_IRQ_SLEEP_DS BIT(26)
 
 #define SD_EMMC_DElAY 0x4
 #define SD_EMMC_ADJUST 0x8
@@ -80,16 +82,20 @@
 #define   CFG_RESP_TIMEOUT_MASK 0xf
 #define   CFG_RC_CC_SHIFT 12
 #define   CFG_RC_CC_MASK 0xf
+#define   CFG_SDIO_IRQ_BLK_GAP BIT(17)
 #define   CFG_STOP_CLOCK BIT(22)
 #define   CFG_CLK_ALWAYS_ON BIT(18)
 #define   CFG_CHK_DS BIT(20)
 #define   CFG_AUTO_CLK BIT(23)
+#define   CFG_SDIO_IRQ_DS BIT(26)
 
 #define SD_EMMC_STATUS 0x48
 #define   STATUS_BUSY BIT(31)
 
 #define SD_EMMC_IRQ_EN 0x4c
-#define   IRQ_EN_MASK 0x3fff
+#define   IRQ_EN_MASK (IRQ_RXD_ERR_MASK | IRQ_TXD_ERR | IRQ_DESC_ERR | \
+                       IRQ_RESP_ERR | IRQ_RESP_TIMEOUT | IRQ_DESC_TIMEOUT | \
+                       IRQ_END_OF_CHAIN | IRQ_RESP_STATUS)
 #define   IRQ_RXD_ERR_SHIFT 0
 #define   IRQ_RXD_ERR_MASK 0xff
 #define   IRQ_TXD_ERR BIT(8)
@@ -584,16 +590,6 @@ static irqreturn_t meson_mmc_irq(int irq, void *dev_id)
 	if (WARN_ON(!host))
 		return IRQ_NONE;
 
-	cmd = host->cmd;
-
-	mrq = host->mrq;
-
-	if (WARN_ON(!mrq))
-		return IRQ_NONE;
-
-	if (WARN_ON(!cmd))
-		return IRQ_NONE;
-
 	spin_lock(&host->lock);
 	irq_en = readl(host->regs + SD_EMMC_IRQ_EN);
 	raw_status = readl(host->regs + SD_EMMC_STATUS);
@@ -605,6 +601,27 @@ static irqreturn_t meson_mmc_irq(int irq, void *dev_id)
 		ret = IRQ_NONE;
 		goto out;
 	}
+
+	if (status & IRQ_SDIO) {
+		dev_info(host->dev, "SDIO IRQ\n");
+		mmc_signal_sdio_irq(host->mmc);
+
+		if (!(status & IRQ_EN_MASK)) {
+			dev_info(host->dev, "...only: 0x%08x\n", status);
+			spin_unlock(&host->lock);
+			return IRQ_HANDLED;
+		}
+	}
+
+	cmd = host->cmd;
+
+	mrq = host->mrq;
+
+	if (WARN_ON(!mrq))
+		return IRQ_NONE;
+
+	if (WARN_ON(!cmd))
+		return IRQ_NONE;
 
 	cmd->error = 0;
 	if (status & IRQ_RXD_ERR_MASK) {
@@ -629,8 +646,6 @@ static irqreturn_t meson_mmc_irq(int irq, void *dev_id)
 		dev_dbg(host->dev, "Unhandled IRQ: Descriptor timeout\n");
 		cmd->error = -ETIMEDOUT;
 	}
-	if (status & IRQ_SDIO)
-		dev_dbg(host->dev, "Unhandled IRQ: SDIO.\n");
 
 	if (status & (IRQ_END_OF_CHAIN | IRQ_RESP_STATUS))
 		ret = IRQ_WAKE_THREAD;
@@ -707,10 +722,39 @@ static int meson_mmc_get_cd(struct mmc_host *mmc)
 	return status;
 }
 
+static void meson_mmc_enable_sdio_irq(struct mmc_host *mmc, int enable)
+{
+	struct meson_host *host = mmc_priv(mmc);
+	u32 val;
+printk("%s\n", __func__);
+	//spin_lock(&host->lock);
+
+	val = readl(host->regs + SD_EMMC_CLOCK);
+	val |= CLK_SDIO_IRQ_SLEEP;
+	val &= ~CLK_SDIO_IRQ_SLEEP_DS;
+	writel(val, host->regs + SD_EMMC_CLOCK);
+
+	val = readl(host->regs + SD_EMMC_CFG);
+	val &= ~CFG_SDIO_IRQ_DS;
+	writel(val, host->regs + SD_EMMC_CFG);
+
+	val = readl(host->regs + SD_EMMC_IRQ_EN);
+	if (enable)
+		val |= IRQ_SDIO;
+	else
+		val &= ~IRQ_SDIO;
+
+	//writel(IRQ_SDIO, host->regs + SD_EMMC_STATUS);
+	writel(val, host->regs + SD_EMMC_IRQ_EN);
+
+	//spin_unlock(&host->lock);
+}
+
 static const struct mmc_host_ops meson_mmc_ops = {
-	.request	= meson_mmc_request,
-	.set_ios	= meson_mmc_set_ios,
-	.get_cd         = meson_mmc_get_cd,
+	.request		= meson_mmc_request,
+	.set_ios		= meson_mmc_set_ios,
+	.enable_sdio_irq	= meson_mmc_enable_sdio_irq,
+	.get_cd			= meson_mmc_get_cd,
 };
 
 static int meson_mmc_probe(struct platform_device *pdev)
@@ -775,8 +819,8 @@ static int meson_mmc_probe(struct platform_device *pdev)
 	writel(0, host->regs + SD_EMMC_START);
 
 	/* clear, ack, enable all interrupts */
-	writel(IRQ_EN_MASK, host->regs + SD_EMMC_STATUS);
 	writel(IRQ_EN_MASK, host->regs + SD_EMMC_IRQ_EN);
+	writel(IRQ_EN_MASK | IRQ_SDIO, host->regs + SD_EMMC_STATUS);
 
 	ret = devm_request_threaded_irq(&pdev->dev, host->irq,
 					meson_mmc_irq, meson_mmc_irq_thread,
