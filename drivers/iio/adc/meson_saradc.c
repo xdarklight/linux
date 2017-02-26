@@ -166,6 +166,7 @@
 
 #define MESON_SAR_ADC_MAX_FIFO_SIZE				32
 #define MESON_SAR_ADC_TIMEOUT					100 /* ms */
+#define MESON_SAR_ADC_NUM_CALIBRATION_CHANNELS			5
 
 #define MESON_SAR_ADC_CHAN(_chan) {					\
 	.type = IIO_VOLTAGE,						\
@@ -233,6 +234,11 @@ struct meson_sar_adc_priv {
 	struct clk				*adc_div_clk;
 	struct clk_divider			clk_div;
 	struct completion			done;
+	struct {
+		u16				coef;
+		u16				ref_val;
+		u16				ref_nominal;
+	}					calibration_data;
 };
 
 static const struct regmap_config meson_sar_adc_regmap_config = {
@@ -530,6 +536,65 @@ static int meson_sar_adc_iio_info_read_raw(struct iio_dev *indio_dev,
 	default:
 		return -EINVAL;
 	}
+}
+
+static int meson_saradc_calibrate(struct iio_dev *indio_dev)
+{
+	struct meson_sar_adc_priv *priv = iio_priv(indio_dev);
+	const struct iio_chan_spec *chan7 = &meson_sar_adc_iio_channels[7];
+	int nominal[MESON_SAR_ADC_NUM_CALIBRATION_CHANNELS], actual[MESON_SAR_ADC_NUM_CALIBRATION_CHANNELS], i, ret = 0;
+
+	/*
+	 * chan 7 allows selecting VSS, VDD and various VDD dividers. This is
+	 * used for calibration based on the board's power supply, without
+	 * requiring any magic reference values supplied by a "board designer".
+	 */
+	nominal[CHAN7_MUX_VDD] = GENMASK(priv->data->resolution - 1, 0);
+	nominal[CHAN7_MUX_VDD_MUL3_DIV4] = nominal[CHAN7_MUX_VDD] * 3 / 4;
+	nominal[CHAN7_MUX_VDD_DIV2] = nominal[CHAN7_MUX_VDD] / 2;
+	nominal[CHAN7_MUX_VDD_DIV4] = nominal[CHAN7_MUX_VDD] / 4;
+	nominal[CHAN7_MUX_VSS] = 0;
+
+	for (i = 0; i < MESON_SAR_ADC_NUM_CALIBRATION_CHANNELS; i++) {
+		meson_sar_adc_set_chan7_mux(indio_dev, i);
+
+		/*
+		 * wait for HW to settle after the updating the chan7 mux,
+		 * otherwise we may still be reading the values of a previous
+		 * mux setting. */
+		usleep_range(10, 20);
+
+		ret = meson_sar_adc_get_sample(indio_dev, chan7, NO_AVERAGING,
+					       ONE_SAMPLE, &actual[i]);
+		if (ret < 0)
+			goto out;
+
+		dev_dbg(indio_dev->dev.parent,
+			"calibration chan7 mux%d: nominal = %d, actual = %d\n",
+			i, nominal[i], actual[i]);
+
+		if (actual[i] < 0) {
+			ret = -EINVAL;
+			goto out;
+		}
+	}
+
+	priv->calibration_data.ref_val = actual[CHAN7_MUX_VDD_DIV2];
+	priv->calibration_data.ref_nominal = nominal[CHAN7_MUX_VDD_DIV2];
+	if (actual[CHAN7_MUX_VDD_MUL3_DIV4] > actual[CHAN7_MUX_VDD_DIV4]) {
+		priv->calibration_data.coef = nominal[CHAN7_MUX_VDD_MUL3_DIV4] - nominal[CHAN7_MUX_VDD_DIV4]; // TODO: too long
+		priv->calibration_data.coef <<= 10; // TODO: SAR_ADC_NOMINAL_SHIFT;
+		priv->calibration_data.coef /= actual[CHAN7_MUX_VDD_MUL3_DIV4] - actual[CHAN7_MUX_VDD_DIV4]; // TODO: too long
+	}
+
+	dev_dbg(indio_dev->dev.parent, "calibration finished, coef=%d\n",
+		priv->calibration_data.coef);
+
+out:
+	/* clear mux selection (revert back to channel 7 input) */
+	meson_sar_adc_set_chan7_mux(indio_dev, CHAN7_MUX_CH7_INPUT);
+
+	return ret;
 }
 
 static int meson_sar_adc_clk_init(struct iio_dev *indio_dev,
@@ -908,6 +973,13 @@ static int meson_sar_adc_probe(struct platform_device *pdev)
 	ret = meson_sar_adc_hw_enable(indio_dev);
 	if (ret)
 		goto err;
+
+	/*
+	 * internal calibration provides extra 5-10% accuracy - ignore when
+	 * this fails as we can still continue without it. */
+	ret = meson_saradc_calibrate(indio_dev);
+	if (ret)
+		dev_warn(&pdev->dev, "internal calibration failed\n");
 
 	platform_set_drvdata(pdev, indio_dev);
 
