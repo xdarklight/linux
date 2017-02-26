@@ -534,4 +534,12 @@ config MTD_NAND_MTK
 	  Enables support for NAND controller on MTK SoCs.
 	  This controller is found on mt27xx, mt81xx, mt65xx SoCs.
 
+config MTD_NAND_MESON
+	tristate "Support for NAND controller on Amlogic Meson SoCs"
+	depends on ARCH_MESON || COMPILE_TEST
+	depends on HAS_DMA
+	help
+	  Enables support for the NAND controller found on Amlogic Meson8 (and
+	  newer) SoCs.
+
 endif # MTD_NAND
