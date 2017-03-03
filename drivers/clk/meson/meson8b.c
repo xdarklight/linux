@@ -313,21 +313,22 @@ struct clk_gate meson8b_clk81 = {
 	},
 };
 
-static u32 mux_table_nand[]	= { 1, 2, 3 };
+static u32 mux_table_nand[]	= { 0, 1, 2, 3, 4 };
 
 struct clk_mux meson8b_nand_clk_sel = {
 	.reg = (void *)HHI_NAND_CLK_CNTL,
 	.mask = 0x7,
 	.shift = 9,
 	.table = mux_table_nand,
+	.flags = CLK_MUX_ROUND_CLOSEST,
 	.lock = &clk_lock,
 	.hw.init = &(struct clk_init_data){
 		.name = "nand_clk_sel",
 		.ops = &clk_mux_ops,
 		/* FIXME all other parents are unknown: */
-		.parent_names = (const char *[]){ "fclk_div3", "fclk_div5",
-			"fclk_div7" },
-		.num_parents = 1,
+		.parent_names = (const char *[]){ "fclk_div4", "fclk_div3",
+			"fclk_div5", "fclk_div7", "xtal" },
+		.num_parents = 5,
 		.flags = CLK_SET_RATE_NO_REPARENT,
 	},
 };
@@ -336,13 +337,13 @@ struct clk_divider meson8b_nand_clk_div = {
 	.reg = (void *)HHI_NAND_CLK_CNTL,
 	.shift = 0,
 	.width = 6,
+	.flags = CLK_DIVIDER_ROUND_CLOSEST,
 	.lock = &clk_lock,
 	.hw.init = &(struct clk_init_data){
 		.name = "nand_clk_div",
 		.ops = &clk_divider_ops,
 		.parent_names = (const char *[]){ "nand_clk_sel" },
 		.num_parents = 1,
-		.flags = 0,
 	},
 };
 
@@ -629,6 +630,7 @@ static struct clk_gate *meson8b_clk_gates[] = {
 	&meson8b_ao_ahb_sram,
 	&meson8b_ao_ahb_bus,
 	&meson8b_ao_iface,
+	&meson8b_nand_clk_gate,
 };
 
 static int meson8b_clkc_probe(struct platform_device *pdev)
@@ -657,6 +659,10 @@ static int meson8b_clkc_probe(struct platform_device *pdev)
 	meson8b_mpeg_clk_sel.reg = clk_base + (u32)meson8b_mpeg_clk_sel.reg;
 	meson8b_mpeg_clk_div.reg = clk_base + (u32)meson8b_mpeg_clk_div.reg;
 	meson8b_clk81.reg = clk_base + (u32)meson8b_clk81.reg;
+
+	/* Populate the base address for the NAND clks */
+	meson8b_nand_clk_sel.reg = clk_base + (u32)meson8b_nand_clk_sel.reg;
+	meson8b_nand_clk_div.reg = clk_base + (u32)meson8b_nand_clk_div.reg;
 
 	/* Populate base address for gates */
 	for (i = 0; i < ARRAY_SIZE(meson8b_clk_gates); i++)
