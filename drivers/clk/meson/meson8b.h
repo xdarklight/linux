@@ -37,6 +37,7 @@
 #define HHI_GCLK_AO			0x154 /* 0x55 offset in data sheet */
 #define HHI_SYS_CPU_CLK_CNTL1		0x15c /* 0x57 offset in data sheet */
 #define HHI_MPEG_CLK_CNTL		0x174 /* 0x5d offset in data sheet */
+#define HHI_NAND_CLK_CNTL		0x25c /* 0x97 offset in data sheet */
 #define HHI_MPLL_CNTL			0x280 /* 0xa0 offset in data sheet */
 #define HHI_SYS_PLL_CNTL		0x300 /* 0xc0 offset in data sheet */
 #define HHI_VID_PLL_CNTL		0x320 /* 0xc8 offset in data sheet */
@@ -142,8 +143,11 @@
 #define CLKID_AO_AHB_SRAM	90
 #define CLKID_AO_AHB_BUS	91
 #define CLKID_AO_IFACE		92
+#define CLKID_NAND_SEL		93
+#define CLKID_NAND_DIV		94
+#define CLKID_NAND_CLK		95
 
-#define CLK_NR_CLKS		93
+#define CLK_NR_CLKS		96
 
 /* include the CLKIDs that have been made part of the stable DT binding */
 #include <dt-bindings/clock/meson8b-clkc.h>
