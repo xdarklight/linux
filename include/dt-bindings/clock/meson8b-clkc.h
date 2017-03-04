@@ -31,5 +31,6 @@
 #define CLKID_USB1_DDR_BRIDGE	64
 #define CLKID_USB0_DDR_BRIDGE	65
 #define CLKID_SANA		69
+#define CLKID_NAND_CLK		98
 
 #endif /* __MESON8B_CLKC_H */
