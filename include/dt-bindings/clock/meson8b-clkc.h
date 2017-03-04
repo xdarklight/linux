@@ -21,5 +21,6 @@
 #define CLKID_ZERO		13
 #define CLKID_MPEG_SEL		14
 #define CLKID_MPEG_DIV		15
+#define CLKID_ETH		36
 
 #endif /* __MESON8B_CLKC_H */
