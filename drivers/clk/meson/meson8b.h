@@ -145,7 +145,7 @@
 #define CLKID_AO_IFACE		92
 #define CLKID_NAND_SEL		93
 #define CLKID_NAND_DIV		94
-#define CLKID_NAND_CLK		95
+/* #define CLKID_NAND_CLK */
 
 #define CLK_NR_CLKS		96
 
