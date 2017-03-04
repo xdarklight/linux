@@ -313,6 +313,52 @@ struct clk_gate meson8b_clk81 = {
 	},
 };
 
+static u32 mux_table_nand[]	= { 1, 2, 3 };
+
+struct clk_mux meson8b_nand_clk_sel = {
+	.reg = (void *)HHI_NAND_CLK_CNTL,
+	.mask = 0x7,
+	.shift = 9,
+	.table = mux_table_nand,
+	.lock = &clk_lock,
+	.hw.init = &(struct clk_init_data){
+		.name = "nand_clk_sel",
+		.ops = &clk_mux_ops,
+		/* FIXME all other parents are unknown: */
+		.parent_names = (const char *[]){ "fclk_div3", "fclk_div5",
+			"fclk_div7" },
+		.num_parents = 1,
+		.flags = CLK_SET_RATE_NO_REPARENT,
+	},
+};
+
+struct clk_divider meson8b_nand_clk_div = {
+	.reg = (void *)HHI_NAND_CLK_CNTL,
+	.shift = 0,
+	.width = 6,
+	.lock = &clk_lock,
+	.hw.init = &(struct clk_init_data){
+		.name = "nand_clk_div",
+		.ops = &clk_divider_ops,
+		.parent_names = (const char *[]){ "nand_clk_sel" },
+		.num_parents = 1,
+		.flags = 0,
+	},
+};
+
+struct clk_gate meson8b_nand_clk_gate = {
+	.reg = (void *)HHI_NAND_CLK_CNTL,
+	.bit_idx = 8,
+	.lock = &clk_lock,
+	.hw.init = &(struct clk_init_data){
+		.name = "nand_clk_gate",
+		.ops = &clk_gate_ops,
+		.parent_names = (const char *[]){ "nand_clk_div" },
+		.num_parents = 1,
+		.flags = CLK_SET_RATE_PARENT,
+	},
+};
+
 /* Everything Else (EE) domain gates */
 
 static MESON_GATE(meson8b_ddr, HHI_GCLK_MPEG0, 0);
@@ -491,6 +537,9 @@ static struct clk_hw_onecell_data meson8b_hw_onecell_data = {
 		[CLKID_AO_AHB_SRAM]	    = &meson8b_ao_ahb_sram.hw,
 		[CLKID_AO_AHB_BUS]	    = &meson8b_ao_ahb_bus.hw,
 		[CLKID_AO_IFACE]	    = &meson8b_ao_iface.hw,
+		[CLKID_NAND_SEL]	    = &meson8b_nand_clk_sel.hw,
+		[CLKID_NAND_DIV]	    = &meson8b_nand_clk_div.hw,
+		[CLKID_NAND_CLK]	    = &meson8b_nand_clk_gate.hw,
 	},
 	.num = CLK_NR_CLKS,
 };
