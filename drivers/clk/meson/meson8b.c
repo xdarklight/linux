@@ -418,6 +418,50 @@ struct clk_gate meson8b_clk81 = {
 	},
 };
 
+struct clk_mux meson8b_nand_clk_sel = {
+	.reg = (void *)HHI_NAND_CLK_CNTL,
+	.mask = 0x7,
+	.shift = 9,
+	.flags = CLK_MUX_ROUND_CLOSEST,
+	.lock = &clk_lock,
+	.hw.init = &(struct clk_init_data){
+		.name = "nand_clk_sel",
+		.ops = &clk_mux_ops,
+		/* FIXME all other parents are unknown: */
+		.parent_names = (const char *[]){ "fclk_div4", "fclk_div3",
+			"fclk_div5", "fclk_div7", "xtal" },
+		.num_parents = 5,
+	},
+};
+
+struct clk_divider meson8b_nand_clk_div = {
+	.reg = (void *)HHI_NAND_CLK_CNTL,
+	.shift = 0,
+	.width = 6,
+	.flags = CLK_DIVIDER_ROUND_CLOSEST,
+	.lock = &clk_lock,
+	.hw.init = &(struct clk_init_data){
+		.name = "nand_clk_div",
+		.ops = &clk_divider_ops,
+		.parent_names = (const char *[]){ "nand_clk_sel" },
+		.num_parents = 1,
+		.flags = CLK_SET_RATE_PARENT,
+	},
+};
+
+struct clk_gate meson8b_nand_clk_gate = {
+	.reg = (void *)HHI_NAND_CLK_CNTL,
+	.bit_idx = 8,
+	.lock = &clk_lock,
+	.hw.init = &(struct clk_init_data){
+		.name = "nand_clk_gate",
+		.ops = &clk_gate_ops,
+		.parent_names = (const char *[]){ "nand_clk_div" },
+		.num_parents = 1,
+		.flags = CLK_SET_RATE_PARENT,
+	},
+};
+
 /* Everything Else (EE) domain gates */
 
 static MESON_GATE(meson8b_ddr, HHI_GCLK_MPEG0, 0);
@@ -599,6 +643,9 @@ static struct clk_hw_onecell_data meson8b_hw_onecell_data = {
 		[CLKID_MPLL0]		    = &meson8b_mpll0.hw,
 		[CLKID_MPLL1]		    = &meson8b_mpll1.hw,
 		[CLKID_MPLL2]		    = &meson8b_mpll2.hw,
+		[CLKID_NAND_SEL]	    = &meson8b_nand_clk_sel.hw,
+		[CLKID_NAND_DIV]	    = &meson8b_nand_clk_div.hw,
+		[CLKID_NAND_CLK]	    = &meson8b_nand_clk_gate.hw,
 	},
 	.num = CLK_NR_CLKS,
 };
@@ -694,14 +741,17 @@ static struct clk_gate *const meson8b_clk_gates[] = {
 	&meson8b_ao_ahb_sram,
 	&meson8b_ao_ahb_bus,
 	&meson8b_ao_iface,
+	&meson8b_nand_clk_gate,
 };
 
 static struct clk_mux *const meson8b_clk_muxes[] = {
 	&meson8b_mpeg_clk_sel,
+	&meson8b_nand_clk_sel,
 };
 
 static struct clk_divider *const meson8b_clk_dividers[] = {
 	&meson8b_mpeg_clk_div,
+	&meson8b_nand_clk_div,
 };
 
 static const struct meson8b_clk_reset_line {
