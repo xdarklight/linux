@@ -213,6 +213,21 @@
 					function = "ethernet";
 				};
 			};
+
+			nand_pins: nand {
+				mux {
+					groups = "nand_io",
+						"nand_io_ce0",
+						"nand_io_ce1",
+						"nand_io_rb0",
+						"nand_ale",
+						"nand_cle",
+						"nand_wen_clk",
+						"nand_ren_clk",
+						"nand_dqs_0";
+					function = "nand";
+				};
+			};
 		};
 
 		pinctrl_aobus: pinctrl@c8100084 {
