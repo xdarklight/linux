@@ -166,7 +166,7 @@
 #define CLKID_MPLL2		95
 #define CLKID_NAND_SEL		96
 #define CLKID_NAND_DIV		97
-#define CLKID_NAND_CLK		98
+/* #define CLKID_NAND_CLK */
 
 #define CLK_NR_CLKS		99
 
