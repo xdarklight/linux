@@ -264,5 +264,15 @@
 			clock-names = "stmmaceth";
 			status = "disabled";
 		};
+
+		nand_controller: nandc@d0048600 {
+			compatible = "amlogic,meson8b-nand";
+			reg = <0xd0048600 0x24>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			clocks = <&clkc CLKID_NAND_CLK>;
+			clock-names = "nand";
+			status = "disabled";
+		};
 	};
 }; /* end of / */
