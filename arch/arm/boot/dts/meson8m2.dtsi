@@ -1,0 +1,36 @@
+/*
+ * Copyright (c) 2017 Martin Blumenstingl <martin.blumenstingl@googlemail.com>.
+ *
+ * SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+ */
+
+#include "meson8b.dtsi"
+
+/*
+ * Meson8m2 (S812) seems to be derived from Meson8b, which means that most of
+ * the internal IP blocks are identical. The following differences are known:
+ * - uses Cortex-A9 (instead of Cortex-A5) cores
+ * - octo-core (instead of quad-core) Mali 450 GPU
+ * - 4k video resolution
+ * - H.265/HEVC video decoding
+ */
+
+/ {
+	compatible = "amlogic,meson8m2";
+};
+
+&cpu0 {
+	compatible = "arm,cortex-a9";
+};
+
+&cpu1 {
+	compatible = "arm,cortex-a9";
+};
+
+&cpu2 {
+	compatible = "arm,cortex-a9";
+};
+
+&cpu3 {
+	compatible = "arm,cortex-a9";
+};
