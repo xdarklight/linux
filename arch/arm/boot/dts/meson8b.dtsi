@@ -176,6 +176,18 @@
 			status = "disabled";
 		};
 
+		saradc: adc@c1108680 {
+			compatible = "amlogic,meson8b-saradc", "amlogic,meson-saradc";
+			reg = <0xc1108680 0x34>;
+			#io-channel-cells = <1>;
+			interrupts = <0 73 1>;
+			clocks = <&clkc CLKID_XTAL>,
+				<&clkc 23 /*CLKID_SAR_ADC*/>,
+				<&clkc 69 /*CLKID_SANA*/>;
+			clock-names = "clkin", "core", "sana";
+			status = "disabled";
+		};
+
 		pwm_ef: pwm@86c0 {
 			compatible = "amlogic,meson8b-pwm";
 			reg = <0xc11086c0 0x10>;
