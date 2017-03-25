@@ -144,7 +144,9 @@ static int meson8b_init_clk(struct meson8b_dwmac *dwmac)
 	dwmac->m250_div.shift = PRG_ETH0_CLK_M250_DIV_SHIFT;
 	dwmac->m250_div.width = PRG_ETH0_CLK_M250_DIV_WIDTH;
 	dwmac->m250_div.hw.init = &init;
-	dwmac->m250_div.flags = CLK_DIVIDER_ONE_BASED | CLK_DIVIDER_ALLOW_ZERO;
+	dwmac->m250_div.flags = CLK_DIVIDER_ONE_BASED |
+				CLK_DIVIDER_ALLOW_ZERO |
+				CLK_DIVIDER_ROUND_CLOSEST;
 
 	dwmac->m250_div_clk = devm_clk_register(dev, &dwmac->m250_div.hw);
 	if (WARN_ON(IS_ERR(dwmac->m250_div_clk)))
@@ -164,7 +166,8 @@ static int meson8b_init_clk(struct meson8b_dwmac *dwmac)
 	dwmac->m25_div.width = PRG_ETH0_CLK_M25_DIV_WIDTH;
 	dwmac->m25_div.table = clk_25m_div_table;
 	dwmac->m25_div.hw.init = &init;
-	dwmac->m25_div.flags = CLK_DIVIDER_ALLOW_ZERO;
+	dwmac->m25_div.flags = CLK_DIVIDER_ALLOW_ZERO |
+				CLK_DIVIDER_ROUND_CLOSEST;
 
 	dwmac->m25_div_clk = devm_clk_register(dev, &dwmac->m25_div.hw);
 	if (WARN_ON(IS_ERR(dwmac->m25_div_clk)))
