@@ -38,6 +38,7 @@ obj-$(CONFIG_SND_SOC)	+= img/
 obj-$(CONFIG_SND_SOC)	+= intel/
 obj-$(CONFIG_SND_SOC)	+= mediatek/
 obj-$(CONFIG_SND_SOC)	+= meson/
+obj-$(CONFIG_SND_SOC)	+= meson-gx/
 obj-$(CONFIG_SND_SOC)	+= mxs/
 obj-$(CONFIG_SND_SOC)	+= kirkwood/
 obj-$(CONFIG_SND_SOC)	+= pxa/
