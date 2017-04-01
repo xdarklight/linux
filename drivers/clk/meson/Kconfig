@@ -6,6 +6,7 @@ config COMMON_CLK_AMLOGIC
 config COMMON_CLK_MESON8B
 	bool
 	depends on COMMON_CLK_AMLOGIC
+	select RESET_CONTROLLER
 	help
 	  Support for the clock controller on AmLogic S805 devices, aka
 	  meson8b. Say Y if you want peripherals and CPU frequency scaling to
