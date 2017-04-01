@@ -61,6 +61,8 @@
 			compatible = "arm,cortex-a5";
 			next-level-cache = <&L2>;
 			reg = <0x200>;
+			operating-points-v2 = <&meson8b_cpu0_opp_table>;
+			clocks = <&clkc CLKID_CPUCLK>;
 		};
 
 		cpu1: cpu@201 {
@@ -68,6 +70,8 @@
 			compatible = "arm,cortex-a5";
 			next-level-cache = <&L2>;
 			reg = <0x201>;
+			operating-points-v2 = <&meson8b_cpu0_opp_table>;
+			clocks = <&clkc CLKID_CPUCLK>;
 		};
 
 		cpu2: cpu@202 {
@@ -75,6 +79,8 @@
 			compatible = "arm,cortex-a5";
 			next-level-cache = <&L2>;
 			reg = <0x202>;
+			operating-points-v2 = <&meson8b_cpu0_opp_table>;
+			clocks = <&clkc CLKID_CPUCLK>;
 		};
 
 		cpu3: cpu@203 {
@@ -82,6 +88,79 @@
 			compatible = "arm,cortex-a5";
 			next-level-cache = <&L2>;
 			reg = <0x203>;
+			operating-points-v2 = <&meson8b_cpu0_opp_table>;
+			clocks = <&clkc CLKID_CPUCLK>;
+		};
+	};
+
+	meson8b_cpu0_opp_table: opp-table0 {
+		compatible = "operating-points-v2";
+		opp-shared;
+
+		opp@96000 {
+			opp-hz = /bits/ 64 <96000>;
+			opp-microvolt = <825000>;
+			clock-latency-ns = <6400000>;
+		};
+		opp@192000 {
+			opp-hz = /bits/ 64 <192000>;
+			opp-microvolt = <825000>;
+			clock-latency-ns = <6400000>;
+		};
+		opp@312000 {
+			opp-hz = /bits/ 64 <312000>;
+			opp-microvolt = <825000>;
+			clock-latency-ns = <6400000>;
+		};
+		opp@408000 {
+			opp-hz = /bits/ 64 <408000>;
+			opp-microvolt = <825000>;
+			clock-latency-ns = <6400000>;
+		};
+		opp@504000 {
+			opp-hz = /bits/ 64 <504000>;
+			opp-microvolt = <825000>;
+			clock-latency-ns = <6400000>;
+		};
+		opp@600000 {
+			opp-hz = /bits/ 64 <600000>;
+			opp-microvolt = <825000>;
+			clock-latency-ns = <6400000>;
+		};
+		opp@720000 {
+			opp-hz = /bits/ 64 <720000>;
+			opp-microvolt = <825000>;
+			clock-latency-ns = <6400000>;
+		};
+		opp@816000 {
+			opp-hz = /bits/ 64 <816000>;
+			opp-microvolt = <850000>;
+			clock-latency-ns = <6400000>;
+		};
+		opp@1008000 {
+			opp-hz = /bits/ 64 <1008000>;
+			opp-microvolt = <875000>;
+			clock-latency-ns = <6400000>;
+		};
+		opp@1200000 {
+			opp-hz = /bits/ 64 <1200000>;
+			opp-microvolt = <925000>;
+			clock-latency-ns = <6400000>;
+		};
+		opp@1320000 {
+			opp-hz = /bits/ 64 <1320000>;
+			opp-microvolt = <1100000>;
+			clock-latency-ns = <6400000>;
+		};
+		opp@1488000 {
+			opp-hz = /bits/ 64 <1488000>;
+			opp-microvolt = <1100000>;
+			clock-latency-ns = <6400000>;
+		};
+		opp@1536000 {
+			opp-hz = /bits/ 64 <1536000>;
+			opp-microvolt = <1140000>;
+			clock-latency-ns = <6400000>;
 		};
 	};
 
