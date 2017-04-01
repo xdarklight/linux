@@ -36,6 +36,7 @@
 #define HHI_GCLK_OTHER			0x150 /* 0x54 offset in data sheet */
 #define HHI_GCLK_AO			0x154 /* 0x55 offset in data sheet */
 #define HHI_SYS_CPU_CLK_CNTL1		0x15c /* 0x57 offset in data sheet */
+#define HHI_SYS_CPU_CLK_CNTL0		0x15d /* 0x67 offset in data sheet */
 #define HHI_MPEG_CLK_CNTL		0x174 /* 0x5d offset in data sheet */
 #define HHI_MPLL_CNTL			0x280 /* 0xa0 offset in data sheet */
 #define HHI_SYS_PLL_CNTL		0x300 /* 0xc0 offset in data sheet */
@@ -163,7 +164,6 @@
 
 #define CLK_NR_CLKS		96
 
-/* include the CLKIDs that have been made part of the stable DT binding */
 #include <dt-bindings/clock/meson8b-clkc.h>
 
 #endif /* __MESON8B_H */
