@@ -24,12 +24,19 @@
 #include <linux/clk-provider.h>
 #include <linux/of_address.h>
 #include <linux/platform_device.h>
+#include <linux/reset-controller.h>
 #include <linux/init.h>
 
 #include "clkc.h"
 #include "meson8b.h"
 
 static DEFINE_SPINLOCK(clk_lock);
+
+struct meson8b_clk_reset {
+	struct reset_controller_dev reset;
+	unsigned char *data;
+	void __iomem *base;
+};
 
 static const struct pll_rate_table sys_pll_rate_table[] = {
 	PLL_RATE(312000000, 52, 1, 2),
@@ -742,6 +749,63 @@ static struct clk_divider *const meson8b_clk_dividers[] = {
 	&meson8b_nand_clk_div,
 };
 
+static unsigned char meson8b_clk_reset_data[] = {
+	[CLKC_RESET_L2_CACHE_SOFT_RESET]		= 30,
+	[CLKC_RESET_AXI64TO128_BRIDGE_SOFT_RESET]	= 29,
+	[CLKC_RESET_SCU_SOFT_RESET]			= 28,
+	[CLKC_RESET_CPU3_SOFT_RESET]			= 27,
+	[CLKC_RESET_CPU2_SOFT_RESET]			= 26,
+	[CLKC_RESET_CPU1_SOFT_RESET]			= 25,
+	[CLKC_RESET_CPU0_SOFT_RESET]			= 24,
+	[CLKC_RESET_GLOBAL_RESET]			= 18,
+	[CLKC_RESET_AXI_SOFT_RESET]			= 17,
+	[CLKC_RESET_ABP_SOFT_RESET]			= 16,
+	[CLKC_RESET_GEN_DIV_SOFT_RESET]			= 15,
+	[CLKC_RESET_SOFT_RESET]				= 14,
+};
+
+static int meson8b_clk_reset_update(struct reset_controller_dev *rcdev,
+				     unsigned long id, bool assert)
+{
+	struct meson8b_clk_reset *meson8b_clk_reset =
+		container_of(rcdev, struct meson8b_clk_reset, reset);
+	unsigned long flags;
+	u32 val;
+
+	if (id >= CLKC_NR_RESETS)
+		return -EINVAL;
+
+	spin_lock_irqsave(&clk_lock, flags);
+
+	val = readl(meson8b_clk_reset->base + HHI_SYS_CPU_CLK_CNTL0);
+	if (assert)
+		val |= BIT(meson8b_clk_reset->data[id]);
+	else
+		val &= ~BIT(meson8b_clk_reset->data[id]);
+	writel(val, meson8b_clk_reset->base + HHI_SYS_CPU_CLK_CNTL0);
+
+	spin_unlock_irqrestore(&clk_lock, flags);
+
+	return 0;
+}
+
+static int meson8b_clk_reset_assert(struct reset_controller_dev *rcdev,
+				     unsigned long id)
+{
+	return meson8b_clk_reset_update(rcdev, id, true);
+}
+
+static int meson8b_clk_reset_deassert(struct reset_controller_dev *rcdev,
+				       unsigned long id)
+{
+	return meson8b_clk_reset_update(rcdev, id, false);
+}
+
+static const struct reset_control_ops meson8b_clk_reset_ops = {
+	.assert = meson8b_clk_reset_assert,
+	.deassert = meson8b_clk_reset_deassert,
+};
+
 static int meson8b_clkc_probe(struct platform_device *pdev)
 {
 	void __iomem *clk_base;
@@ -749,6 +813,11 @@ static int meson8b_clkc_probe(struct platform_device *pdev)
 	struct clk_hw *parent_hw;
 	struct clk *parent_clk;
 	struct device *dev = &pdev->dev;
+	struct meson8b_clk_reset *rstc;
+
+	rstc = devm_kzalloc(dev, sizeof(*rstc), GFP_KERNEL);
+	if (!rstc)
+		return -ENOMEM;
 
 	/*  Generic clocks and PLLs */
 	clk_base = of_iomap(dev->of_node, 1);
@@ -756,6 +825,16 @@ static int meson8b_clkc_probe(struct platform_device *pdev)
 		pr_err("%s: Unable to map clk base\n", __func__);
 		return -ENXIO;
 	}
+
+	/* Reset Controller */
+	rstc->base = clk_base;
+	rstc->data = meson8b_clk_reset_data;
+	rstc->reset.ops = &meson8b_clk_reset_ops;
+	rstc->reset.nr_resets = CLKC_NR_RESETS;
+	rstc->reset.of_node = dev->of_node;
+	ret = devm_reset_controller_register(dev, &rstc->reset);
+	if (ret)
+		goto iounmap;
 
 	/* Populate base address for PLLs */
 	for (i = 0; i < ARRAY_SIZE(meson8b_clk_plls); i++)
