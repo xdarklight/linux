@@ -76,7 +76,12 @@ static unsigned long rate_from_params(unsigned long parent_rate,
 				      unsigned long sdm,
 				      unsigned long n2)
 {
-	return (parent_rate * SDM_DEN) / ((SDM_DEN * n2) + sdm);
+	unsigned long divisor = (SDM_DEN * n2) + sdm;
+
+	if (divisor == 0)
+		return 0;
+	else
+		return (parent_rate * SDM_DEN) / divisor;
 }
 
 static void params_from_rate(unsigned long requested_rate,
