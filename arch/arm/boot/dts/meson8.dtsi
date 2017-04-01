@@ -60,6 +60,7 @@
 			compatible = "arm,cortex-a9";
 			next-level-cache = <&L2>;
 			reg = <0x200>;
+			resets = <&clkc 0>;
 		};
 
 		cpu@201 {
@@ -67,6 +68,7 @@
 			compatible = "arm,cortex-a9";
 			next-level-cache = <&L2>;
 			reg = <0x201>;
+			resets = <&clkc 1>;
 		};
 
 		cpu@202 {
@@ -74,6 +76,7 @@
 			compatible = "arm,cortex-a9";
 			next-level-cache = <&L2>;
 			reg = <0x202>;
+			resets = <&clkc 2>;
 		};
 
 		cpu@203 {
@@ -81,6 +84,7 @@
 			compatible = "arm,cortex-a9";
 			next-level-cache = <&L2>;
 			reg = <0x203>;
+			resets = <&clkc 3>;
 		};
 	};
 
@@ -168,6 +172,7 @@
 &cbus {
 	clkc: clock-controller@4000 {
 		#clock-cells = <1>;
+		#reset-cells = <1>;
 		compatible = "amlogic,meson8-clkc";
 		reg = <0x8000 0x4>, <0x4000 0x460>;
 	};
