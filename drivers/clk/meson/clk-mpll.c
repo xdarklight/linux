@@ -62,6 +62,7 @@
  */
 
 #include <linux/clk-provider.h>
+#include <linux/math64.h>
 #include "clkc.h"
 
 #define SDM_DEN 16384
@@ -81,7 +82,7 @@ static unsigned long rate_from_params(unsigned long parent_rate,
 	if (divisor == 0)
 		return 0;
 	else
-		return (parent_rate * SDM_DEN) / divisor;
+		return mul_u64_u32_div(parent_rate, SDM_DEN, divisor);
 }
 
 static void params_from_rate(unsigned long requested_rate,
