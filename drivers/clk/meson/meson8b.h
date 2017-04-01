@@ -36,6 +36,7 @@
 #define HHI_GCLK_OTHER			0x150 /* 0x54 offset in data sheet */
 #define HHI_GCLK_AO			0x154 /* 0x55 offset in data sheet */
 #define HHI_SYS_CPU_CLK_CNTL1		0x15c /* 0x57 offset in data sheet */
+#define HHI_SYS_CPU_CLK_CNTL0		0x15d /* 0x67 offset in data sheet */
 #define HHI_MPEG_CLK_CNTL		0x174 /* 0x5d offset in data sheet */
 #define HHI_NAND_CLK_CNTL		0x25c /* 0x97 offset in data sheet */
 #define HHI_MPLL_CNTL			0x280 /* 0xa0 offset in data sheet */
@@ -167,7 +168,23 @@
 
 #define CLK_NR_CLKS		99
 
-/* include the CLKIDs that have been made part of the stable DT binding */
+#define CLKC_RESET_L2_CACHE_SOFT_RESET			0
+#define CLKC_RESET_AXI64TO128_BRIDGE_SOFT_RESET		1
+#define CLKC_RESET_SCU_SOFT_RESET			2
+/* #define CLKC_RESET_CPU3_SOFT_RESET */
+/* #define CLKC_RESET_CPU2_SOFT_RESET */
+/* #define CLKC_RESET_CPU1_SOFT_RESET */
+/* #define CLKC_RESET_CPU0_SOFT_RESET */
+#define CLKC_RESET_GLOBAL_RESET				7
+#define CLKC_RESET_AXI_SOFT_RESET			8
+#define CLKC_RESET_ABP_SOFT_RESET			9
+#define CLKC_RESET_GEN_DIV_SOFT_RESET			10
+#define CLKC_RESET_SOFT_RESET				11
+
+#define CLKC_NR_RESETS					12
+
+/* include the clock and reset IDs that are part of the stable DT binding */
 #include <dt-bindings/clock/meson8b-clkc.h>
+#include <dt-bindings/reset/meson8b-clkc.h>
 
 #endif /* __MESON8B_H */
