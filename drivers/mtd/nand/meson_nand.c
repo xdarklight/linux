@@ -408,7 +408,7 @@ static int meson_nand_wait_dma_read_complete(struct mtd_info *mtd)
 		info_data = nfc->info_dma_buf[info_index];
 
 //print_hex_dump(KERN_INFO, "meson_nand info buf: ", DUMP_PREFIX_NONE, 32, 4, nfc->info_dma_buf, nfc->info_dma_size, 1);
-		printk(KERN_INFO "meson nand info@%d: 0x%08x\n", info_index, info_data);
+//		printk(KERN_INFO "meson nand info@%d: 0x%08x\n", info_index, info_data);
 
 		if (time_after(jiffies, timeout)) {
 			dev_warn(nfc->dev, "timeout waiting for DMA read\n");
@@ -443,8 +443,10 @@ static int meson_nand_decode_dma_read_info(struct mtd_info *mtd)
 				     info_data);
 //printk("dma read info for step %d = %d (0x%08x)\n", ecc_step, bitflips, info_data);
 		if (info_data & MESON_P_NAND_INFO_PAGE_UNCORRECTABLE &&
-		    bitflips == 0x1f)
+		    bitflips == 0x1f) {
 			mtd->ecc_stats.failed++;
+			// FIXME: return -EBADMSG;
+		}
 
 		max_bitflips = max(bitflips, max_bitflips);
 	}
@@ -498,8 +500,7 @@ static void meson_nand_submit_dma_xfer(struct mtd_info *mtd, int page,
 	}
 }
 
-static int meson_nand_dma_xfer_page(struct mtd_info *mtd, const uint8_t *buf,
-				    int page,
+static int meson_nand_dma_xfer_page(struct mtd_info *mtd,  int page,
 				    enum dma_data_direction direction)
 {
 	struct nand_chip *chip = mtd_to_nand(mtd);
@@ -508,15 +509,15 @@ static int meson_nand_dma_xfer_page(struct mtd_info *mtd, const uint8_t *buf,
 	size_t data_dma_size;
 	int err;
 
-printk("%s: %s page %d\n", __func__, direction == DMA_FROM_DEVICE ? "read" : "write", page);
+//printk("%s: %s page %d\n", __func__, direction == DMA_FROM_DEVICE ? "read" : "write", page);
 
 	/* clear the info buffer before reading data */
 	if (direction == DMA_FROM_DEVICE)
 		memset(nfc->info_dma_buf, 0, nfc->info_dma_size);
 
 	data_dma_size = mtd->writesize + mtd->oobsize;
-	data_dma_addr = dma_map_single(nfc->dev, (uint8_t *)buf, data_dma_size,
-				       direction);
+	data_dma_addr = dma_map_single(nfc->dev, chip->buffers->databuf,
+				       data_dma_size, direction);
 	err = dma_mapping_error(nfc->dev, data_dma_addr);
 	if (err) {
 		dev_err(nfc->dev, "failed to map DMA buffer\n");
@@ -546,7 +547,15 @@ printk("%s: %s page %d\n", __func__, direction == DMA_FROM_DEVICE ? "read" : "wr
 static int meson_nand_read_page(struct mtd_info *mtd, struct nand_chip *chip,
 				uint8_t *buf, int oob_required, int page)
 {
-	return meson_nand_dma_xfer_page(mtd, buf, page, DMA_FROM_DEVICE);
+	int err;
+
+	err = meson_nand_dma_xfer_page(mtd, page, DMA_FROM_DEVICE);
+	if (err < 0)
+		return err;
+
+	memcpy(buf, chip->buffers->databuf, mtd->writesize);
+
+	return err;
 }
 
 static int meson_nand_write_page(struct mtd_info *mtd, struct nand_chip *chip,
@@ -559,23 +568,66 @@ static int meson_nand_write_page(struct mtd_info *mtd, struct nand_chip *chip,
 		return 0;
 	}
 
-	return meson_nand_dma_xfer_page(mtd, buf, page, DMA_TO_DEVICE);
+	memcpy(chip->buffers->databuf, buf, mtd->writesize);
+	memcpy(chip->buffers->databuf + mtd->writesize, chip->oob_poi,
+	       mtd->oobsize);
+
+	return meson_nand_dma_xfer_page(mtd, page, DMA_TO_DEVICE);
+}
+
+static size_t meson_nand_get_oob_size(struct mtd_info *mtd)
+{
+	struct nand_chip *chip = mtd_to_nand(mtd);
+
+	if (chip->ecc.mode == NAND_ECC_NONE)
+		return mtd->oobsize;
+	else
+		return chip->ecc.steps * MESON_NAND_INFO_USER_MODE;
 }
 
 static int meson_nand_read_oob(struct mtd_info *mtd, struct nand_chip *chip,
 			       int page)
 {
+	struct meson_nfc *nfc = nand_get_controller_data(chip);
+	size_t oob_size = meson_nand_get_oob_size(mtd);
+	int i, info_index, err;
+
 	chip->cmdfunc(mtd, NAND_CMD_READ0, 0x0, page);
 
 	chip->pagebuf = -1;
 
-	return chip->ecc.read_page(mtd, chip, chip->buffers->databuf, 1, page);
+	err = chip->ecc.read_page(mtd, chip, chip->buffers->databuf, 1, page);
+	if (err < 0)
+		return err;
+
+	if (meson_nand_is_new_oob_mode(mtd))
+		memcpy(chip->oob_poi, nfc->info_dma_buf, oob_size);
+	else {
+		for (i = 0; i < oob_size; i += 2) {
+			info_index = i / 2 * BITS_PER_BYTE / sizeof(u32);
+
+			chip->oob_poi[i] =
+				FIELD_GET(MESON_P_NAND_INFO_BYTE0_MASK,
+					  nfc->info_dma_buf[info_index]);
+			chip->oob_poi[i + 1] =
+				FIELD_GET(MESON_P_NAND_INFO_BYTE1_MASK,
+					  nfc->info_dma_buf[info_index]);
+		}
+	}
+
+	memset(chip->oob_poi + oob_size, 0, mtd->oobsize - oob_size);
+
+	print_hex_dump(KERN_INFO, "meson_nand user buf: ", DUMP_PREFIX_NONE, 32, 1, nfc->info_dma_buf, nfc->info_dma_size, 1);
+
+	return 0;
 }
 
 static int meson_nand_write_oob(struct mtd_info *mtd, struct nand_chip *chip,
 				int page)
 {
-	int err, status;
+	struct meson_nfc *nfc = nand_get_controller_data(chip);
+	size_t oob_size = meson_nand_get_oob_size(mtd);
+	int i, info_index, info_data, err;
 
 	// FIXME:
 	if (1) {
@@ -590,15 +642,34 @@ static int meson_nand_write_oob(struct mtd_info *mtd, struct nand_chip *chip,
 	memset(chip->buffers->databuf, 0xff, mtd->writesize);
 
 	err = chip->ecc.write_page(mtd, chip, chip->buffers->databuf, 1, page);
-	if (err)
+	if (err < 0)
 		return err;
 
 	/* Send command to program the OOB data */
 	chip->cmdfunc(mtd, NAND_CMD_PAGEPROG, -1, -1);
 
-	status = chip->waitfunc(mtd, chip);
+	err = chip->waitfunc(mtd, chip);
+	if (err & NAND_STATUS_FAIL)
+		return -EIO;
 
-	return status & NAND_STATUS_FAIL ? -EIO : 0;
+	meson_nand_send_idle(nfc, MESON_NAND_TWB_TIME_CYCLE);
+
+	if (meson_nand_is_new_oob_mode(mtd))
+		memcpy(nfc->info_dma_buf, chip->oob_poi, oob_size);
+	else {
+		for (i = 0; i < oob_size; i += 2) {
+			info_index = i / 2 * BITS_PER_BYTE / sizeof(u32);
+
+			info_data = FIELD_PREP(MESON_P_NAND_INFO_BYTE0_MASK,
+					       chip->oob_poi[i]);
+			info_data |= FIELD_PREP(MESON_P_NAND_INFO_BYTE1_MASK,
+						chip->oob_poi[i + 1]);
+
+			nfc->info_dma_buf[info_index] = info_data;
+		}
+	}
+
+	return 0;
 }
 
 static int meson_nand_oob_ecc(struct mtd_info *mtd, int section,
@@ -636,7 +707,7 @@ static int meson_nand_apply_timings(struct mtd_info *mtd,
 	writel(cfg, nfc->io_base + MESON_P_NAND_CFG);
 
 	/* set bus cycle and timing like the vendor driver */
-	cfg |= FIELD_PREP(MESON_P_NAND_CFG_BUS_CYCLE_MASK, 6);
+	cfg |= FIELD_PREP(MESON_P_NAND_CFG_BUS_CYCLE_MASK, 5);
 	cfg |= FIELD_PREP(MESON_P_NAND_CFG_BUS_TIMING_MASK, 8);
 	cfg |= FIELD_PREP(MESON_P_NAND_CFG_SYNC_MODE_MASK,
 			  MESON_P_NAND_CFG_SYNC_MODE_ASYNC);
@@ -656,7 +727,7 @@ static int meson_nand_apply_timings(struct mtd_info *mtd,
 	else
 		rate_mhz = MESON_NAND_CLK_RATE_MHZ_MODE5;
 
-	err = clk_set_rate(nfc->clk, rate_mhz * 1000 * 1000);
+	err = 0; // FIXME HACK: clk_set_rate(nfc->clk, rate_mhz * 1000 * 1000);
 	if (err) {
 		dev_err(nfc->dev, "Failed to setup NAND clock for chip %d\n",
 			nfc->selected_chip);
@@ -742,6 +813,14 @@ static void meson_nand_dma_free(struct mtd_info *mtd)
 			  nfc->info_dma_addr);
 }
 
+static struct nand_bbt_descr meson_nand_badblock_pattern = {
+	.options = NAND_BBT_8BIT | NAND_BBT_ABSPAGE,
+	.pages = { 1024, 0, 0, 0, 0, 0, 0, 0 },
+	.offs = 0,
+	.len = 4,
+	.pattern = "nbbt",
+};
+
 static int meson_nand_init_chips(struct meson_nfc *nfc)
 {
 	struct device_node *np = nfc->dev->of_node;
@@ -779,7 +858,7 @@ static int meson_nand_init_chips(struct meson_nfc *nfc)
 	chip->ecc.write_page = meson_nand_write_page;
 	chip->ecc.read_oob = meson_nand_read_oob;
 	chip->ecc.write_oob = meson_nand_write_oob;
-	chip->options = NAND_USE_BOUNCE_BUFFER | NAND_NO_SUBPAGE_WRITE;
+	chip->options = NAND_OWN_BUFFERS | NAND_NO_SUBPAGE_WRITE; /* TODO: NAND_SKIP_BBTSCAN */
 
 	mtd_set_ooblayout(mtd, &meson_nand_ooblayout_ops);
 
@@ -788,6 +867,18 @@ static int meson_nand_init_chips(struct meson_nfc *nfc)
 	if (err)
 		return err;
 
+	chip->buffers = devm_kzalloc(nfc->dev, sizeof(struct nand_buffers),
+				     GFP_KERNEL);
+	if (!chip->buffers)
+		return -ENOMEM;
+
+	chip->buffers->databuf = devm_kzalloc(nfc->dev,
+					      mtd->writesize + mtd->oobsize,
+					      GFP_KERNEL);
+	if (!chip->buffers->databuf)
+		return -ENOMEM;
+
+	//chip->badblock_pattern = &meson_nand_badblock_pattern; /* TODO: correct?? */
 	if (chip->bbt_options & NAND_BBT_USE_FLASH)
 		chip->bbt_options |= NAND_BBT_NO_OOB;
 
