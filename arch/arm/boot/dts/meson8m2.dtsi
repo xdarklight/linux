@@ -1,0 +1,36 @@
+/*
+ * Copyright (c) 2017 Martin Blumenstingl <martin.blumenstingl@googlemail.com>.
+ *
+ * SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+ */
+
+#include "meson8.dtsi"
+
+/ {
+	model = "Amlogic Meson8m2 SoC";
+	compatible = "amlogic,meson8m2";
+}; /* end of / */
+
+&clkc {
+	compatible = "amlogic,meson8m2-clkc";
+};
+
+&ethmac {
+	compatible = "amlogic,meson8m2-dwmac", "amlogic,meson8b-dwmac", "snps,dwmac";
+	reg = <0xc9410000 0x10000
+		0xc1108140 0x8>;
+	clocks = <&clkc CLKID_ETH>,
+		 <&clkc CLKID_MPLL2>, // TODO: <&clkc CLKID_FCLK_DIV5> or MPLL2 like on Meson8b?
+		 <&clkc CLKID_MPLL2>;
+	clock-names = "stmmaceth", "clkin0", "clkin1";
+	resets = <&reset RESET_ETHERNET>;
+	reset-names = "stmmaceth";
+};
+
+&saradc {
+	compatible = "amlogic,meson8m2-saradc", "amlogic,meson-saradc";
+};
+
+&wdt {
+	compatible = "amlogic,meson8m2-wdt", "amlogic,meson8b-wdt";
+};
