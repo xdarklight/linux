@@ -366,6 +366,7 @@ dtb-$(CONFIG_MACH_MESON8) += \
 	meson8b-odroidc1.dtb \
 	meson8m2-mxiii.dtb \
 	meson8m2-mxiii-plus.dtb \
+	meson8m2-m8s.dtb \
 	meson8m2-wetek-core.dtb
 dtb-$(CONFIG_ARCH_MMP) += \
 	pxa168-aspenite.dtb \
