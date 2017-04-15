@@ -1,0 +1,251 @@
+/*
+ * Copyright (c) 2017 Martin Blumenstingl <martin.blumenstingl@googlemail.com>.
+ *
+ * SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+ */
+
+/dts-v1/;
+
+#include "meson8m2.dtsi"
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input.h>
+
+/ {
+	model = "Akaso M8s";
+	compatible = "akaso,m8s", "amlogic,meson8m2";
+
+	aliases {
+		serial0 = &uart_AO;
+	};
+
+	memory {
+		reg = <0x40000000 0x80000000>;
+	};
+
+	adc-keys {
+		compatible = "adc-keys";
+		io-channels = <&saradc 0>;
+		io-channel-names = "buttons";
+		keyup-threshold-microvolt = <1710000>;
+
+		button-function {
+			label = "Function";
+			linux,code = <KEY_FN>;
+			press-threshold-microvolt = <10000>;
+		};
+	};
+
+	pwmleds {
+		compatible = "pwm-leds";
+
+		power {
+			label = "m8s:blue:power";
+			pwms = <&pwm_ef 1 7812500 0>;
+			max-brightness = <255>;
+			active-low;
+			linux,default-trigger = "default-on";
+		};
+	};
+
+	sdio_pwrseq: sdio-pwrseq {
+		compatible = "mmc-pwrseq-simple";
+		reset-gpios = <&gpio_ao GPIOAO_6 GPIO_ACTIVE_HIGH>,
+				<&gpio GPIOX_11 GPIO_ACTIVE_HIGH>;
+		clocks = <&wifi32k>;
+		clock-names = "ext_clock";
+	};
+
+	vcc_1v8: regulator-vcc1v8 {
+		compatible = "regulator-fixed";
+		regulator-name = "VCC1V8";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+	};
+
+	vcc_3v3: regulator-vcc3v3 {
+		compatible = "regulator-fixed";
+		regulator-name = "VCC3V3";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+	};
+
+	wifi32k: wifi32k {
+		compatible = "pwm-clock";
+		#clock-cells = <0>;
+		clock-frequency = <32768>;
+		pwms = <&pwm_ef 0 30518 0>; /* PWM_E at 32.768KHz */
+	};
+};
+
+&ethmac {
+	status = "okay";
+
+	pinctrl-0 = <&eth_pins>;
+	pinctrl-names = "default";
+
+	phy-handle = <&eth_phy0>;
+	phy-mode = "rmii";
+
+	snps,reset-gpio = <&gpio GPIOH_4 0>;
+	snps,reset-delays-us = <0 10000 1000000>;
+	snps,reset-active-low;
+
+	mdio {
+		compatible = "snps,dwmac-mdio";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		eth_phy0: ethernet-phy@0 {
+			/* IC Plus IP101GR (0x02430c54) */
+			reg = <0>;
+		};
+	};
+};
+
+&ir_receiver {
+	status = "okay";
+	pinctrl-0 = <&ir_recv_pins>;
+	pinctrl-names = "default";
+};
+
+&nand_controller {
+	status = "disabled";
+	pinctrl-0 = <&nand_pins>;
+	pinctrl-names = "default";
+
+	nand@0 {
+		reg = <0>;
+		nand-ecc-mode = "hw";
+		nand-ecc-algo = "bch";
+		//nand-on-flash-bbt;
+		nand-ecc-strength = <40>;
+		nand-ecc-step-size = <1024>;
+		/* ?? auto ecc strength with: nand-ecc-maximize; */
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@2 {
+				label = "2GiB";
+				reg = <0x0 0xffffffff>;
+				read-only;
+			};
+
+			partition@0 {
+				label = "nand_page0_cfg";
+				reg = <0x0 0x4000>;
+				read-only;
+			};
+
+			partition@4000 {
+				label = "u-boot";
+				reg = <0x4000 0x600000>;
+				read-only;
+			};
+
+			partition@1000000 {
+				label = "boot";
+				reg = <0x1000000 0x400000>;
+			};
+
+			partition@1400000 {
+				label = "uboot_p1";
+				reg = <0x1400000 0x8000000>;
+			};
+
+			partition@d000000 {
+				label = "cache";
+				reg = <0xd000000 0x19000000>;
+				read-only;
+			};
+
+			partition@33000000 {
+				label = "system";
+				reg = <0x33000000 0x1f000000>;
+			};
+
+			partition@85000000 {
+				label = "data";
+				reg = <0x85000000 0xf6000000>;
+			};
+		};
+	};
+};
+
+&pwm_ef {
+	status = "okay";
+	pinctrl-0 = <&pwm_e_pins>, <&pwm_f_ao_pins>;
+	pinctrl-names = "default";
+	clocks = <&clkc CLKID_FCLK_DIV3>, <&clkc CLKID_FCLK_DIV4>;
+	clock-names = "clkin0", "clkin1";
+};
+
+&saradc {
+	status = "okay";
+	vref-supply = <&vcc_1v8>;
+};
+
+&sdio {
+	status = "okay";
+
+	pinctrl-0 = <&sd_a_pins>, <&sd_b_pins>;
+	pinctrl-names = "default";
+
+	/* Wireless SDIO Module */
+	slot@0 {
+		reg = <0>;
+		status = "okay";
+
+		bus-width = <4>;
+		cap-mmc-highspeed;
+		cap-sd-highspeed;
+		non-removable;
+		disable-wp;
+
+		mmc-pwrseq = <&sdio_pwrseq>;
+
+		vmmc-supply = <&vcc_3v3>;
+	};
+
+	/* SD card */
+	slot@1 {
+		reg = <1>;
+		status = "okay";
+
+		bus-width = <4>;
+		no-sdio;
+		cap-mmc-highspeed;
+		cap-sd-highspeed;
+		disable-wp;
+
+		cd-gpios = <&gpio CARD_6 GPIO_ACTIVE_HIGH>;
+		cd-inverted;
+
+		vmmc-supply = <&vcc_3v3>;
+	};
+};
+
+&uart_AO {
+	status = "okay";
+	pinctrl-0 = <&uart_ao_a_pins>;
+	pinctrl-names = "default";
+};
+
+&usb0 {
+	status = "okay";
+};
+
+&usb1 {
+	status = "okay";
+};
+
+&usb0_phy {
+	status = "okay";
+};
+
+&usb1_phy {
+	status = "okay";
+};
