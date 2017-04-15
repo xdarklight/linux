@@ -5,7 +5,10 @@ controllers within the SoC.
 
 Required Properties:
 
-- compatible: should be "amlogic,meson8b-clkc"
+- compatible: must be one of:
+	- "amlogic,meson8-clkc" for Meson8 (S802) SoCs
+	- "amlogic,meson8b-clkc" for Meson8 (S805) SoCs
+	- "amlogic,meson8m2-clkc" for Meson8m2 (S812) SoCs
 - reg: it must be composed by two tuples:
 	0) physical base address of the xtal register and length of memory
 	   mapped region.

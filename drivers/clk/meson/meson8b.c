@@ -777,7 +777,9 @@ iounmap:
 }
 
 static const struct of_device_id meson8b_clkc_match_table[] = {
+	{ .compatible = "amlogic,meson8-clkc" },
 	{ .compatible = "amlogic,meson8b-clkc" },
+	{ .compatible = "amlogic,meson8m2-clkc" },
 	{ }
 };
 
