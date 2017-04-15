@@ -30,4 +30,10 @@ config MACH_MESON8B
 	select MESON6_TIMER
 	select COMMON_CLK_MESON8B
 
+config MACH_MESON8M2
+	bool "Amlogic Meson8m2 SoCs support"
+	default ARCH_MESON
+	select MESON6_TIMER
+	select COMMON_CLK_MESON8B
+
 endif
