@@ -313,6 +313,7 @@ dtb-$(CONFIG_MACH_MESON6) += \
 	meson6-atv1200.dtb
 dtb-$(CONFIG_MACH_MESON8) += \
 	meson8-minix-neo-x8.dtb \
+	meson8m2-m8s.dtb \
 	meson8m2-mxiii-plus.dtb
 dtb-$(CONFIG_ARCH_MMP) += \
 	pxa168-aspenite.dtb \
