@@ -343,6 +343,15 @@ config MMC_MESON_GX
 
 	  If you have a controller with this interface, say Y here.
 
+config MMC_MESON_MX
+	tristate "Amlogic Meson8/Meson8b SD/MMC Host Controller support"
+	depends on ARCH_MESON || COMPILE_TEST
+	depends on HAS_DMA
+	depends on OF
+	help
+	  This selects support for the SD/MMC Host Controller on
+	  Amlogic Meson Mx (M6, M8, M8b) SoCs.
+
 config MMC_MOXART
 	tristate "MOXART SD/MMC Host Controller support"
 	depends on ARCH_MOXART && MMC
