@@ -1,0 +1,251 @@
+/*
+ * Copyright (c) 2017 Martin Blumenstingl <martin.blumenstingl@googlemail.com>.
+ *
+ * SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+ */
+
+/dts-v1/;
+
+#include "meson8m2.dtsi"
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input.h>
+
+/ {
+	model = "Akaso M8S";
+	compatible = "akaso,m8s", "amlogic,meson8m2";
+
+	aliases {
+		ethernet0 = &ethmac;
+		serial0 = &uart_AO;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+	};
+
+	memory {
+		device_type = "memory";
+		reg = <0x40000000 0x80000000>;
+	};
+
+	adc-keys {
+		compatible = "adc-keys";
+		io-channels = <&saradc 0>;
+		io-channel-names = "buttons";
+		keyup-threshold-microvolt = <1710000>;
+
+		button-function {
+			label = "Function";
+			linux,code = <KEY_FN>;
+			press-threshold-microvolt = <10000>;
+		};
+	};
+
+	pwmleds {
+		compatible = "pwm-leds";
+
+		power {
+			label = "m8s:blue:power";
+			pwms = <&pwm_ef 1 7812500 0>;
+			max-brightness = <255>;
+			active-low;
+			linux,default-trigger = "default-on";
+		};
+	};
+
+	sdio_pwrseq: sdio-pwrseq {
+		compatible = "mmc-pwrseq-simple";
+
+		pinctrl-0 = <&xtal_32k_out_pins>;
+		pinctrl-names = "default";
+
+		reset-gpios = <&gpio_ao GPIOAO_6 GPIO_ACTIVE_HIGH>,
+			      <&gpio GPIOX_11 GPIO_ACTIVE_HIGH>;
+
+		clocks = <&xtal_32k_out>;
+		clock-names = "ext_clock";
+	};
+
+	tv-connector {
+		compatible = "composite-video-connector";
+
+		port {
+			cvbs_connector_in: endpoint {
+				remote-endpoint = <&cvbs_vdac_out>;
+			};
+		};
+	};
+
+	vcck: regulator-vcck {
+		compatible = "regulator-fixed";
+		regulator-name = "VCCK";
+		regulator-min-microvolt = <975000>;
+		regulator-max-microvolt = <975000>;
+		vin-supply = <&vcc_5v>;
+	};
+
+	vddee: regulator-vddee {
+		compatible = "regulator-fixed";
+		regulator-name = "VDD_EE";
+		regulator-min-microvolt = <1150000>;
+		regulator-max-microvolt = <1150000>;
+		vin-supply = <&vcc_5v>;
+	};
+
+	vcc_1v8: regulator-vcc1v8 {
+		compatible = "regulator-fixed";
+		regulator-name = "VCC1V8";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		vin-supply = <&vcc_5v>;
+	};
+
+	vcc_3v3: regulator-vcc3v3 {
+		compatible = "regulator-fixed";
+		regulator-name = "VCC3V3";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		vin-supply = <&vcc_5v>;
+	};
+
+	vcc_5v: regulator-vcc5v {
+		compatible = "regulator-fixed";
+		regulator-name = "VCC5V";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+	};
+
+	xtal_32k_out: xtal-32k-out-clk {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <32768>;
+		clock-output-names = "xtal_32k_out";
+	};
+};
+
+&cpu0 {
+	cpu-supply = <&vcck>;
+};
+
+&cvbs_vdac_port {
+	cvbs_vdac_out: endpoint {
+		remote-endpoint = <&cvbs_connector_in>;
+	};
+};
+
+&ethmac {
+	status = "okay";
+
+	pinctrl-0 = <&eth_pins>;
+	pinctrl-names = "default";
+
+	phy-handle = <&eth_phy0>;
+	phy-mode = "rmii";
+
+	snps,reset-gpio = <&gpio GPIOZ_14 0>;
+	snps,reset-delays-us = <0 10000 1000000>;
+	snps,reset-active-low;
+
+	mdio {
+		compatible = "snps,dwmac-mdio";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		eth_phy0: ethernet-phy@0 {
+			/* IC Plus IP101GR (0x02430c54) */
+			reg = <0>;
+		};
+	};
+};
+
+&ir_receiver {
+	status = "okay";
+	pinctrl-0 = <&ir_recv_pins>;
+	pinctrl-names = "default";
+};
+
+&mali {
+	mali-supply = <&vddee>;
+};
+
+&saradc {
+	status = "okay";
+	vref-supply = <&vcc_1v8>;
+};
+
+&sdhc {
+	status = "okay";
+
+	pinctrl-0 = <&sdxc_b_pins>;
+	pinctrl-names = "default";
+
+	bus-width = <4>;
+	max-frequency = <50000000>;
+
+	no-sdio;
+	cap-sd-highspeed;
+	disable-wp;
+
+	cd-gpios = <&gpio CARD_6 GPIO_ACTIVE_LOW>;
+
+	vmmc-supply = <&vcc_3v3>;
+	vqmmc-supply = <&vcc_3v3>;
+};
+
+&sdio {
+	status = "okay";
+
+	pinctrl-0 = <&sd_a_pins>;
+	pinctrl-names = "default";
+
+	sdio_wireless_slot: slot@0 {
+		compatible = "mmc-slot";
+		reg = <0>;
+
+		bus-width = <4>;
+		cap-mmc-highspeed;
+		cap-sd-highspeed;
+		non-removable;
+		disable-wp;
+
+		mmc-pwrseq = <&sdio_pwrseq>;
+
+		vmmc-supply = <&vcc_3v3>;
+	};
+};
+
+&uart_A {
+	status = "okay";
+
+	pinctrl-0 = <&uart_a1_pins>, <&uart_a1_cts_rts_pins>;
+	pinctrl-names = "default";
+	uart-has-rtscts;
+
+	bluetooth {
+		compatible = "realtek,rtl8723bs-bt";
+		enable-gpios = <&gpio GPIOX_20 GPIO_ACTIVE_HIGH>;
+	};
+};
+
+&uart_AO {
+	status = "okay";
+	pinctrl-0 = <&uart_ao_a_pins>;
+	pinctrl-names = "default";
+};
+
+&usb0 {
+	status = "okay";
+};
+
+&usb1 {
+	status = "okay";
+};
+
+&usb0_phy {
+	status = "okay";
+};
+
+&usb1_phy {
+	status = "okay";
+};
