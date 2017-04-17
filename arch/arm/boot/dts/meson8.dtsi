@@ -227,6 +227,25 @@
 		interrupts = <GIC_PPI 13 (GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_EDGE_RISING)>;
 		clocks = <&clkc CLKID_CPU_DIV16>;
 	};
+
+	apb: apb@d0040000 {
+		compatible = "simple-bus";
+		reg = <0xd0040000 0x200000>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges = <0x0 0xd0040000 0x200000>;
+
+		nand: nandc@8600 {
+			compatible = "amlogic,meson8-nfc", "amlogic,meson-nand";
+			reg = <0x8600 0x24>;
+			interrupts = <GIC_SPI 34 IRQ_TYPE_EDGE_RISING>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			clocks = <&clkc CLKID_NAND>, <&clkc CLKID_NAND_CLK>;
+			clock-names = "mod_gate", "clk_nand";
+			status = "disabled";
+		};
+	};
 }; /* end of / */
 
 &aobus {
