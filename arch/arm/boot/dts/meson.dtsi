@@ -125,6 +125,30 @@
 				status = "disabled";
 			};
 
+			mmc0: mmc@8c20 {
+				compatible = "amlogic,meson-mx-mmc";
+				reg = <0x8c20 0x20>;
+				interrupts = <0 28 1>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				status = "disabled";
+
+				mmc0_slot_a: slot@0 {
+					reg = <0>;
+					status = "disabled";
+				};
+
+				mmc0_slot_b: slot@1 {
+					reg = <1>;
+					status = "disabled";
+				};
+
+				mmc0_slot_c: slot@2 {
+					reg = <2>;
+					status = "disabled";
+				};
+			};
+
 			spifc: spi@8c80 {
 				compatible = "amlogic,meson6-spifc";
 				reg = <0x8c80 0x80>;
