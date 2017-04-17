@@ -373,6 +373,17 @@
 			};
 		};
 
+		nfc: nand-controller@48600 {
+			compatible = "amlogic,meson8-nfc";
+			reg = <0x48600 0x24>;
+			interrupts = <GIC_SPI 34 IRQ_TYPE_EDGE_RISING>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			clocks = <&clkc CLKID_NAND>, <&clkc CLKID_NAND_CLK>;
+			clock-names = "core", "device";
+			status = "disabled";
+		};
+
 		vpu: vpu@100000 {
 			compatible = "amlogic,meson8-vpu";
 
