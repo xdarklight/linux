@@ -6,10 +6,11 @@
 
 /dts-v1/;
 #include "meson8m2.dtsi"
+#include <dt-bindings/gpio/gpio.h>
 
 / {
 	model = "Akaso M8s";
-	compatible = "akaso,m3s", "amlogic,meson8m2";
+	compatible = "akaso,m8s", "amlogic,meson8m2";
 
 	aliases {
 		serial0 = &uart_AO;
@@ -18,7 +19,125 @@
 	memory {
 		reg = <0x40000000 0x80000000>;
 	};
+
+	vcc_3v3: regulator-vcc3v3 {
+		compatible = "regulator-fixed";
+		regulator-name = "VCC3V3";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+	};
 };
+
+&mmc0 {
+	status = "okay";
+
+	pinctrl-0 = <&mmc0_sd_b_pins>; /* , <&mmc0_sd_c_pins> */
+	pinctrl-names = "default";
+
+	cap-mmc-highspeed;
+	cap-sd-highspeed;
+	bus-width = <4>;
+
+	no-sdio;
+
+	vmmc-supply = <&vcc_3v3>;
+
+	/* SD card */
+	slot@1 {
+		reg = <1>;
+		status = "okay";
+
+		/* TODO: below properties are unused */
+		bus-width = <4>;
+		no-sdio;
+		cap-mmc-highspeed;
+		cap-sd-highspeed;
+		disable-wp;
+
+		cd-gpios = <&gpio CARD_6 GPIO_ACTIVE_HIGH>;
+		cd-inverted;
+
+		vmmc-supply = <&vcc_3v3>;
+	};
+
+	/* Wireless SDIO Module */
+	slot@2 {
+		reg = <2>;
+		status = "disabled";
+
+		/* TODO: below properties are unused */
+		bus-width = <4>;
+		cap-mmc-highspeed;
+		cap-sd-highspeed;
+		non-removable;
+		disable-wp;
+
+		vmmc-supply = <&vcc_3v3>;
+	};
+};
+
+#if 0
+&nand_controller {
+	status = "okay";
+	pinctrl-0 = <&nand_pins>;
+	pinctrl-names = "default";
+
+	nand@0 {
+		reg = <0>;
+		nand-ecc-mode = "hw";
+		nand-ecc-algo = "bch";
+		//nand-on-flash-bbt;
+		nand-ecc-strength = <40>;
+		nand-ecc-step-size = <1024>;
+		/* ?? auto ecc strength with: nand-ecc-maximize; */
+/*
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@0 {
+				label = "2GiB";
+				reg = <0x0 0xffffffff>;
+				read-only;
+			};
+
+			partition@4000 {
+				label = "u-boot";
+				reg = /bits/ 64 <0x4000 0x600000>;
+				read-only;
+			};
+
+			partition@1000000 {
+				label = "boot";
+				reg = <0x1000000 0x400000>;
+			};
+
+			partition@1400000 {
+				label = "uboot_p1";
+				reg = <0x1400000 0x8000000>;
+			};
+
+			partition@d000000 {
+				label = "cache";
+				reg = <0xd000000 0x19000000>;
+				read-only;
+			};
+
+			partition@33000000 {
+				label = "system";
+				reg = <0x33000000 0x1f000000>;
+			};
+
+			partition@85000000 {
+				label = "data";
+				reg = <0x85000000 0xf6000000>;
+			};
+		};
+*/
+	};
+};
+#endif
 
 &saradc {
 	status = "okay";
