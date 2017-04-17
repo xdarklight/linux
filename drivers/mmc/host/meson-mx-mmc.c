@@ -134,6 +134,7 @@ struct meson_mx_mmc_host {
 	struct list_head		queue;
 	struct delayed_work     	cmd_timeout_work;
 
+	struct device			*slot_devices[MESON_MX_SDIO_MAX_SLOTS];
 	struct meson_mx_mmc_slot	*slots[MESON_MX_SDIO_MAX_SLOTS];
 	struct meson_mx_mmc_slot	*current_cmd_slot;
 	struct meson_mx_mmc_slot	*sdio_irq_slot;
@@ -680,17 +681,64 @@ static struct mmc_host_ops meson_mx_mmc_ops = {
 	.get_ro			= mmc_gpio_get_ro,
 };
 
-static int meson_mx_mmc_add_slot(unsigned id, struct meson_mx_mmc_host *host)
+static void meson_mx_mmc_slot_device_release(struct device *dev)
+{
+}
+
+static int meson_mx_mmc_register_slot_device(struct device_node *np,
+					     unsigned id,
+					     struct meson_mx_mmc_host *host)
+{
+	struct device *dev;
+	int ret;
+
+	dev = devm_kzalloc(host->dev, sizeof(*dev), GFP_KERNEL);
+	if (!dev)
+		return -ENOMEM;
+
+	dev->parent = host->dev;
+	dev->of_node = np;
+	dev->release = meson_mx_mmc_slot_device_release;
+	dev_set_name(dev, "%s.%d", dev_name(dev->parent), id);
+
+	ret = device_register(dev);
+	if (ret)
+		return ret;
+
+	host->slot_devices[id] = dev;
+
+	return 0;
+}
+
+static int meson_mx_mmc_add_slot(struct device_node *np,
+				 struct meson_mx_mmc_host *host)
 {
 	struct meson_mx_mmc_slot *slot;
 	struct mmc_host *mmc;
+	unsigned id;
 	int ret;
 
-	mmc = mmc_alloc_host(sizeof(struct meson_mx_mmc_slot), host->dev);
+	if (of_property_read_u32(np, "reg", &id)) {
+		dev_err(host->dev, "missing 'reg' property for %s\n",
+			of_node_full_name(np));
+		return -EINVAL;
+	}
+
+	if (id >= MESON_MX_SDIO_MAX_SLOTS) {
+		dev_err(host->dev,
+			"invalid 'reg' property value of %s\n",
+			of_node_full_name(np));
+		return -EINVAL;
+	}
+
+	ret = meson_mx_mmc_register_slot_device(np, id, host);
+	if (ret)
+		return ret;
+
+	mmc = mmc_alloc_host(sizeof(*slot), host->slot_devices[id]);
 	if (!mmc) {
-		dev_err(host->dev, "host allocation for slot %d failed\n", id);
 		ret = -ENOMEM;
-		goto error;
+		goto error_unregister_dev;
 	}
 
 	slot = mmc_priv(mmc);
@@ -720,12 +768,6 @@ static int meson_mx_mmc_add_slot(unsigned id, struct meson_mx_mmc_host *host)
 	mmc->caps |= MMC_CAP_CMD23;
 	mmc->ops = &meson_mx_mmc_ops;
 
-	/*
-	 * NOTE: This currently parses the host node, instead of the slot
-	 * (which is a sub-node)! This is a limitation of the MMC framework
-	 * as (at the time of writing) it unconditionally uses it's parent
-	 * device's OF node (which is host->dev->of_node in our case).
-	 */
 	ret = mmc_of_parse(mmc);
 	if (ret)
 		goto error_free_host;
@@ -738,14 +780,14 @@ static int meson_mx_mmc_add_slot(unsigned id, struct meson_mx_mmc_host *host)
 
 error_free_host:
 	mmc_free_host(mmc);
-error:
+error_unregister_dev:
+	device_unregister(host->slot_devices[id]);
 	return ret;
 }
 
 static int meson_mx_mmc_probe_slots(struct meson_mx_mmc_host *host)
 {
 	struct device_node *slot_node, *controller_node;
-	unsigned slot_id;
 	int num_slots, ret;
 
 	controller_node = host->dev->of_node;
@@ -757,20 +799,7 @@ static int meson_mx_mmc_probe_slots(struct meson_mx_mmc_host *host)
 	}
 
 	for_each_available_child_of_node(controller_node, slot_node) {
-		if (of_property_read_u32(slot_node, "reg", &slot_id)) {
-			dev_err(host->dev, "missing 'reg' property for %s\n",
-				of_node_full_name(slot_node));
-			return -EINVAL;
-		}
-
-		if (slot_id >= MESON_MX_SDIO_MAX_SLOTS) {
-			dev_err(host->dev,
-				"invalid 'reg' property value of %s\n",
-				of_node_full_name(slot_node));
-			return -EINVAL;
-		}
-
-		ret = meson_mx_mmc_add_slot(slot_id, host);
+		ret = meson_mx_mmc_add_slot(slot_node, host);
 		if (ret)
 			return ret;
 	}
@@ -861,23 +890,23 @@ static int meson_mx_mmc_probe(struct platform_device *pdev)
 	host->parent_clk = devm_clk_get(host->dev, "clkin");
 	if (IS_ERR(host->parent_clk)) {
 		ret = PTR_ERR(host->parent_clk);
-		goto error_disable_core_clk;
+		goto error_out;
 	}
 
 	ret = meson_mx_mmc_register_clks(host);
 	if (ret)
-		goto error_disable_clks;
+		goto error_out;
 
 	ret = clk_prepare_enable(host->core_clk);
 	if (ret) {
 		dev_err(host->dev, "Failed to enable core clock\n");
-		goto error_disable_clks;
+		goto error_out;
 	}
 
 	ret = clk_prepare_enable(host->cfg_div_clk);
 	if (ret) {
 		dev_err(host->dev, "Failed to enable MMC clock\n");
-		goto error_disable_clks;
+		goto error_disable_core_clk;
 	}
 
 	conf = 0;
@@ -923,8 +952,15 @@ static int meson_mx_mmc_remove(struct platform_device *pdev)
 		mmc_free_host(slot->mmc);
 	}
 
-	clk_disable_unprepare(host->core_clk);
+	for (i = 0; i < MESON_MX_SDIO_MAX_SLOTS; i++) {
+		if (!host->slot_devices[i])
+			continue;
+
+		device_unregister(host->slot_devices[i]);
+	}
+
 	clk_disable_unprepare(host->cfg_div_clk);
+	clk_disable_unprepare(host->core_clk);
 
 	return 0;
 }
