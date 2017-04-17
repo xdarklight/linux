@@ -6,10 +6,11 @@
 
 /dts-v1/;
 #include "meson8m2.dtsi"
+#include <dt-bindings/gpio/gpio.h>
 
 / {
 	model = "Akaso M8s";
-	compatible = "akaso,m3s", "amlogic,meson8m2";
+	compatible = "akaso,m8s", "amlogic,meson8m2";
 
 	aliases {
 		serial0 = &uart_AO;
@@ -18,6 +19,49 @@
 	memory {
 		reg = <0x40000000 0x80000000>;
 	};
+
+	vcc_3v3: regulator-vcc3v3 {
+		compatible = "regulator-fixed";
+		regulator-name = "VCC3V3";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+	};
+};
+
+/* SD card */
+&mmc0_slot_b {
+	status = "okay";
+
+	pinctrl-0 = <>;
+	pinctrl-1 = <&mmc0_sd_b_pins>;
+	pinctrl-names = "default", "active";
+
+	bus-width = <4>;
+	cap-mmc-highspeed;
+	cap-sd-highspeed;
+	disable-wp;
+
+	cd-gpios = <&gpio CARD_6 GPIO_ACTIVE_HIGH>;
+	cd-inverted;
+
+	vmmc-supply = <&vcc_3v3>;
+};
+
+/* Wireless SDIO Module */
+&mmc0_slot_c {
+	status = "disabled";
+
+	pinctrl-0 = <>;
+	pinctrl-1 = <&mmc0_sd_c_pins>;
+	pinctrl-names = "default", "active";
+
+	bus-width = <4>;
+	cap-mmc-highspeed;
+	cap-sd-highspeed;
+	non-removable;
+	disable-wp;
+
+	vmmc-supply = <&vcc_3v3>;
 };
 
 &saradc {
