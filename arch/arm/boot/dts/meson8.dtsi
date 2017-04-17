@@ -88,6 +88,7 @@
 		};
 	};
 
+
 	reserved-memory {
 		#address-cells = <1>;
 		#size-cells = <1>;
@@ -112,6 +113,24 @@
 		suspend_firmware: secmon@4f00000 {
 			reg = <0x4f00000 0x100000>;
 			no-map;
+		};
+	};
+
+	apb: apb@d0040000 {
+		compatible = "simple-bus";
+		reg = <0xd0040000 0x200000>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges = <0x0 0xd0040000 0x200000>;
+
+		nand_controller: nandc@8600 {
+			compatible = "amlogic,meson8-nand";
+			reg = <0x8600 0x24>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			clocks = <&clkc CLKID_NAND_CLK>;
+			clock-names = "nand";
+			status = "disabled";
 		};
 	};
 }; /* end of / */
