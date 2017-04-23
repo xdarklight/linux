@@ -104,15 +104,14 @@ enum meson_mx_mmc_host_status {
 
 struct meson_mx_mmc_slot {
 	struct mmc_host			*mmc;
-	struct mmc_request		*mrq;
+	struct meson_mx_mmc_host	*host;
 
+	struct mmc_request		*mrq;
 	bool				cmd_is_stop;
 	int				error;
 
 	int				id;
 	struct list_head		queue_node;
-
-	struct meson_mx_mmc_host	*host;
 };
 
 struct meson_mx_mmc_host {
@@ -120,26 +119,23 @@ struct meson_mx_mmc_host {
 
 	struct clk			*parent_clk;
 	struct clk			*core_clk;
-
 	struct clk_divider		cfg_div;
 	struct clk			*cfg_div_clk;
 	struct clk_fixed_factor		fixed_factor;
 	struct clk			*fixed_factor_clk;
 
+	void __iomem			*base;
+	int				irq;
 	spinlock_t			lock;
 	spinlock_t			irq_lock;
 
-	void __iomem			*base;
-	int				irq;
-
 	enum meson_mx_mmc_host_status	status;
-
 	struct list_head		queue;
 	struct delayed_work     	cmd_timeout_work;
-	struct tasklet_struct		tasklet;
 
 	struct meson_mx_mmc_slot	*slots[MESON_MX_SDIO_MAX_SLOTS];
-	struct meson_mx_mmc_slot	*current_slot;
+	struct meson_mx_mmc_slot	*current_cmd_slot;
+	struct meson_mx_mmc_slot	*sdio_irq_slot;
 };
 
 static u32 meson_mx_mmc_readl(struct mmc_host *mmc, char reg)
@@ -254,7 +250,7 @@ static void meson_mx_mmc_start_cmd(struct mmc_host *mmc,
 				   (cmd->data->blocks - 1));
 
 		pack_size = cmd->data->blksz * BITS_PER_BYTE + (16 - 1);
-		if (mmc->ios.bus_width)
+		if (mmc->ios.bus_width == MMC_BUS_WIDTH_4)
 			pack_size *= 4;
 
 		ext |= FIELD_PREP(MESON_MX_SDIO_EXT_DATA_RW_NUMBER_MASK,
@@ -298,12 +294,16 @@ static void meson_mx_mmc_start_cmd(struct mmc_host *mmc,
 
 	spin_unlock_irqrestore(&slot->host->irq_lock, irqflags);
 
-	if (cmd->data)
+	if (slot->cmd_is_stop)
+		timeout = msecs_to_jiffies(50);
+	else if (cmd->opcode == MMC_ERASE)
+		timeout = msecs_to_jiffies(30000);
+	else if (cmd->data)
 		timeout = msecs_to_jiffies(5000);
 	else
 		timeout = msecs_to_jiffies(1000);
 
-	schedule_delayed_work(&slot->host->cmd_timeout_work, timeout);
+	mod_delayed_work(system_wq, &slot->host->cmd_timeout_work, timeout);
 }
 
 static void meson_mx_mmc_start_request(struct mmc_host *mmc,
@@ -311,13 +311,10 @@ static void meson_mx_mmc_start_request(struct mmc_host *mmc,
 {
 	struct meson_mx_mmc_slot *slot = mmc_priv(mmc);
 	struct meson_mx_mmc_host *host = slot->host;
-	unsigned long irqflags;
 
 	host->status = MESON_MX_MMC_STATUS_BUSY;
-printk("%s\n", __func__);
-	spin_lock_irqsave(&host->irq_lock, irqflags);
-	host->current_slot = slot;
-	spin_unlock_irqrestore(&host->irq_lock, irqflags);
+
+	host->current_cmd_slot = slot;
 
 	if (mrq->data)
 		meson_mx_mmc_writel(mmc, sg_dma_address(mrq->data->sg),
@@ -328,23 +325,19 @@ printk("%s\n", __func__);
 
 static void meson_mx_mmc_request_done(struct meson_mx_mmc_host *host,
 				      struct mmc_request *mrq)
+	__releases(&host->lock)
+	__acquires(&host->lock)
 {
 	struct meson_mx_mmc_slot *current_slot, *next_slot;
-	unsigned long irqflags;
 
-	spin_lock_bh(&host->lock);
-
-	current_slot = host->current_slot;
+	current_slot = host->current_cmd_slot;
 	current_slot->mrq = NULL;
 
 	if (list_empty(&host->queue)) {
 		dev_dbg(host->dev, "slot queue is empty\n");
 
 		host->status = MESON_MX_MMC_STATUS_IDLE;
-printk("%s\n", __func__);
-		spin_lock_irqsave(&host->irq_lock, irqflags);
-		host->current_slot = NULL;
-		spin_unlock_irqrestore(&host->irq_lock, irqflags);
+		host->current_cmd_slot = NULL;
 	} else {
 		next_slot = list_entry(host->queue.next,
 				       struct meson_mx_mmc_slot, queue_node);
@@ -356,26 +349,26 @@ printk("%s\n", __func__);
 		meson_mx_mmc_start_request(next_slot->mmc, next_slot->mrq);
 	}
 
-	spin_unlock_bh(&host->lock);
-
+	spin_unlock(&host->lock);
 	mmc_request_done(current_slot->mmc, mrq);
+	spin_lock(&host->lock);
 }
 
 static void meson_mx_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 {
 	struct meson_mx_mmc_slot *slot = mmc_priv(mmc);
 
-	spin_lock_bh(&slot->host->lock);
+	if (spin_trylock(&slot->host->lock)) {
+		/*
+		 * only apply the mmc_ios if we are idle to not break any
+		 * ongoing transfer. in case we are busy meson_mx_mmc_start_cmd
+		 * will take care of applying the mmc_ios later on.
+		 */
+		if (slot->host->status == MESON_MX_MMC_STATUS_IDLE)
+			meson_mx_mmc_apply_ios(mmc, ios);
 
-	/*
-	 * only apply the mmc_ios if we are idle to not break any ongoing
-	 * transfer. in case we are idle meson_mx_mmc_start_cmd will take
-	 * care of applying the mmc_ios.
-	 */
-	if (slot->host->status == MESON_MX_MMC_STATUS_IDLE)
-		meson_mx_mmc_apply_ios(mmc, ios);
-
-	spin_unlock_bh(&slot->host->lock);
+		spin_unlock(&slot->host->lock);
+	}
 
 	switch (ios->power_mode) {
 	case MMC_POWER_OFF:
@@ -410,6 +403,11 @@ static void meson_mx_mmc_enable_sdio_irq(struct mmc_host *mmc, int enable)
 	meson_mx_mmc_mask_bits(mmc, MESON_MX_SDIO_IRQC,
 			       MESON_MX_SDIO_IRQC_ARC_IF_INT_EN,
 			       enable ? MESON_MX_SDIO_IRQC_ARC_IF_INT_EN : 0);
+
+	if (enable)
+		slot->host->sdio_irq_slot = slot;
+	else
+		slot->host->sdio_irq_slot = NULL;
 
 	spin_unlock_irqrestore(&slot->host->irq_lock, irqflags);
 }
@@ -455,8 +453,8 @@ static void meson_mx_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 		mmc_request_done(mmc, mrq);
 		return;
 	}
-printk("%s\n", __func__);
-	spin_lock_bh(&host->lock);
+
+	spin_lock(&host->lock);
 
 	slot->mrq = mrq;
 
@@ -465,13 +463,11 @@ printk("%s\n", __func__);
 	else
 		list_add_tail(&slot->queue_node, &host->queue);
 
-	spin_unlock_bh(&host->lock);
+	spin_unlock(&host->lock);
 }
 
-void meson_mx_mmc_read_response(struct mmc_host *mmc)
+void meson_mx_mmc_read_response(struct mmc_host *mmc, struct mmc_command *cmd)
 {
-	struct meson_mx_mmc_slot *slot = mmc_priv(mmc);
-	struct mmc_command *cmd = slot->mrq->cmd;
 	u32 mult;
 	int i, resp[4];
 
@@ -491,33 +487,40 @@ void meson_mx_mmc_read_response(struct mmc_host *mmc)
 		cmd->resp[3] = (resp[3] << 8);
 	} else if (cmd->flags & MMC_RSP_PRESENT) {
 		cmd->resp[0] = meson_mx_mmc_readl(mmc, MESON_MX_SDIO_ARGU);
+
+		/*
+		 * The hardware reports R1_OUT_OF_RANGE when reading the last
+		 * block when using multi-block mode.
+		 * FIXME: if (cmd->resp[0] & R1_OUT_OF_RANGE)
+		 */
 	}
 }
 
 static irqreturn_t meson_mx_mmc_process_cmd_irq(struct meson_mx_mmc_slot *slot,
 						u32 irqs, u32 send)
 {
-	struct mmc_request *mrq = slot->mrq;
+	struct mmc_request *mrq;
 
-	cancel_delayed_work(&slot->host->cmd_timeout_work);
+	if (WARN_ON(!slot))
+		return IRQ_HANDLED;
 
+	if (slot->cmd_is_stop)
+		return IRQ_WAKE_THREAD;
+
+	mrq = slot->mrq;
 	if (WARN_ON(!mrq))
 		return IRQ_HANDLED;
 
 	mrq->cmd->error = 0;
 
 	if (mrq->data) {
-		if ((irqs & MESON_MX_SDIO_IRQS_DATA_READ_CRC16_OK) ||
-		    (irqs & MESON_MX_SDIO_IRQS_DATA_WRITE_CRC16_OK))
-			dma_unmap_sg(mmc_dev(slot->mmc), mrq->data->sg,
-				     mrq->data->sg_len,
-				     mmc_get_dma_dir(mrq->data));
-		else
+		if (!((irqs & MESON_MX_SDIO_IRQS_DATA_READ_CRC16_OK) ||
+		      (irqs & MESON_MX_SDIO_IRQS_DATA_WRITE_CRC16_OK)))
 			mrq->cmd->error = -EILSEQ;
 	} else {
 		if ((irqs & MESON_MX_SDIO_IRQS_RESP_CRC7_OK) ||
 		      (send & MESON_MX_SDIO_SEND_RESP_WITHOUT_CRC7))
-			meson_mx_mmc_read_response(slot->mmc);
+			meson_mx_mmc_read_response(slot->mmc, mrq->cmd);
 		else
 			mrq->cmd->error = -EILSEQ;
 	}
@@ -525,42 +528,52 @@ static irqreturn_t meson_mx_mmc_process_cmd_irq(struct meson_mx_mmc_slot *slot,
 	return IRQ_WAKE_THREAD;
 }
 
+static void meson_mx_mmc_process_sdio_irq(struct meson_mx_mmc_slot *slot)
+{
+	/*
+	 * ignore SDIO interrupts without corresponding slot as the SDIO
+	 * interrupt seems to enable itself automatically - in this case we
+	 * didn't assign a slot for this IRQ so we simply ignore it.
+	 */
+	if (!slot)
+		return;
+
+	mmc_signal_sdio_irq(slot->mmc);
+}
+
 static irqreturn_t meson_mx_mmc_irq(int irq, void *data)
 {
 	struct meson_mx_mmc_host *host = (void *) data;
-	struct meson_mx_mmc_slot *slot;
-	bool sdio_irq = false;
+	struct meson_mx_mmc_slot *cmd_slot, *sdio_irq_slot;
+	bool sdio_irq, cmd_irq;
 	u32 irqs, send;
 	irqreturn_t ret;
 
-	spin_lock(&host->lock);
+	spin_lock(&host->irq_lock);
 
 	irqs = readl(host->base + MESON_MX_SDIO_IRQS);
 	send = readl(host->base + MESON_MX_SDIO_SEND);
 
-printk("%s (0x%08x)\n", __func__, irqs);
-	slot = host->current_slot;
+	cmd_slot = host->current_cmd_slot;
+	sdio_irq_slot = host->sdio_irq_slot;
 
-	if (WARN_ON(!slot)) {
-		spin_unlock(&host->irq_lock);
-		return IRQ_HANDLED;
-	}
+	sdio_irq = !!(irqs & MESON_MX_SDIO_IRQS_IF_INT);
+	cmd_irq = !!(irqs & MESON_MX_SDIO_IRQS_CMD_INT);
 
-	if (irqs & MESON_MX_SDIO_IRQS_IF_INT)
-		sdio_irq = true;
+	if (cmd_irq) {
+		cancel_delayed_work(&host->cmd_timeout_work);
 
-	if (irqs & MESON_MX_SDIO_IRQS_CMD_INT)
-		ret = meson_mx_mmc_process_cmd_irq(slot, irqs, send);
-	else
+		ret = meson_mx_mmc_process_cmd_irq(cmd_slot, irqs, send);
+	} else
 		ret = IRQ_HANDLED;
 
-	/* ACK the interrupts */
+	/* and finally ACK all pending interrupts */
 	writel(irqs, host->base + MESON_MX_SDIO_IRQS);
 
-	spin_unlock(&host->lock);
+	spin_unlock(&host->irq_lock);
 
 	if (sdio_irq)
-		mmc_signal_sdio_irq(slot->mmc);
+		meson_mx_mmc_process_sdio_irq(sdio_irq_slot);
 
 	return ret;
 }
@@ -568,32 +581,47 @@ printk("%s (0x%08x)\n", __func__, irqs);
 static irqreturn_t meson_mx_mmc_irq_thread(int irq, void *irq_data)
 {
 	struct meson_mx_mmc_host *host = (void *) irq_data;
+	struct meson_mx_mmc_slot *slot;
 	struct mmc_request *mrq;
 
-	spin_lock_bh(&host->lock);
+	spin_lock(&host->lock);
 
-	mrq = host->current_slot->mrq;
+	slot = host->current_cmd_slot;
+	if (WARN_ON(!slot)) {
+		spin_unlock(&host->lock);
+		return IRQ_HANDLED;
+	}
 
-	if (host->current_slot->cmd_is_stop)
+	mrq = slot->mrq;
+	if (WARN_ON(!mrq)) {
+		spin_unlock(&host->lock);
+		return IRQ_HANDLED;
+	}
+
+	if (slot->cmd_is_stop)
 		goto out;
 
-	if (mrq->data && !mrq->cmd->error)
+	if (mrq->data && !mrq->cmd->error) {
+		dma_unmap_sg(mmc_dev(slot->mmc), mrq->data->sg,
+				mrq->data->sg_len,
+				mmc_get_dma_dir(mrq->data));
+
 		mrq->data->bytes_xfered = mrq->data->blksz * mrq->data->blocks;
+	}
 
 	if (mrq->stop) {
-		host->current_slot->cmd_is_stop = true;
-		meson_mx_mmc_start_cmd(host->current_slot->mmc, mrq->stop);
-		spin_unlock_bh(&host->lock);
+		slot->cmd_is_stop = true;
+		meson_mx_mmc_start_cmd(slot->mmc, mrq->stop);
+		spin_unlock(&host->lock);
 		return IRQ_HANDLED;
 	}
 
 out:
-	host->current_slot->cmd_is_stop = false;
+	slot->cmd_is_stop = false;
 
-	spin_unlock_bh(&host->lock);
+	meson_mx_mmc_request_done(host, mrq);
 
-	if (mrq)
-		meson_mx_mmc_request_done(host, mrq);
+	spin_unlock(&host->lock);
 
 	return IRQ_HANDLED;
 }
@@ -603,15 +631,42 @@ static void meson_mx_mmc_timeout(struct work_struct *work)
 	struct meson_mx_mmc_host *host = container_of(work,
 						      struct meson_mx_mmc_host,
 						      cmd_timeout_work.work);
-	struct meson_mx_mmc_slot *slot = host->current_slot;
+	struct meson_mx_mmc_slot *slot;
 	unsigned long irqflags;
+	u32 irqc, irqs;
+
+	spin_lock(&host->lock);
 
 	/* Do not run after meson_mx_mmc_remove() */
 	if (host->status == MESON_MX_MMC_STATUS_SHUTTING_DOWN)
-		return;
+		goto unlock;
+
+	/* request was completed in the meantime */
+	if (host->status == MESON_MX_MMC_STATUS_IDLE)
+		goto unlock;
+
+	spin_lock_irqsave(&host->irq_lock, irqflags);
+
+	/* CMD interrupt bit is set, let the IRQ handler take care of this. */
+	irqs = readl(host->base + MESON_MX_SDIO_IRQS);
+	if (irqs & MESON_MX_SDIO_IRQS_CMD_INT)
+		goto unlock;
+
+	/* disable the CMD interrupt */
+	irqc = readl(host->base + MESON_MX_SDIO_IRQC);
+	irqc &= ~MESON_MX_SDIO_IRQC_ARC_CMD_INT_EN;
+	writel(irqc, host->base + MESON_MX_SDIO_IRQC);
+
+	/* and mask it */
+	irqs |= MESON_MX_SDIO_IRQS_CMD_INT;
+	writel(irqs, host->base + MESON_MX_SDIO_IRQS);
+
+	spin_unlock_irqrestore(&host->irq_lock, irqflags);
+
+	slot = host->current_cmd_slot;
 
 	if (WARN_ON(!slot))
-		return;
+		goto unlock;
 
 	dev_err(mmc_dev(slot->mmc),
 		"Timeout on CMD%u (IRQS = 0x%08x, ARGU = 0x%08x)\n",
@@ -619,16 +674,12 @@ static void meson_mx_mmc_timeout(struct work_struct *work)
 		meson_mx_mmc_readl(slot->mmc, MESON_MX_SDIO_IRQS),
 		meson_mx_mmc_readl(slot->mmc, MESON_MX_SDIO_ARGU));
 
-	spin_lock_irqsave(&host->irq_lock, irqflags);
-
-	meson_mx_mmc_mask_bits(slot->mmc, MESON_MX_SDIO_IRQC,
-			       MESON_MX_SDIO_IRQC_ARC_CMD_INT_EN, 0);
-
-	spin_unlock_irqrestore(&host->irq_lock, irqflags);
-
 	slot->mrq->cmd->error = -ETIMEDOUT;
 
 	meson_mx_mmc_request_done(host, slot->mrq);
+
+unlock:
+	spin_unlock(&host->lock);
 }
 
 static struct mmc_host_ops meson_mx_mmc_ops = {
@@ -790,6 +841,7 @@ static int meson_mx_mmc_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	spin_lock_init(&host->lock);
+	spin_lock_init(&host->irq_lock);
 	INIT_DELAYED_WORK(&host->cmd_timeout_work, meson_mx_mmc_timeout);
 	INIT_LIST_HEAD(&host->queue);
 	host->dev = &pdev->dev;
@@ -805,8 +857,8 @@ static int meson_mx_mmc_probe(struct platform_device *pdev)
 
 	irq = platform_get_irq(pdev, 0);
 	ret = devm_request_threaded_irq(host->dev, irq, meson_mx_mmc_irq,
-					meson_mx_mmc_irq_thread, IRQF_ONESHOT,
-					NULL, host);
+					meson_mx_mmc_irq_thread, 0, NULL,
+					host);
 	if (ret)
 		goto error_out;
 
