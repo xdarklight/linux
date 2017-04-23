@@ -107,7 +107,7 @@ struct meson_mx_mmc_slot {
 	struct meson_mx_mmc_host	*host;
 
 	struct mmc_request		*mrq;
-	bool				cmd_is_stop;
+	struct mmc_command		*cmd;
 	int				error;
 
 	int				id;
@@ -168,6 +168,17 @@ static void meson_mx_mmc_soft_reset(struct meson_mx_mmc_host *host)
 	udelay(2);
 }
 
+static struct mmc_command *meson_mx_mmc_get_next_cmd(struct mmc_command *cmd)
+{
+	if (cmd->opcode == MMC_SET_BLOCK_COUNT && !cmd->error)
+		return cmd->mrq->cmd;
+	else if (mmc_op_multi(cmd->opcode) &&
+		 (!cmd->mrq->sbc || cmd->error || cmd->data->error))
+		return cmd->mrq->stop;
+	else
+		return NULL;
+}
+
 static void meson_mx_mmc_apply_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 {
 	struct meson_mx_mmc_slot *slot = mmc_priv(mmc);
@@ -213,6 +224,10 @@ static void meson_mx_mmc_apply_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	}
 }
 
+// FIXME: forward decl.
+static void meson_mx_mmc_request_done(struct meson_mx_mmc_host *host,
+				      struct meson_mx_mmc_slot *current_slot);
+
 static void meson_mx_mmc_start_cmd(struct mmc_host *mmc,
 				   struct mmc_command *cmd)
 {
@@ -220,6 +235,8 @@ static void meson_mx_mmc_start_cmd(struct mmc_host *mmc,
 	unsigned int pack_size;
 	unsigned long irqflags, timeout;
 	u32 mult, send = 0, ext = 0;
+
+	slot->cmd = cmd;
 
 	spin_lock_irqsave(&slot->host->irq_lock, irqflags);
 
@@ -260,6 +277,8 @@ static void meson_mx_mmc_start_cmd(struct mmc_host *mmc,
 			send |= MESON_MX_SDIO_SEND_DATA;
 		else
 			send |= MESON_MX_SDIO_SEND_RESP_HAS_DATA;
+
+		cmd->data->bytes_xfered = 0;
 	}
 
 	send |= FIELD_PREP(MESON_MX_SDIO_SEND_CMD_COMMAND_MASK,
@@ -294,7 +313,7 @@ static void meson_mx_mmc_start_cmd(struct mmc_host *mmc,
 
 	spin_unlock_irqrestore(&slot->host->irq_lock, irqflags);
 
-	if (slot->cmd_is_stop)
+	if (cmd->opcode == MMC_STOP_TRANSMISSION)
 		timeout = msecs_to_jiffies(50);
 	else if (cmd->opcode == MMC_ERASE)
 		timeout = msecs_to_jiffies(30000);
@@ -313,25 +332,28 @@ static void meson_mx_mmc_start_request(struct mmc_host *mmc,
 	struct meson_mx_mmc_host *host = slot->host;
 
 	host->status = MESON_MX_MMC_STATUS_BUSY;
-
 	host->current_cmd_slot = slot;
 
 	if (mrq->data)
 		meson_mx_mmc_writel(mmc, sg_dma_address(mrq->data->sg),
 				    MESON_MX_SDIO_ADDR);
 
-	meson_mx_mmc_start_cmd(mmc, mrq->cmd);
+	if (mrq->sbc)
+		meson_mx_mmc_start_cmd(mmc, mrq->sbc);
+	else
+		meson_mx_mmc_start_cmd(mmc, mrq->cmd);
 }
 
 static void meson_mx_mmc_request_done(struct meson_mx_mmc_host *host,
-				      struct mmc_request *mrq)
+				      struct meson_mx_mmc_slot *current_slot)
 	__releases(&host->lock)
 	__acquires(&host->lock)
 {
-	struct meson_mx_mmc_slot *current_slot, *next_slot;
+	struct meson_mx_mmc_slot *next_slot;
+	struct mmc_request *mrq = current_slot->mrq;
 
-	current_slot = host->current_cmd_slot;
 	current_slot->mrq = NULL;
+	current_slot->cmd = NULL;
 
 	if (list_empty(&host->queue)) {
 		dev_dbg(host->dev, "slot queue is empty\n");
@@ -412,6 +434,18 @@ static void meson_mx_mmc_enable_sdio_irq(struct mmc_host *mmc, int enable)
 	spin_unlock_irqrestore(&slot->host->irq_lock, irqflags);
 }
 
+static int meson_mx_mmc_multi_io_quirk(struct mmc_card *card,
+				       unsigned int direction, int blk_size)
+{
+	struct meson_mx_mmc_slot *slot = mmc_priv(card->host);
+
+	/* multi block commands are only supported if CMD23 is sent. */
+	if (!slot->mrq || !slot->mrq->sbc)
+		return 1;
+	else
+		return blk_size;
+}
+
 static int meson_mx_mmc_map_dma(struct mmc_host *mmc, struct mmc_request *mrq)
 {
 	struct mmc_data *data = mrq->data;
@@ -466,7 +500,25 @@ static void meson_mx_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	spin_unlock(&host->lock);
 }
 
-void meson_mx_mmc_read_response(struct mmc_host *mmc, struct mmc_command *cmd)
+static bool meson_mx_mmc_needs_last_block_response_fix(struct mmc_host *mmc,
+						       struct mmc_request *mrq)
+{
+	struct mmc_command *cmd = mrq->cmd;
+
+	if (!(cmd->resp[0] & R1_OUT_OF_RANGE))
+		return false;
+
+	if (!mrq->data)
+		return false;
+
+	printk("cmd->arg = 0x%08x\n", cmd->arg);
+	printk("mrq->data->blocks = 0x%08x\n", mrq->data->blocks);
+
+	return false;
+}
+
+static void meson_mx_mmc_read_response(struct mmc_host *mmc,
+				       struct mmc_command *cmd)
 {
 	u32 mult;
 	int i, resp[4];
@@ -489,40 +541,38 @@ void meson_mx_mmc_read_response(struct mmc_host *mmc, struct mmc_command *cmd)
 		cmd->resp[0] = meson_mx_mmc_readl(mmc, MESON_MX_SDIO_ARGU);
 
 		/*
-		 * The hardware reports R1_OUT_OF_RANGE when reading the last
-		 * block when using multi-block mode.
-		 * FIXME: if (cmd->resp[0] & R1_OUT_OF_RANGE)
+		 * The hardware reports R1_OUT_OF_RANGE in the card-status when
+		 * reading the last block when using multi-block mode. Un-set
+		 * R1_OUT_OF_RANGE here to work around this HW issue.
 		 */
+		if (meson_mx_mmc_needs_last_block_response_fix(mmc, cmd->mrq))
+			cmd->resp[0] &= ~R1_OUT_OF_RANGE;
 	}
 }
 
 static irqreturn_t meson_mx_mmc_process_cmd_irq(struct meson_mx_mmc_slot *slot,
 						u32 irqs, u32 send)
 {
-	struct mmc_request *mrq;
+	struct mmc_command *cmd;
 
 	if (WARN_ON(!slot))
 		return IRQ_HANDLED;
 
-	if (slot->cmd_is_stop)
-		return IRQ_WAKE_THREAD;
-
-	mrq = slot->mrq;
-	if (WARN_ON(!mrq))
+	cmd = slot->cmd;
+	if (WARN_ON(!cmd))
 		return IRQ_HANDLED;
 
-	mrq->cmd->error = 0;
+	cmd->error = 0;
+	meson_mx_mmc_read_response(slot->mmc, cmd);
 
-	if (mrq->data) {
+	if (cmd->data) {
 		if (!((irqs & MESON_MX_SDIO_IRQS_DATA_READ_CRC16_OK) ||
 		      (irqs & MESON_MX_SDIO_IRQS_DATA_WRITE_CRC16_OK)))
-			mrq->cmd->error = -EILSEQ;
+			cmd->error = -EILSEQ;
 	} else {
-		if ((irqs & MESON_MX_SDIO_IRQS_RESP_CRC7_OK) ||
-		      (send & MESON_MX_SDIO_SEND_RESP_WITHOUT_CRC7))
-			meson_mx_mmc_read_response(slot->mmc, mrq->cmd);
-		else
-			mrq->cmd->error = -EILSEQ;
+		if (!((irqs & MESON_MX_SDIO_IRQS_RESP_CRC7_OK) ||
+		      (send & MESON_MX_SDIO_SEND_RESP_WITHOUT_CRC7)))
+			cmd->error = -EILSEQ;
 	}
 
 	return IRQ_WAKE_THREAD;
@@ -582,7 +632,7 @@ static irqreturn_t meson_mx_mmc_irq_thread(int irq, void *irq_data)
 {
 	struct meson_mx_mmc_host *host = (void *) irq_data;
 	struct meson_mx_mmc_slot *slot;
-	struct mmc_request *mrq;
+	struct mmc_command *cmd, *next_cmd;
 
 	spin_lock(&host->lock);
 
@@ -592,34 +642,21 @@ static irqreturn_t meson_mx_mmc_irq_thread(int irq, void *irq_data)
 		return IRQ_HANDLED;
 	}
 
-	mrq = slot->mrq;
-	if (WARN_ON(!mrq)) {
-		spin_unlock(&host->lock);
-		return IRQ_HANDLED;
+	cmd = slot->cmd;
+
+	if (cmd->data) {
+		dma_unmap_sg(mmc_dev(slot->mmc), cmd->data->sg,
+				cmd->data->sg_len,
+				mmc_get_dma_dir(cmd->data));
+
+		cmd->data->bytes_xfered = cmd->data->blksz * cmd->data->blocks;
 	}
 
-	if (slot->cmd_is_stop)
-		goto out;
-
-	if (mrq->data && !mrq->cmd->error) {
-		dma_unmap_sg(mmc_dev(slot->mmc), mrq->data->sg,
-				mrq->data->sg_len,
-				mmc_get_dma_dir(mrq->data));
-
-		mrq->data->bytes_xfered = mrq->data->blksz * mrq->data->blocks;
-	}
-
-	if (mrq->stop) {
-		slot->cmd_is_stop = true;
-		meson_mx_mmc_start_cmd(slot->mmc, mrq->stop);
-		spin_unlock(&host->lock);
-		return IRQ_HANDLED;
-	}
-
-out:
-	slot->cmd_is_stop = false;
-
-	meson_mx_mmc_request_done(host, mrq);
+	next_cmd = meson_mx_mmc_get_next_cmd(cmd);
+	if (next_cmd)
+		meson_mx_mmc_start_cmd(slot->mmc, next_cmd);
+	else
+		meson_mx_mmc_request_done(host, slot);
 
 	spin_unlock(&host->lock);
 
@@ -676,7 +713,7 @@ static void meson_mx_mmc_timeout(struct work_struct *work)
 
 	slot->mrq->cmd->error = -ETIMEDOUT;
 
-	meson_mx_mmc_request_done(host, slot->mrq);
+	meson_mx_mmc_request_done(host, slot);
 
 unlock:
 	spin_unlock(&host->lock);
@@ -686,6 +723,7 @@ static struct mmc_host_ops meson_mx_mmc_ops = {
 	.request		= meson_mx_mmc_request,
 	.set_ios		= meson_mx_mmc_set_ios,
 	.enable_sdio_irq	= meson_mx_mmc_enable_sdio_irq,
+	.multi_io_quirk		= meson_mx_mmc_multi_io_quirk,
 	.get_cd			= mmc_gpio_get_cd,
 	.get_ro			= mmc_gpio_get_ro,
 };
@@ -727,6 +765,7 @@ static int meson_mx_mmc_add_slot(unsigned id, struct meson_mx_mmc_host *host)
 	mmc->f_max = clk_round_rate(host->cfg_div_clk,
 				    clk_get_rate(host->parent_clk));
 
+	mmc->caps |= MMC_CAP_CMD23;
 	mmc->caps2 |= MMC_CAP2_NO_SDIO;
 	mmc->ops = &meson_mx_mmc_ops;
 
