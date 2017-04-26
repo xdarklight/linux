@@ -83,6 +83,24 @@
 			reg = <0x203>;
 		};
 	};
+
+	reserved-memory {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		/* 2 MiB reserved for Hardware ROM Firmware */
+		hwrom_reserved: hwrom@0 {
+			reg = <0x0 0x200000>;
+			no-map;
+		};
+
+		/* 48 MiB reserved for the secure monitor */
+		secmon@6100000 {
+			reg = <0x6100000 0x3000000>;
+			no-map;
+		};
+	};
 }; /* end of / */
 
 &aobus {
