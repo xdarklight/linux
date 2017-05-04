@@ -375,12 +375,12 @@ static const struct pwm_ops meson_pwm_ops = {
 	.owner = THIS_MODULE,
 };
 
-static const char * const pwm_meson8b_parent_names[] = {
+static const char * const pwm_meson8_parent_names[] = {
 	"xtal", "vid_pll", "fclk_div4", "fclk_div3"
 };
 
-static const struct meson_pwm_data pwm_meson8b_data = {
-	.parent_names = pwm_meson8b_parent_names,
+static const struct meson_pwm_data pwm_meson8_data = {
+	.parent_names = pwm_meson8_parent_names,
 };
 
 static const char * const pwm_gxbb_parent_names[] = {
@@ -392,7 +392,9 @@ static const struct meson_pwm_data pwm_gxbb_data = {
 };
 
 static const struct of_device_id meson_pwm_matches[] = {
-	{ .compatible = "amlogic,meson8b-pwm", .data = &pwm_meson8b_data },
+	{ .compatible = "amlogic,meson8-pwm", .data = &pwm_meson8_data },
+	{ .compatible = "amlogic,meson8b-pwm", .data = &pwm_meson8_data },
+	{ .compatible = "amlogic,meson8m2-pwm", .data = &pwm_meson8_data },
 	{ .compatible = "amlogic,meson-gxbb-pwm", .data = &pwm_gxbb_data },
 	{},
 };
