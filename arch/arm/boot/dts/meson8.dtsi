@@ -235,6 +235,13 @@
 				function = "sd_c";
 			};
 		};
+
+		pwm_e_pins: pwm-e-pins {
+			mux {
+				groups = "pwm_e";
+				function = "pwm_e";
+			};
+		};
 	};
 };
 
