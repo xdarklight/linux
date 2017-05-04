@@ -152,6 +152,13 @@
 				function = "i2c_mst_ao";
 			};
 		};
+
+		pwm_f_ao_pins: pwm-f-ao-pins {
+			mux {
+				groups = "pwm_f_ao";
+				function = "pwm_f_ao";
+			};
+		};
 	};
 };
 
@@ -233,6 +240,13 @@
 				groups = "sd_d0_c", "sd_d1_c", "sd_d2_c",
 					"sd_d3_c", "sd_clk_c", "sd_cmd_c";
 				function = "sd_c";
+			};
+		};
+
+		pwm_e_pins: pwm-e-pins {
+			mux {
+				groups = "pwm_e";
+				function = "pwm_e";
 			};
 		};
 	};
