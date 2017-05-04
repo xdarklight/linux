@@ -142,20 +142,6 @@
 		#reset-cells = <1>;
 	};
 
-	pwm_ab: pwm@8550 {
-		compatible = "amlogic,meson8b-pwm";
-		reg = <0x8550 0x10>;
-		#pwm-cells = <3>;
-		status = "disabled";
-	};
-
-	pwm_cd: pwm@8650 {
-		compatible = "amlogic,meson8b-pwm";
-		reg = <0x8650 0x10>;
-		#pwm-cells = <3>;
-		status = "disabled";
-	};
-
 	pwm_ef: pwm@86c0 {
 		compatible = "amlogic,meson8b-pwm";
 		reg = <0x86c0 0x10>;
@@ -223,6 +209,14 @@
 	compatible = "amlogic,meson8b-mmc", "amlogic,meson-mx-mmc";
 	clocks = <&clkc 30 /* FIXME: CLKID_SDIO*/>, <&clkc CLKID_CLK81>;
 	clock-names = "core", "clkin";
+};
+
+&pwm_ab {
+	compatible = "amlogic,meson8b-pwm";
+};
+
+&pwm_cd {
+	compatible = "amlogic,meson8b-pwm";
 };
 
 &saradc {
