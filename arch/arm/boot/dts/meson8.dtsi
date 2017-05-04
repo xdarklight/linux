@@ -581,6 +581,35 @@
 			};
 		};
 
+		nand_pins: nand {
+			mux {
+				groups = "nand_io",
+					"nand_ale",
+					"nand_cle",
+					"nand_wen_clk",
+					"nand_ren_clk",
+					"nand_dqs";
+				function = "nand";
+				bias-pull-down;
+			};
+		};
+
+		nand_ce0_pins: nand-ce0 {
+			mux {
+				groups = "nand_io_ce0";
+				function = "nand";
+				bias-pull-up;
+			};
+		};
+
+		nand_rb0_pins: nand-rb0 {
+			mux {
+				groups = "nand_io_rb0";
+				function = "nand";
+				bias-pull-up;
+			};
+		};
+
 		pwm_e_pins: pwm-e {
 			mux {
 				groups = "pwm_e";
