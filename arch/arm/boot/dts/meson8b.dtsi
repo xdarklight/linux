@@ -199,6 +199,11 @@
 	};
 };
 
+&ethmac {
+	clocks = <&clkc 36 /* TODO: CLKID_ETH */>;
+	clock-names = "stmmaceth";
+};
+
 &hwrng {
 	clocks = <&clkc 25 /* TODO: CLKID_RNG0*/>;
 	clock-names = "core";
