@@ -144,6 +144,20 @@
 				status = "disabled";
 			};
 
+			usb0_phy: phy@8800 {
+				compatible = "amlogic,meson-mx-usb2-phy";
+				#phy-cells = <0>;
+				reg = <0x8800 0x20>;
+				status = "disabled";
+			};
+
+			usb1_phy: phy@8820 {
+				compatible = "amlogic,meson-mx-usb2-phy";
+				#phy-cells = <0>;
+				reg = <0x8820 0x20>;
+				status = "disabled";
+			};
+
 			sdio: mmc@8c20 {
 				compatible = "amlogic,meson-mx-sdio";
 				reg = <0x8c20 0x20>;
@@ -203,6 +217,30 @@
 				#size-cells = <0>;
 				status = "disabled";
 			};
+		};
+
+		usb0: usb@c9040000 {
+			compatible = "snps,dwc2";
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0xc9040000 0x40000>;
+			interrupts = <0 30 1>;
+			phys = <&usb0_phy>;
+			phy-names = "usb2-phy";
+			dr_mode = "host";
+			status = "disabled";
+		};
+
+		usb1: usb@c90c0000 {
+			compatible = "snps,dwc2";
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0xc90c0000 0x40000>;
+			interrupts = <0 31 1>;
+			phys = <&usb1_phy>;
+			phy-names = "usb2-phy";
+			dr_mode = "host";
+			status = "disabled";
 		};
 
 		ethmac: ethernet@c9410000 {
