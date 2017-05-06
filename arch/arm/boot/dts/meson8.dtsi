@@ -117,6 +117,13 @@
 			};
 		};
 
+		ir_recv_pins: remote {
+			mux {
+				groups = "remote_input";
+				function = "remote";
+			};
+		};
+
 		pwm_f_ao_pins: pwm-f-ao {
 			mux {
 				groups = "pwm_f_ao";
@@ -155,13 +162,6 @@
 			mux {
 				groups = "nor_d", "nor_q", "nor_c", "nor_cs";
 				function = "nor";
-			};
-		};
-
-		ir_recv_pins: remote {
-			mux {
-				groups = "remote_input";
-				function = "remote";
 			};
 		};
 
