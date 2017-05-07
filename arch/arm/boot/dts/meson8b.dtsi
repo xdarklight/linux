@@ -162,6 +162,10 @@
 	};
 };
 
+&ahb_sram {
+	clocks = <&clkc 90 /* TODO: CLKID_AO_AHB_SRAM*/>;
+};
+
 &ethmac {
 	clocks = <&clkc CLKID_ETH>;
 	clock-names = "stmmaceth";
