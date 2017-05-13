@@ -15,6 +15,52 @@
 	compatible = "amlogic,meson8m2-clkc";
 };
 
+/* Meson8m2 uses slightly different voltages */
+&cpu_opp_table {
+	opp-96000000 {
+		opp-microvolt = <860000>;
+	};
+	opp-192000000 {
+		opp-microvolt = <860000>;
+	};
+	opp-312000000 {
+		opp-microvolt = <860000>;
+	};
+	opp-408000000 {
+		opp-microvolt = <860000>;
+	};
+	opp-504000000 {
+		opp-microvolt = <860000>;
+	};
+	opp-600000000 {
+		opp-microvolt = <860000>;
+	};
+	opp-720000000 {
+		opp-microvolt = <860000>;
+	};
+	opp-816000000 {
+		opp-microvolt = <880000>;
+	};
+	opp-1008000000 {
+		opp-microvolt = <930000>;
+	};
+	opp-1200000000 {
+		opp-microvolt = <980000>;
+	};
+	opp-1416000000 {
+		opp-microvolt = <1030000>;
+	};
+	opp-1608000000 {
+		opp-microvolt = <1100000>;
+	};
+	opp-1800000000 {
+		opp-microvolt = <1130000>;
+	};
+	opp-1992000000 {
+		opp-microvolt = <1140000>;
+	};
+};
+
 &saradc {
 	compatible = "amlogic,meson8m2-saradc", "amlogic,meson-saradc";
 };
