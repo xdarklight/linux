@@ -119,6 +119,8 @@ described below.
 		Usage: required
 		Value type: <string>
 		Definition: should be one of:
+			    "amlogic,meson8-smp"
+			    "amlogic,meson8b-smp"
 			    "arm,arm710t"
 			    "arm,arm720t"
 			    "arm,arm740t"
