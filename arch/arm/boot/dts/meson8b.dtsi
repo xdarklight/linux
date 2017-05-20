@@ -53,6 +53,7 @@
 	cpus {
 		#address-cells = <1>;
 		#size-cells = <0>;
+		enable-method = "amlogic,meson8b-smp";
 
 		cpu@200 {
 			device_type = "cpu";
@@ -190,7 +191,17 @@
 	};
 }; /* end of / */
 
+&ahb_sram {
+	compatible = "amlogic,meson8b-smp-sram", "amlogic,meson-mx-smp-sram";
+	reg = <0x1ff80 0x8>;
+};
+
 &aobus {
+	pmu: pmu@e0 {
+		compatible = "amlogic,meson8b-pmu", "syscon";
+		reg = <0xce0 0x18>;
+	};
+
 	pinctrl_aobus: pinctrl@84 {
 		compatible = "amlogic,meson8b-aobus-pinctrl";
 		reg = <0x84 0xc>;
