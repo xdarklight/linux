@@ -54,12 +54,14 @@
 	cpus {
 		#address-cells = <1>;
 		#size-cells = <0>;
+		enable-method = "amlogic,meson8-smp";
 
 		cpu@200 {
 			device_type = "cpu";
 			compatible = "arm,cortex-a9";
 			next-level-cache = <&L2>;
 			reg = <0x200>;
+			resets = <&clkc 0>;
 		};
 
 		cpu@201 {
@@ -67,6 +69,7 @@
 			compatible = "arm,cortex-a9";
 			next-level-cache = <&L2>;
 			reg = <0x201>;
+			resets = <&clkc 1>;
 		};
 
 		cpu@202 {
@@ -74,6 +77,7 @@
 			compatible = "arm,cortex-a9";
 			next-level-cache = <&L2>;
 			reg = <0x202>;
+			resets = <&clkc 2>;
 		};
 
 		cpu@203 {
@@ -81,6 +85,7 @@
 			compatible = "arm,cortex-a9";
 			next-level-cache = <&L2>;
 			reg = <0x203>;
+			resets = <&clkc 3>;
 		};
 	};
 
@@ -118,6 +123,11 @@
 }; /* end of / */
 
 &aobus {
+	pmu: pmu@e0 {
+		compatible = "amlogic,meson8-pmu", "syscon";
+		reg = <0xe0 0x8>;
+	};
+
 	pinctrl_aobus: pinctrl@84 {
 		compatible = "amlogic,meson8-aobus-pinctrl";
 		reg = <0x84 0xc>;
@@ -246,6 +256,13 @@
 				function = "pwm_e";
 			};
 		};
+	};
+};
+
+&ahb_sram {
+	smp-sram@1ff80 {
+		compatible = "amlogic,meson8-smp-sram";
+		reg = <0x1ff80 0x8>;
 	};
 };
 
