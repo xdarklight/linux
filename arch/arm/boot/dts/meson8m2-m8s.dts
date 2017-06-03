@@ -165,8 +165,82 @@
 	pinctrl-names = "default";
 };
 
+
 &mali {
 	mali-supply = <&vddee>;
+};
+
+&nfc {
+	/* TODO: status = "okay"; */
+
+	pinctrl-0 = <&nand_pins>, <&nand_ce0_pins>, <&nand_rb0_pins>;
+	pinctrl-names = "default";
+
+	nand@0 {
+		reg = <0>;
+
+		nand-on-flash-bbt;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@2 {
+				label = "2GiB";
+				reg = <0x0 0xffffffff>;
+				read-only;
+			};
+
+			partition@0 {
+				label = "nand_page0_cfg";
+				reg = <0x0 0x4000>;
+				read-only;
+			};
+
+			partition@4000 {
+				label = "u-boot";
+				reg = <0x4000 0x60000>;
+				read-only;
+			};
+
+			partition@400000 {
+				label = "u-boot-env";
+				reg = <0x400000 0x10000>;
+				read-only;
+			};
+
+			partition@1000000 {
+				label = "boot";
+				reg = <0x1000000 0x400000>;
+				read-only;
+			};
+
+			partition@1400000 {
+				label = "uboot_p1";
+				reg = <0x1400000 0x8000000>;
+				read-only;
+			};
+
+			partition@d000000 {
+				label = "cache";
+				reg = <0xd000000 0x19000000>;
+				read-only;
+			};
+
+			partition@33000000 {
+				label = "system";
+				reg = <0x33000000 0x1f000000>;
+				read-only;
+			};
+
+			partition@85000000 {
+				label = "data";
+				reg = <0x85000000 0xf6000000>;
+				read-only;
+			};
+		};
+	};
 };
 
 &saradc {
