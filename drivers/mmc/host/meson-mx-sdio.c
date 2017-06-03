@@ -99,13 +99,8 @@
 #define MESON_MX_SDIO_RESPONSE_CRC16_BITS			(16 - 1)
 #define MESON_MX_SDIO_MAX_SLOTS					3
 
-enum meson_mx_mmc_host_status {
-	MESON_MX_MMC_STATUS_IDLE,
-	MESON_MX_MMC_STATUS_BUSY,
-	MESON_MX_MMC_STATUS_SHUTTING_DOWN,
-};
-
 struct meson_mx_mmc_slot {
+	struct device			*dev;
 	struct mmc_host			*mmc;
 	struct meson_mx_mmc_host	*host;
 
@@ -131,14 +126,31 @@ struct meson_mx_mmc_host {
 	struct semaphore		mmc_serializer;
 	spinlock_t			irq_lock;
 
-	enum meson_mx_mmc_host_status	status;
 	struct timer_list		cmd_timeout;
 
-	struct device			*slot_devices[MESON_MX_SDIO_MAX_SLOTS];
 	struct meson_mx_mmc_slot	*slots[MESON_MX_SDIO_MAX_SLOTS];
 	struct meson_mx_mmc_slot	*current_cmd_slot;
 	struct meson_mx_mmc_slot	*sdio_irq_slot;
 };
+
+static void meson_mx_mmc_acquire_bus(struct meson_mx_mmc_slot *slot)
+{
+	if (slot->host->current_cmd_slot == slot)
+		return;
+
+	down(&slot->host->mmc_serializer);
+
+	slot->host->current_cmd_slot = slot;
+}
+
+static void meson_mx_mmc_release_bus(struct meson_mx_mmc_slot *slot)
+{
+	WARN_ON(slot->host->current_cmd_slot != slot);
+
+	slot->host->current_cmd_slot = NULL;
+
+	up(&slot->host->mmc_serializer);
+}
 
 static void meson_mx_mmc_mask_bits(struct mmc_host *mmc, char reg, u32 mask,
 				   u32 val)
@@ -168,47 +180,6 @@ static struct mmc_command *meson_mx_mmc_get_next_cmd(struct mmc_command *cmd)
 		return cmd->mrq->stop;
 	else
 		return NULL;
-}
-
-static void meson_mx_mmc_apply_ios(struct mmc_host *mmc, struct mmc_ios *ios)
-{
-	struct meson_mx_mmc_slot *slot = mmc_priv(mmc);
-	unsigned long clk_rate = ios->clock;
-	int ret;
-
-	switch (ios->bus_width) {
-	case MMC_BUS_WIDTH_1:
-		meson_mx_mmc_mask_bits(mmc, MESON_MX_SDIO_CONF,
-				       MESON_MX_SDIO_CONF_BUS_WIDTH, 0);
-		break;
-
-	case MMC_BUS_WIDTH_4:
-		meson_mx_mmc_mask_bits(mmc, MESON_MX_SDIO_CONF,
-				       MESON_MX_SDIO_CONF_BUS_WIDTH,
-				       MESON_MX_SDIO_CONF_BUS_WIDTH);
-		break;
-
-	case MMC_BUS_WIDTH_8:
-	default:
-		dev_err(mmc_dev(mmc), "unsupported bus width: %d\n",
-			ios->bus_width);
-		slot->error = -EINVAL;
-		return;
-	}
-
-	if (WARN_ON(clk_rate > mmc->f_max))
-		clk_rate = mmc->f_max;
-
-	ret = clk_set_rate(slot->host->cfg_div_clk, ios->clock);
-	if (ret) {
-		dev_warn(mmc_dev(mmc),
-				"failed to set MMC clock to %lu: %d\n",
-			clk_rate, ret);
-		slot->error = ret;
-		return;
-	}
-
-	mmc->actual_clock = clk_get_rate(slot->host->cfg_div_clk);
 }
 
 static void meson_mx_mmc_start_cmd(struct mmc_host *mmc,
@@ -275,7 +246,6 @@ static void meson_mx_mmc_start_cmd(struct mmc_host *mmc,
 	 * registers are shared across all slots).
 	 */
 	meson_mx_mmc_soft_reset(slot->host);
-	meson_mx_mmc_apply_ios(mmc, &mmc->ios);
 
 	mult = readl(slot->host->base + MESON_MX_SDIO_MULT);
 	mult &= ~MESON_MX_SDIO_MULT_PORT_SEL_MASK;
@@ -306,36 +276,87 @@ static void meson_mx_mmc_start_cmd(struct mmc_host *mmc,
 	mod_timer(&slot->host->cmd_timeout, jiffies + timeout);
 }
 
-static void meson_mx_mmc_set_idle(struct meson_mx_mmc_slot *slot)
+static void meson_mx_mmc_request_done(struct meson_mx_mmc_slot *slot)
 {
+	struct mmc_request *mrq;
+
+	mrq = slot->mrq;
+
 	slot->mrq = NULL;
 	slot->cmd = NULL;
 
-	slot->host->status = MESON_MX_MMC_STATUS_IDLE;
-	slot->host->current_cmd_slot = NULL;
+	meson_mx_mmc_release_bus(slot);
+
+	mmc_request_done(slot->mmc, mrq);
+}
+
+static void meson_mx_mmc_apply_ios(struct mmc_host *mmc, struct mmc_ios *ios)
+{
+	struct meson_mx_mmc_slot *slot = mmc_priv(mmc);
+	unsigned long clk_rate = ios->clock;
+
+	switch (ios->bus_width) {
+	case MMC_BUS_WIDTH_1:
+		meson_mx_mmc_mask_bits(mmc, MESON_MX_SDIO_CONF,
+				       MESON_MX_SDIO_CONF_BUS_WIDTH, 0);
+		break;
+
+	case MMC_BUS_WIDTH_4:
+		meson_mx_mmc_mask_bits(mmc, MESON_MX_SDIO_CONF,
+				       MESON_MX_SDIO_CONF_BUS_WIDTH,
+				       MESON_MX_SDIO_CONF_BUS_WIDTH);
+		break;
+
+	case MMC_BUS_WIDTH_8:
+	default:
+		dev_err(mmc_dev(mmc), "unsupported bus width: %d\n",
+			ios->bus_width);
+		slot->error = -EINVAL;
+		return;
+	}
+
+	if (WARN_ON(clk_rate > mmc->f_max))
+		clk_rate = mmc->f_max;
+
+	slot->error = clk_set_rate(slot->host->cfg_div_clk, ios->clock);
+	if (slot->error) {
+		dev_warn(mmc_dev(mmc),
+				"failed to set MMC clock to %lu: %d\n",
+				clk_rate, slot->error);
+		return;
+	}
 }
 
 static void meson_mx_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 {
 	struct meson_mx_mmc_slot *slot = mmc_priv(mmc);
+	unsigned short vdd = ios->vdd;
 
-	down(&slot->host->mmc_serializer);
+	meson_mx_mmc_acquire_bus(slot);
 
 	meson_mx_mmc_apply_ios(mmc, ios);
+	if (slot->error)
+		goto release_bus;
+
+	mmc->actual_clock = clk_get_rate(slot->host->cfg_div_clk);
 
 	switch (ios->power_mode) {
 	case MMC_POWER_OFF:
-		if (!IS_ERR(mmc->supply.vmmc))
-			mmc_regulator_set_ocr(mmc, mmc->supply.vmmc, 0);
-		break;
-
+		vdd = 0;
+		/* fall-through: */
 	case MMC_POWER_UP:
-		if (!IS_ERR(mmc->supply.vmmc))
-			mmc_regulator_set_ocr(mmc, mmc->supply.vmmc, ios->vdd);
+		if (!IS_ERR(mmc->supply.vmmc)) {
+			slot->error = mmc_regulator_set_ocr(mmc,
+							    mmc->supply.vmmc,
+							    vdd);
+			if (slot->error)
+				goto release_bus;
+		}
 		break;
 	}
 
-	up(&slot->host->mmc_serializer);
+release_bus:
+	meson_mx_mmc_release_bus(slot);
 }
 
 static void meson_mx_mmc_enable_sdio_irq(struct mmc_host *mmc, int enable)
@@ -409,12 +430,12 @@ static void meson_mx_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 		return;
 	}
 
-	down(&host->mmc_serializer);
-
-	host->status = MESON_MX_MMC_STATUS_BUSY;
-	host->current_cmd_slot = slot;
-
 	slot->mrq = mrq;
+
+	meson_mx_mmc_acquire_bus(slot);
+
+	/* re-apply the IOS if another slot was active in the meantime */
+	meson_mx_mmc_apply_ios(mmc, &mmc->ios);
 
 	if (mrq->data)
 		writel(sg_dma_address(mrq->data->sg),
@@ -424,8 +445,6 @@ static void meson_mx_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 		meson_mx_mmc_start_cmd(mmc, mrq->sbc);
 	else
 		meson_mx_mmc_start_cmd(mmc, mrq->cmd);
-
-	up(&host->mmc_serializer);
 }
 
 static void meson_mx_mmc_read_response(struct mmc_host *mmc,
@@ -499,9 +518,8 @@ static irqreturn_t meson_mx_mmc_irq(int irq, void *data)
 {
 	struct meson_mx_mmc_host *host = (void *) data;
 	struct meson_mx_mmc_slot *cmd_slot, *sdio_irq_slot;
-	bool sdio_irq, cmd_irq;
 	u32 irqs, send;
-	irqreturn_t ret;
+	irqreturn_t ret = IRQ_HANDLED;
 
 	spin_lock(&host->irq_lock);
 
@@ -511,22 +529,18 @@ static irqreturn_t meson_mx_mmc_irq(int irq, void *data)
 	cmd_slot = host->current_cmd_slot;
 	sdio_irq_slot = host->sdio_irq_slot;
 
-	sdio_irq = !!(irqs & MESON_MX_SDIO_IRQS_IF_INT);
-	cmd_irq = !!(irqs & MESON_MX_SDIO_IRQS_CMD_INT);
-
-	if (cmd_irq) {
+	if (irqs & MESON_MX_SDIO_IRQS_CMD_INT) {
 		del_timer(&host->cmd_timeout);
 
 		ret = meson_mx_mmc_process_cmd_irq(cmd_slot, irqs, send);
-	} else
-		ret = IRQ_HANDLED;
+	}
 
 	/* and finally ACK all pending interrupts */
 	writel(irqs, host->base + MESON_MX_SDIO_IRQS);
 
 	spin_unlock(&host->irq_lock);
 
-	if (sdio_irq)
+	if (irqs & MESON_MX_SDIO_IRQS_IF_INT)
 		meson_mx_mmc_process_sdio_irq(sdio_irq_slot);
 
 	return ret;
@@ -537,15 +551,10 @@ static irqreturn_t meson_mx_mmc_irq_thread(int irq, void *irq_data)
 	struct meson_mx_mmc_host *host = (void *) irq_data;
 	struct meson_mx_mmc_slot *slot;
 	struct mmc_command *cmd, *next_cmd;
-	struct mmc_request *finished_mrq;
-
-	down(&host->mmc_serializer);
 
 	slot = host->current_cmd_slot;
-	if (WARN_ON(!slot)) {
-		up(&host->mmc_serializer);
+	if (WARN_ON(!slot))
 		return IRQ_HANDLED;
-	}
 
 	cmd = slot->cmd;
 
@@ -558,22 +567,10 @@ static irqreturn_t meson_mx_mmc_irq_thread(int irq, void *irq_data)
 	}
 
 	next_cmd = meson_mx_mmc_get_next_cmd(cmd);
-	if (next_cmd) {
+	if (next_cmd)
 		meson_mx_mmc_start_cmd(slot->mmc, next_cmd);
-
-		/* not all commands from the request are processed yet */
-		finished_mrq = NULL;
-	} else {
-		/* all commands from the request are done -> start cleanup */
-		finished_mrq = slot->mrq;
-
-		meson_mx_mmc_set_idle(slot);
-	}
-
-	up(&host->mmc_serializer);
-
-	if (finished_mrq)
-		mmc_request_done(slot->mmc, finished_mrq);
+	else
+		meson_mx_mmc_request_done(slot);
 
 	return IRQ_HANDLED;
 }
@@ -582,23 +579,8 @@ static void meson_mx_mmc_timeout(unsigned long arg)
 {
 	struct meson_mx_mmc_host *host = (void *) arg;
 	struct meson_mx_mmc_slot *slot;
-	struct mmc_request *mrq;
 	unsigned long irqflags;
 	u32 irqc;
-
-	down(&host->mmc_serializer);
-
-	/* Do not run after meson_mx_mmc_remove() */
-	if (host->status == MESON_MX_MMC_STATUS_SHUTTING_DOWN) {
-		up(&host->mmc_serializer);
-		return;
-	}
-
-	/* request was completed in the meantime */
-	if (host->status == MESON_MX_MMC_STATUS_IDLE) {
-		up(&host->mmc_serializer);
-		return;
-	}
 
 	spin_lock_irqsave(&host->irq_lock, irqflags);
 
@@ -610,24 +592,17 @@ static void meson_mx_mmc_timeout(unsigned long arg)
 	spin_unlock_irqrestore(&host->irq_lock, irqflags);
 
 	slot = host->current_cmd_slot;
-	if (WARN_ON(!slot)) {
-		up(&host->mmc_serializer);
+	if (WARN_ON(!slot))
 		return;
-	}
 
 	dev_dbg(mmc_dev(slot->mmc),
 		"Timeout on CMD%u (IRQS = 0x%08x, ARGU = 0x%08x)\n",
 		slot->cmd->opcode, readl(host->base + MESON_MX_SDIO_IRQS),
 		readl(host->base + MESON_MX_SDIO_ARGU));
 
-	mrq = slot->mrq;
 	slot->cmd->error = -ETIMEDOUT;
 
-	meson_mx_mmc_set_idle(slot);
-
-	up(&host->mmc_serializer);
-
-	mmc_request_done(slot->mmc, mrq);
+	meson_mx_mmc_request_done(slot);
 }
 
 static struct mmc_host_ops meson_mx_mmc_ops = {
@@ -661,12 +636,12 @@ static int meson_mx_mmc_slot_probe(struct device *slot_dev,
 		return -ENOMEM;
 
 	slot = mmc_priv(mmc);
+	slot->dev = slot_dev;
 	slot->mmc = mmc;
 	slot->id = id;
 	slot->host = host;
 
 	host->slots[id] = slot;
-	host->slot_devices[id] = slot_dev;
 
 	/* Get regulators and the supported OCR mask */
 	ret = mmc_regulator_get_supply(mmc);
@@ -864,23 +839,15 @@ static int meson_mx_mmc_remove(struct platform_device *pdev)
 
 	del_timer_sync(&host->cmd_timeout);
 
-	host->status = MESON_MX_MMC_STATUS_SHUTTING_DOWN;
-
 	for (i = 0; i < MESON_MX_SDIO_MAX_SLOTS; i++) {
 		slot = host->slots[i];
 
-		if (!slot->mmc)
+		if (!slot)
 			continue;
 
 		mmc_remove_host(slot->mmc);
 		mmc_free_host(slot->mmc);
-	}
-
-	for (i = 0; i < MESON_MX_SDIO_MAX_SLOTS; i++) {
-		if (!host->slot_devices[i])
-			continue;
-
-		of_platform_device_destroy(host->slot_devices[i], NULL);
+		of_platform_device_destroy(slot->dev, NULL);
 	}
 
 	clk_disable_unprepare(host->cfg_div_clk);
