@@ -910,6 +910,15 @@ static const struct meson_sar_adc_data meson_sar_adc_meson8b_data = {
 	.name = "meson-meson8b-saradc",
 };
 
+static const struct meson_sar_adc_data meson_sar_adc_meson8m2_data = {
+	.has_bl30_integration = false,
+	.clock_rate = 1150000,
+	.bandgap_reg = MESON_SAR_ADC_DELTA_10,
+	.regmap_config = &meson_sar_adc_regmap_config_meson8,
+	.resolution = 10,
+	.name = "meson-meson8m2-saradc",
+};
+
 static const struct meson_sar_adc_data meson_sar_adc_gxbb_data = {
 	.has_bl30_integration = true,
 	.clock_rate = 1200000,
@@ -945,6 +954,10 @@ static const struct of_device_id meson_sar_adc_of_match[] = {
 	{
 		.compatible = "amlogic,meson8b-saradc",
 		.data = &meson_sar_adc_meson8b_data,
+	},
+	{
+		.compatible = "amlogic,meson8m2-saradc",
+		.data = &meson_sar_adc_meson8m2_data,
 	},
 	{
 		.compatible = "amlogic,meson-gxbb-saradc",
