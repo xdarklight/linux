@@ -123,34 +123,12 @@ struct meson_mx_mmc_host {
 
 	void __iomem			*base;
 	int				irq;
-	struct semaphore		mmc_serializer;
 	spinlock_t			irq_lock;
 
 	struct timer_list		cmd_timeout;
 
-	struct meson_mx_mmc_slot	*slots[MESON_MX_SDIO_MAX_SLOTS];
-	struct meson_mx_mmc_slot	*current_cmd_slot;
-	struct meson_mx_mmc_slot	*sdio_irq_slot;
+	struct meson_mx_mmc_slot	*slot;
 };
-
-static void meson_mx_mmc_acquire_bus(struct meson_mx_mmc_slot *slot)
-{
-	if (slot->host->current_cmd_slot == slot)
-		return;
-
-	down(&slot->host->mmc_serializer);
-
-	slot->host->current_cmd_slot = slot;
-}
-
-static void meson_mx_mmc_release_bus(struct meson_mx_mmc_slot *slot)
-{
-	WARN_ON(slot->host->current_cmd_slot != slot);
-
-	slot->host->current_cmd_slot = NULL;
-
-	up(&slot->host->mmc_serializer);
-}
 
 static void meson_mx_mmc_mask_bits(struct mmc_host *mmc, char reg, u32 mask,
 				   u32 val)
@@ -285,14 +263,13 @@ static void meson_mx_mmc_request_done(struct meson_mx_mmc_slot *slot)
 	slot->mrq = NULL;
 	slot->cmd = NULL;
 
-	meson_mx_mmc_release_bus(slot);
-
 	mmc_request_done(slot->mmc, mrq);
 }
 
-static void meson_mx_mmc_apply_ios(struct mmc_host *mmc, struct mmc_ios *ios)
+static void meson_mx_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 {
 	struct meson_mx_mmc_slot *slot = mmc_priv(mmc);
+	unsigned short vdd = ios->vdd;
 	unsigned long clk_rate = ios->clock;
 
 	switch (ios->bus_width) {
@@ -315,9 +292,6 @@ static void meson_mx_mmc_apply_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		return;
 	}
 
-	if (WARN_ON(clk_rate > mmc->f_max))
-		clk_rate = mmc->f_max;
-
 	slot->error = clk_set_rate(slot->host->cfg_div_clk, ios->clock);
 	if (slot->error) {
 		dev_warn(mmc_dev(mmc),
@@ -325,18 +299,6 @@ static void meson_mx_mmc_apply_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 				clk_rate, slot->error);
 		return;
 	}
-}
-
-static void meson_mx_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
-{
-	struct meson_mx_mmc_slot *slot = mmc_priv(mmc);
-	unsigned short vdd = ios->vdd;
-
-	meson_mx_mmc_acquire_bus(slot);
-
-	meson_mx_mmc_apply_ios(mmc, ios);
-	if (slot->error)
-		goto release_bus;
 
 	mmc->actual_clock = clk_get_rate(slot->host->cfg_div_clk);
 
@@ -350,42 +312,10 @@ static void meson_mx_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 							    mmc->supply.vmmc,
 							    vdd);
 			if (slot->error)
-				goto release_bus;
+				return;
 		}
 		break;
 	}
-
-release_bus:
-	meson_mx_mmc_release_bus(slot);
-}
-
-static void meson_mx_mmc_enable_sdio_irq(struct mmc_host *mmc, int enable)
-{
-	struct meson_mx_mmc_slot *slot = mmc_priv(mmc);
-	unsigned long irqflags;
-
-	spin_lock_irqsave(&slot->host->irq_lock, irqflags);
-
-	meson_mx_mmc_mask_bits(mmc, MESON_MX_SDIO_MULT,
-			       MESON_MX_SDIO_MULT_PORT_SEL_MASK,
-			       FIELD_PREP(MESON_MX_SDIO_MULT_PORT_SEL_MASK,
-					  slot->id));
-
-	/* ACK pending interrupt */
-	meson_mx_mmc_mask_bits(mmc, MESON_MX_SDIO_IRQS,
-			       MESON_MX_SDIO_IRQS_IF_INT,
-			       MESON_MX_SDIO_IRQS_IF_INT);
-
-	meson_mx_mmc_mask_bits(mmc, MESON_MX_SDIO_IRQC,
-			       MESON_MX_SDIO_IRQC_ARC_IF_INT_EN,
-			       enable ? MESON_MX_SDIO_IRQC_ARC_IF_INT_EN : 0);
-
-	if (enable)
-		slot->host->sdio_irq_slot = slot;
-	else
-		slot->host->sdio_irq_slot = NULL;
-
-	spin_unlock_irqrestore(&slot->host->irq_lock, irqflags);
 }
 
 static int meson_mx_mmc_map_dma(struct mmc_host *mmc, struct mmc_request *mrq)
@@ -431,11 +361,6 @@ static void meson_mx_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	}
 
 	slot->mrq = mrq;
-
-	meson_mx_mmc_acquire_bus(slot);
-
-	/* re-apply the IOS if another slot was active in the meantime */
-	meson_mx_mmc_apply_ios(mmc, &mmc->ios);
 
 	if (mrq->data)
 		writel(sg_dma_address(mrq->data->sg),
@@ -501,23 +426,9 @@ static irqreturn_t meson_mx_mmc_process_cmd_irq(struct meson_mx_mmc_slot *slot,
 	return IRQ_WAKE_THREAD;
 }
 
-static void meson_mx_mmc_process_sdio_irq(struct meson_mx_mmc_slot *slot)
-{
-	/*
-	 * ignore SDIO interrupts without corresponding slot as the SDIO
-	 * interrupt seems to enable itself automatically - in this case we
-	 * didn't assign a slot for this IRQ so we simply ignore it.
-	 */
-	if (!slot)
-		return;
-
-	mmc_signal_sdio_irq(slot->mmc);
-}
-
 static irqreturn_t meson_mx_mmc_irq(int irq, void *data)
 {
 	struct meson_mx_mmc_host *host = (void *) data;
-	struct meson_mx_mmc_slot *cmd_slot, *sdio_irq_slot;
 	u32 irqs, send;
 	irqreturn_t ret = IRQ_HANDLED;
 
@@ -526,13 +437,10 @@ static irqreturn_t meson_mx_mmc_irq(int irq, void *data)
 	irqs = readl(host->base + MESON_MX_SDIO_IRQS);
 	send = readl(host->base + MESON_MX_SDIO_SEND);
 
-	cmd_slot = host->current_cmd_slot;
-	sdio_irq_slot = host->sdio_irq_slot;
-
 	if (irqs & MESON_MX_SDIO_IRQS_CMD_INT) {
 		del_timer(&host->cmd_timeout);
 
-		ret = meson_mx_mmc_process_cmd_irq(cmd_slot, irqs, send);
+		ret = meson_mx_mmc_process_cmd_irq(host->slot, irqs, send);
 	}
 
 	/* and finally ACK all pending interrupts */
@@ -540,23 +448,18 @@ static irqreturn_t meson_mx_mmc_irq(int irq, void *data)
 
 	spin_unlock(&host->irq_lock);
 
-	if (irqs & MESON_MX_SDIO_IRQS_IF_INT)
-		meson_mx_mmc_process_sdio_irq(sdio_irq_slot);
-
 	return ret;
 }
 
 static irqreturn_t meson_mx_mmc_irq_thread(int irq, void *irq_data)
 {
 	struct meson_mx_mmc_host *host = (void *) irq_data;
-	struct meson_mx_mmc_slot *slot;
+	struct meson_mx_mmc_slot *slot = host->slot;
 	struct mmc_command *cmd, *next_cmd;
 
-	slot = host->current_cmd_slot;
-	if (WARN_ON(!slot))
-		return IRQ_HANDLED;
-
 	cmd = slot->cmd;
+	if (WARN_ON(!cmd))
+		return IRQ_HANDLED;
 
 	if (cmd->data) {
 		dma_unmap_sg(mmc_dev(slot->mmc), cmd->data->sg,
@@ -591,24 +494,19 @@ static void meson_mx_mmc_timeout(unsigned long arg)
 
 	spin_unlock_irqrestore(&host->irq_lock, irqflags);
 
-	slot = host->current_cmd_slot;
-	if (WARN_ON(!slot))
-		return;
-
-	dev_dbg(mmc_dev(slot->mmc),
+	dev_dbg(mmc_dev(host->slot->mmc),
 		"Timeout on CMD%u (IRQS = 0x%08x, ARGU = 0x%08x)\n",
 		slot->cmd->opcode, readl(host->base + MESON_MX_SDIO_IRQS),
 		readl(host->base + MESON_MX_SDIO_ARGU));
 
-	slot->cmd->error = -ETIMEDOUT;
+	host->slot->cmd->error = -ETIMEDOUT;
 
-	meson_mx_mmc_request_done(slot);
+	meson_mx_mmc_request_done(host->slot);
 }
 
 static struct mmc_host_ops meson_mx_mmc_ops = {
 	.request		= meson_mx_mmc_request,
 	.set_ios		= meson_mx_mmc_set_ios,
-	.enable_sdio_irq	= meson_mx_mmc_enable_sdio_irq,
 	.get_cd			= mmc_gpio_get_cd,
 	.get_ro			= mmc_gpio_get_ro,
 };
@@ -641,7 +539,7 @@ static int meson_mx_mmc_slot_probe(struct device *slot_dev,
 	slot->id = id;
 	slot->host = host;
 
-	host->slots[id] = slot;
+	host->slot = slot;
 
 	/* Get regulators and the supported OCR mask */
 	ret = mmc_regulator_get_supply(mmc);
@@ -663,6 +561,10 @@ static int meson_mx_mmc_slot_probe(struct device *slot_dev,
 	mmc->f_max = clk_round_rate(host->cfg_div_clk,
 				    clk_get_rate(host->parent_clk));
 
+	/*
+	 * TODO: find a suitable mmc->max_busy_timeout and set
+	 * MMC_CAP_WAIT_WHILE_BUSY.
+	 */
 	mmc->caps |= MMC_CAP_CMD23;
 	mmc->ops = &meson_mx_mmc_ops;
 
@@ -690,6 +592,16 @@ static int meson_mx_mmc_probe_slots(struct meson_mx_mmc_host *host)
 	for_each_child_of_node(host->dev->of_node, slot_node) {
 		if (!of_device_is_compatible(slot_node, "mmc-slot"))
 			continue;
+
+		/*
+		 * TODO: the MMC core framework currently does not support
+		 * controllers with multiple slots properly.
+		 */
+		if (host->slot) {
+			dev_warn(host->dev,
+				 "skipping slot other than the first\n");
+			continue;
+		}
 
 		slot_pdev = of_platform_device_create(slot_node, NULL,
 						      host->dev);
@@ -758,7 +670,6 @@ static int meson_mx_mmc_probe(struct platform_device *pdev)
 	if (!host)
 		return -ENOMEM;
 
-	sema_init(&host->mmc_serializer, 1);
 	spin_lock_init(&host->irq_lock);
 	setup_timer(&host->cmd_timeout, meson_mx_mmc_timeout,
 		    (unsigned long)host);
@@ -834,17 +745,11 @@ error_out:
 static int meson_mx_mmc_remove(struct platform_device *pdev)
 {
 	struct meson_mx_mmc_host *host = platform_get_drvdata(pdev);
-	struct meson_mx_mmc_slot *slot;
-	int i;
+	struct meson_mx_mmc_slot *slot = host->slot;
 
 	del_timer_sync(&host->cmd_timeout);
 
-	for (i = 0; i < MESON_MX_SDIO_MAX_SLOTS; i++) {
-		slot = host->slots[i];
-
-		if (!slot)
-			continue;
-
+	if (slot) {
 		mmc_remove_host(slot->mmc);
 		mmc_free_host(slot->mmc);
 		of_platform_device_destroy(slot->dev, NULL);
@@ -876,4 +781,5 @@ module_platform_driver(meson_mx_mmc_driver);
 
 MODULE_DESCRIPTION("Meson6, Meson8 and Meson8b SDIO/MMC Host Driver");
 MODULE_AUTHOR("Carlo Caione <carlo@endlessm.com>");
+MODULE_AUTHOR("Martin Blumenstingl <martin.blumenstingl@googlemail.com>");
 MODULE_LICENSE("GPL v2");
