@@ -28,7 +28,14 @@
 #include <net/bluetooth/bluetooth.h>
 #include <net/bluetooth/hci_core.h>
 
+#include <linux/gpio/consumer.h>
+#include <linux/module.h>
+#include <linux/of.h>
+#include <linux/of_device.h>
+#include <linux/serdev.h>
+
 #include "hci_uart.h"
+#include "btrtl.h"
 
 #define HCI_3WIRE_ACK_PKT	0
 #define HCI_3WIRE_LINK_PKT	15
@@ -96,6 +103,12 @@ struct h5 {
 	} sleep;
 };
 
+struct h5_device {
+	struct hci_uart hu;
+	struct gpio_desc *disable_gpio;
+	int (*vendor_setup)(struct h5_device *h5_dev);
+};
+
 static void h5_reset_rx(struct h5 *h5);
 
 static void h5_link_control(struct hci_uart *hu, const void *data, size_t len)
@@ -129,7 +142,7 @@ static void h5_timed_event(unsigned long arg)
 	struct sk_buff *skb;
 	unsigned long flags;
 
-	BT_DBG("%s", hu->hdev->name);
+	BT_DBG("%p timeout", hu);
 
 	if (h5->state == H5_UNINITIALIZED)
 		h5_link_control(hu, sync_req, sizeof(sync_req));
@@ -189,6 +202,7 @@ static int h5_open(struct hci_uart *hu)
 {
 	struct h5 *h5;
 	const unsigned char sync[] = { 0x01, 0x7e };
+	int err;
 
 	BT_DBG("hu %p", hu);
 
@@ -208,11 +222,36 @@ static int h5_open(struct hci_uart *hu)
 
 	h5->tx_win = H5_TX_WIN_MAX;
 
+	if (hu->serdev) {
+		err = serdev_device_open(hu->serdev);
+		if (err) {
+			printk("%s: failed to open serdev: %d\n", __func__, err);
+			return err;
+		}
+	}
+
 	set_bit(HCI_UART_INIT_PENDING, &hu->hdev_flags);
 
 	/* Send initial sync request */
 	h5_link_control(hu, sync, sizeof(sync));
 	mod_timer(&h5->timer, jiffies + H5_SYNC_TIMEOUT);
+
+	return 0;
+}
+
+static int h5_setup(struct hci_uart *hu)
+{
+	int err;
+	struct h5_device *h5_dev;
+
+	if (!hu->serdev)
+		return 0;
+
+	h5_dev = serdev_device_get_drvdata(hu->serdev);
+
+	err = h5_dev->vendor_setup(h5_dev);
+	if (err)
+		return err;
 
 	return 0;
 }
@@ -226,6 +265,15 @@ static int h5_close(struct hci_uart *hu)
 	skb_queue_purge(&h5->unack);
 	skb_queue_purge(&h5->rel);
 	skb_queue_purge(&h5->unrel);
+
+	if (hu->serdev) {
+		struct h5_device *h5_dev;
+
+		h5_dev = serdev_device_get_drvdata(hu->serdev);
+		gpiod_set_value_cansleep(h5_dev->disable_gpio, 1);
+
+		serdev_device_close(hu->serdev);
+	}
 
 	kfree(h5);
 
@@ -513,6 +561,8 @@ static int h5_recv(struct hci_uart *hu, const void *data, int count)
 	BT_DBG("%s pending %zu count %d", hu->hdev->name, h5->rx_pending,
 	       count);
 
+	//print_hex_dump(KERN_INFO, "h5_recv: ", DUMP_PREFIX_NONE, 32, 1, data, count, false);
+
 	while (count > 0) {
 		int processed;
 
@@ -667,6 +717,8 @@ static struct sk_buff *h5_prepare_pkt(struct hci_uart *hu, u8 pkt_type,
 
 	h5_slip_delim(nskb);
 
+	//print_hex_dump(KERN_INFO, "h5_prepare_pkt: ", DUMP_PREFIX_NONE, 32, 1, nskb->data, nskb->len, false);
+
 	return nskb;
 }
 
@@ -737,10 +789,107 @@ static int h5_flush(struct hci_uart *hu)
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_SERIAL_DEV_BUS)
+static int h5_setup_realtek(struct h5_device *h5_dev)
+{
+	struct hci_uart *hu = &h5_dev->hu;
+	int err, retry = 3;
+
+	/*
+	 * TODO: on realtek devices flow control is optional. whether it is
+	 * required or not is encoded in the "config" firmware (which we are
+	 * not parsing yet).
+	 */
+	serdev_device_set_flow_control(hu->serdev, true);
+
+	do {
+		/* Configure BT_DISn to LOW state */
+		gpiod_set_value_cansleep(h5_dev->disable_gpio, 1);
+		msleep(200);
+		gpiod_set_value_cansleep(h5_dev->disable_gpio, 0);
+		msleep(500);
+
+		err = btrtl_setup_realtek(hu->hdev);
+		if (!err)
+			break;
+
+		/* Toggle BT_DISn and retry */
+	} while (retry--);
+
+	if (err)
+		return err;
+
+	return 0;
+}
+
+static const struct hci_uart_proto h5p;
+
+static int hci_h5_probe(struct serdev_device *serdev)
+{
+	struct hci_uart *hu;
+	struct h5_device *h5_dev;
+	u32 max_speed = 4000000;
+
+	h5_dev = devm_kzalloc(&serdev->dev, sizeof(*h5_dev), GFP_KERNEL);
+	if (!h5_dev)
+		return -ENOMEM;
+
+	hu = &h5_dev->hu;
+	hu->serdev = serdev;
+
+	serdev_device_set_drvdata(serdev, h5_dev);
+
+	h5_dev->vendor_setup = of_device_get_match_data(&serdev->dev);
+
+	h5_dev->disable_gpio = devm_gpiod_get_optional(&serdev->dev,
+							 "disable",
+							 GPIOD_OUT_LOW);
+	if (IS_ERR(h5_dev->disable_gpio))
+		return PTR_ERR(h5_dev->disable_gpio);
+
+	of_property_read_u32(serdev->dev.of_node, "max-speed", &max_speed);
+	hci_uart_set_speeds(hu, 115200, max_speed);
+
+	return hci_uart_register_device(hu, &h5p);
+}
+
+static void hci_h5_remove(struct serdev_device *serdev)
+{
+	struct h5_device *h5_dev = serdev_device_get_drvdata(serdev);
+	struct hci_uart *hu = &h5_dev->hu;
+	struct hci_dev *hdev = hu->hdev;
+
+	cancel_work_sync(&hu->write_work);
+
+	hci_unregister_dev(hdev);
+	hci_free_dev(hdev);
+	hu->proto->close(hu);
+}
+
+static const struct of_device_id hci_h5_of_match[] = {
+	{
+		.compatible = "realtek,rtl8723bs-bluetooth",
+		.data = h5_setup_realtek
+	},
+	{},
+};
+MODULE_DEVICE_TABLE(of, hci_h5_of_match);
+
+static struct serdev_device_driver hci_h5_drv = {
+	.driver		= {
+		.name	= "hci-h5",
+		.of_match_table = of_match_ptr(hci_h5_of_match),
+	},
+	.probe	= hci_h5_probe,
+	.remove	= hci_h5_remove,
+};
+#endif
+
 static const struct hci_uart_proto h5p = {
 	.id		= HCI_UART_3WIRE,
 	.name		= "Three-wire (H5)",
 	.open		= h5_open,
+	.setup		= h5_setup,
 	.close		= h5_close,
 	.recv		= h5_recv,
 	.enqueue	= h5_enqueue,
@@ -750,10 +899,14 @@ static const struct hci_uart_proto h5p = {
 
 int __init h5_init(void)
 {
+	serdev_device_driver_register(&hci_h5_drv);
+
 	return hci_uart_register_proto(&h5p);
 }
 
 int __exit h5_deinit(void)
 {
+	serdev_device_driver_unregister(&hci_h5_drv);
+
 	return hci_uart_unregister_proto(&h5p);
 }
