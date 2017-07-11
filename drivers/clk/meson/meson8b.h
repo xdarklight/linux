@@ -37,6 +37,9 @@
 #define HHI_GCLK_AO			0x154 /* 0x55 offset in data sheet */
 #define HHI_SYS_CPU_CLK_CNTL1		0x15c /* 0x57 offset in data sheet */
 #define HHI_MPEG_CLK_CNTL		0x174 /* 0x5d offset in data sheet */
+#define HHI_VID_CLK_CNTL		0x17c /* 0x5f offset in data sheet */
+#define HHI_VID_DIVIDER_CNTL		0x198 /* 0x66 offset in data sheet */
+#define HHI_SYS_CPU_CLK_CNTL0		0x19c /* 0x67 offset in data sheet */
 #define HHI_MPLL_CNTL			0x280 /* 0xa0 offset in data sheet */
 #define HHI_SYS_PLL_CNTL		0x300 /* 0xc0 offset in data sheet */
 #define HHI_VID_PLL_CNTL		0x320 /* 0xc8 offset in data sheet */
@@ -163,7 +166,27 @@
 
 #define CLK_NR_CLKS		96
 
-/* include the CLKIDs that have been made part of the stable DT binding */
+#define RESETID_L2_CACHE_SOFT_RESET				0
+#define RESETID_AXI_64_TO_128_BRIDGE_A5_SOFT_RESET		1
+#define RESETID_SCU_SOFT_RESET					2
+#define RESETID_CPU0_SOFT_RESET					3
+#define RESETID_CPU1_SOFT_RESET					4
+#define RESETID_CPU2_SOFT_RESET					5
+#define RESETID_CPU3_SOFT_RESET					6
+#define RESETID_A5_GLOBAL_RESET					7
+#define RESETID_A5_AXI_SOFT_RESET				8
+#define RESETID_A5_ABP_SOFT_RESET				9
+#define RESETID_AXI_64_TO_128_BRIDGE_MMC_SOFT_RESET		10
+#define RESETID_VID_CLK_CNTL_SOFT_RESET				11
+#define RESETID_VID_DIVIDER_CNTL_SOFT_RESET_POST		12
+#define RESETID_VID_DIVIDER_CNTL_SOFT_RESET_PRE			13
+#define RESETID_VID_DIVIDER_CNTL_RESET_N_POST			14
+#define RESETID_VID_DIVIDER_CNTL_RESET_N_PRE			15
+
+/*
+ * include the CLKID and RESETID that have
+ * been made part of the stable DT binding
+ */
 #include <dt-bindings/clock/meson8b-clkc.h>
 
 #endif /* __MESON8B_H */
