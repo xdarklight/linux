@@ -25,12 +25,21 @@
 #include <linux/clk-provider.h>
 #include <linux/of_address.h>
 #include <linux/platform_device.h>
+#include <linux/reset-controller.h>
+#include <linux/slab.h>
 #include <linux/init.h>
 
 #include "clkc.h"
 #include "meson8b.h"
 
 static DEFINE_SPINLOCK(clk_lock);
+
+static void __iomem *clk_base;
+
+struct meson8b_clk_reset {
+	struct reset_controller_dev reset;
+	void __iomem *base;
+};
 
 static const struct pll_rate_table sys_pll_rate_table[] = {
 	PLL_RATE(312000000, 52, 1, 2),
@@ -690,20 +699,64 @@ static struct clk_divider *const meson8b_clk_dividers[] = {
 	&meson8b_mpeg_clk_div,
 };
 
+static const unsigned char meson8b_clk_reset_bits[] = {
+	[0]	= 24, /* CPU0 soft reset */
+	[1]	= 25, /* CPU1 soft reset */
+	[2]	= 26, /* CPU2 soft reset */
+	[3]	= 27, /* CPU3 soft reset */
+};
+
+static int meson8b_clk_reset_update(struct reset_controller_dev *rcdev,
+				    unsigned long id, bool assert)
+{
+	struct meson8b_clk_reset *meson8b_clk_reset =
+		container_of(rcdev, struct meson8b_clk_reset, reset);
+	unsigned long flags;
+	u32 val;
+
+	if (id >= ARRAY_SIZE(meson8b_clk_reset_bits))
+		return -EINVAL;
+
+	spin_lock_irqsave(&clk_lock, flags);
+
+	val = readl(meson8b_clk_reset->base + HHI_SYS_CPU_CLK_CNTL0);
+	if (assert)
+		val |= BIT(meson8b_clk_reset_bits[id]);
+	else
+		val &= ~BIT(meson8b_clk_reset_bits[id]);
+	writel(val, meson8b_clk_reset->base + HHI_SYS_CPU_CLK_CNTL0);
+
+	spin_unlock_irqrestore(&clk_lock, flags);
+
+	return 0;
+}
+
+static int meson8b_clk_reset_assert(struct reset_controller_dev *rcdev,
+				     unsigned long id)
+{
+	return meson8b_clk_reset_update(rcdev, id, true);
+}
+
+static int meson8b_clk_reset_deassert(struct reset_controller_dev *rcdev,
+				       unsigned long id)
+{
+	return meson8b_clk_reset_update(rcdev, id, false);
+}
+
+static const struct reset_control_ops meson8b_clk_reset_ops = {
+	.assert = meson8b_clk_reset_assert,
+	.deassert = meson8b_clk_reset_deassert,
+};
+
 static int meson8b_clkc_probe(struct platform_device *pdev)
 {
-	void __iomem *clk_base;
 	int ret, clkid, i;
 	struct clk_hw *parent_hw;
 	struct clk *parent_clk;
 	struct device *dev = &pdev->dev;
 
-	/*  Generic clocks and PLLs */
-	clk_base = of_iomap(dev->of_node, 1);
-	if (!clk_base) {
-		pr_err("%s: Unable to map clk base\n", __func__);
+	if (!clk_base)
 		return -ENXIO;
-	}
 
 	/* Populate base address for PLLs */
 	for (i = 0; i < ARRAY_SIZE(meson8b_clk_plls); i++)
@@ -743,7 +796,7 @@ static int meson8b_clkc_probe(struct platform_device *pdev)
 		/* FIXME convert to devm_clk_register */
 		ret = devm_clk_hw_register(dev, meson8b_hw_onecell_data.hws[clkid]);
 		if (ret)
-			goto iounmap;
+			return ret;
 	}
 
 	/*
@@ -766,15 +819,11 @@ static int meson8b_clkc_probe(struct platform_device *pdev)
 	if (ret) {
 		pr_err("%s: failed to register clock notifier for cpu_clk\n",
 				__func__);
-		goto iounmap;
+		return ret;
 	}
 
 	return of_clk_add_hw_provider(dev->of_node, of_clk_hw_onecell_get,
 			&meson8b_hw_onecell_data);
-
-iounmap:
-	iounmap(clk_base);
-	return ret;
 }
 
 static const struct of_device_id meson8b_clkc_match_table[] = {
@@ -793,3 +842,39 @@ static struct platform_driver meson8b_driver = {
 };
 
 builtin_platform_driver(meson8b_driver);
+
+static void __init meson8b_clkc_reset_init(struct device_node *np)
+{
+	struct meson8b_clk_reset *rstc;
+	int ret;
+
+	/* Generic clocks, PLLs and some of the reset-bits */
+	clk_base = of_iomap(np, 1);
+	if (!clk_base) {
+		pr_err("%s: Unable to map clk base\n", __func__);
+		return;
+	}
+
+	rstc = kzalloc(sizeof(*rstc), GFP_KERNEL);
+	if (!rstc)
+		return;
+
+	/* Reset Controller */
+	rstc->base = clk_base;
+	rstc->reset.ops = &meson8b_clk_reset_ops;
+	rstc->reset.nr_resets = ARRAY_SIZE(meson8b_clk_reset_bits);
+	rstc->reset.of_node = np;
+	ret = reset_controller_register(&rstc->reset);
+	if (ret) {
+		pr_err("%s: Failed to register clkc reset controller: %d\n",
+		       __func__, ret);
+		return;
+	}
+}
+
+CLK_OF_DECLARE_DRIVER(meson8_clkc, "amlogic,meson8-clkc",
+		      meson8b_clkc_reset_init);
+CLK_OF_DECLARE_DRIVER(meson8b_clkc, "amlogic,meson8b-clkc",
+		      meson8b_clkc_reset_init);
+CLK_OF_DECLARE_DRIVER(meson8m2_clkc, "amlogic,meson8m2-clkc",
+		      meson8b_clkc_reset_init);
