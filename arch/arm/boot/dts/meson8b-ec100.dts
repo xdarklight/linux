@@ -1,0 +1,81 @@
+/*
+ * Copyright (c) 2017 Martin Blumenstingl <martin.blumenstingl@googlemail.com>.
+ *
+ * SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+ */
+
+/dts-v1/;
+
+#include "meson8b.dtsi"
+
+/ {
+	model = "Endless Computers Endless Mini";
+	compatible = "endless,ec-100", "amlogic,meson8b";
+
+	aliases {
+		serial0 = &uart_AO;
+	};
+
+	memory {
+		reg = <0x40000000 0x40000000>;
+	};
+};
+
+&ethmac {
+	status = "okay";
+
+/*
+	TODO:
+	pinctrl-0 = <&eth_pins>;
+	pinctrl-names = "default";
+*/
+	phy-handle = <&eth_phy0>;
+	phy-mode = "rmii";
+
+	snps,reset-gpio = <&gpio GPIOH_4 0>;
+	snps,reset-delays-us = <0 10000 1000000>;
+	snps,reset-active-low;
+
+	mdio {
+		compatible = "snps,dwmac-mdio";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		eth_phy0: ethernet-phy@0 {
+			/* IC Plus IP101A/G (0x02430c54) */
+			reg = <0>;
+		};
+	};
+};
+
+&ir_receiver {
+	status = "okay";
+/*
+	TODO:
+	pinctrl-0 = <&ir_recv_pins>;
+	pinctrl-names = "default";
+*/
+};
+
+/* exposed through the pin headers on the top of the PCB */
+&uart_AO {
+	status = "okay";
+	pinctrl-0 = <&uart_ao_a_pins>;
+	pinctrl-names = "default";
+};
+
+&usb0 {
+	status = "okay";
+};
+
+&usb1 {
+	status = "okay";
+};
+
+&usb0_phy {
+	status = "okay";
+};
+
+&usb1_phy {
+	status = "okay";
+};
