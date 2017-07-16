@@ -252,6 +252,12 @@ static void meson_mx_mmc_start_cmd(struct mmc_host *mmc,
 		timeout = msecs_to_jiffies(1000);
 
 	mod_timer(&slot->host->cmd_timeout, jiffies + timeout);
+
+#if 0
+	// TODO: REMOVE
+	if (cmd->opcode != 13)
+		printk("%s: starting CMD%d with timeout = %u\n", __func__, cmd->opcode, jiffies_to_msecs(timeout));
+#endif
 }
 
 static void meson_mx_mmc_request_done(struct meson_mx_mmc_slot *slot)
@@ -448,6 +454,12 @@ static irqreturn_t meson_mx_mmc_irq(int irq, void *data)
 
 	spin_unlock(&host->irq_lock);
 
+#if 0
+	// TODO: REMOVE
+	if (host->slot->cmd && host->slot->cmd->opcode != 13)
+		printk("%s: IRQS = 0x%08x\n", __func__, irqs);
+#endif
+
 	return ret;
 }
 
@@ -493,6 +505,9 @@ static void meson_mx_mmc_timeout(unsigned long arg)
 	writel(irqc, host->base + MESON_MX_SDIO_IRQC);
 
 	spin_unlock_irqrestore(&host->irq_lock, irqflags);
+
+	if (WARN_ON(!host->slot->cmd))
+		return;
 
 	dev_dbg(mmc_dev(host->slot->mmc),
 		"Timeout on CMD%u (IRQS = 0x%08x, ARGU = 0x%08x)\n",
@@ -565,7 +580,7 @@ static int meson_mx_mmc_slot_probe(struct device *slot_dev,
 	 * TODO: find a suitable mmc->max_busy_timeout and set
 	 * MMC_CAP_WAIT_WHILE_BUSY.
 	 */
-	mmc->caps |= MMC_CAP_CMD23;
+	mmc->caps |= MMC_CAP_ERASE | MMC_CAP_CMD23;
 	mmc->ops = &meson_mx_mmc_ops;
 
 	ret = mmc_of_parse(mmc);
