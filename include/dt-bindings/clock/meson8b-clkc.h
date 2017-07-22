@@ -1,5 +1,5 @@
 /*
- * Meson8b clock tree IDs
+ * Meson8b clock and reset tree IDs
  */
 
 #ifndef __MESON8B_CLKC_H
@@ -31,5 +31,10 @@
 #define CLKID_USB1_DDR_BRIDGE	64
 #define CLKID_USB0_DDR_BRIDGE	65
 #define CLKID_SANA		69
+
+#define RESETID_CPU0_SOFT_RESET					3
+#define RESETID_CPU1_SOFT_RESET					4
+#define RESETID_CPU2_SOFT_RESET					5
+#define RESETID_CPU3_SOFT_RESET					6
 
 #endif /* __MESON8B_CLKC_H */
