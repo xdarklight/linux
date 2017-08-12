@@ -168,9 +168,9 @@ static int hynix_get_majority(const u8 *in, int repeat, u8 *out)
 	return -EIO;
 }
 
-static int hynix_read_rr_otp(struct nand_chip *chip,
-			     const struct hynix_read_retry_otp *info,
-			     void *buf)
+static int hynix_read_1xnm_rr_otp(struct nand_chip *chip,
+				  const struct hynix_read_retry_otp *info,
+				  void *buf)
 {
 	struct mtd_info *mtd = nand_to_mtd(chip);
 	int i;
@@ -204,6 +204,54 @@ static int hynix_read_rr_otp(struct nand_chip *chip,
 	chip->write_byte(mtd, 0x0);
 	chip->cmdfunc(mtd, NAND_HYNIX_CMD_APPLY_PARAMS, -1, -1);
 	chip->cmdfunc(mtd, NAND_CMD_READ0, 0x0, -1);
+
+	return 0;
+}
+
+static int hynix_read_20nm_rr_otp(struct nand_chip *chip,
+				  const struct hynix_read_retry_otp *info,
+				  void *buf)
+{
+	struct mtd_info *mtd = nand_to_mtd(chip);
+	int i;
+	u8 total_reg_count, otp_reg_count;
+
+	chip->select_chip(mtd, 0);
+
+	chip->cmdfunc(mtd, NAND_CMD_RESET, -1, -1);
+
+	chip->cmdfunc(mtd, NAND_HYNIX_CMD_SET_PARAMS, 0xff, -1);
+
+	for (i = 0; i < info->nregs; i++) {
+		chip->write_byte(mtd, info->values[i]);
+		chip->cmdfunc(mtd, NAND_CMD_NONE, info->regs[i], -1);
+	}
+
+	/* there is one extra value (for which there is no reg) */
+	chip->write_byte(mtd, info->values[i]);
+
+	chip->cmdfunc(mtd, NAND_HYNIX_CMD_APPLY_PARAMS, -1, -1);
+
+	/* Sequence to enter OTP mode? */
+	chip->cmdfunc(mtd, 0x17, -1, -1);
+	chip->cmdfunc(mtd, 0x04, -1, -1);
+	chip->cmdfunc(mtd, 0x19, -1, -1);
+
+	/* Now read the page */
+	chip->cmdfunc(mtd, NAND_CMD_READ0, 0x0, info->page);
+
+	total_reg_count = chip->read_byte(mtd);
+	otp_reg_count = chip->read_byte(mtd);
+	if (total_reg_count != 0x8 || otp_reg_count != 0x08)
+		return -EINVAL;
+
+	chip->read_buf(mtd, buf, info->size);
+
+	/* Put everything back to normal */
+	chip->cmdfunc(mtd, NAND_CMD_RESET, -1, -1);
+	chip->cmdfunc(mtd, 0x38, -1, -1);
+
+	chip->select_chip(mtd, 0);
 
 	return 0;
 }
@@ -254,7 +302,7 @@ static int hynix_mlc_1xnm_rr_init(struct nand_chip *chip,
 	if (!buf)
 		return -ENOMEM;
 
-	ret = hynix_read_rr_otp(chip, info, buf);
+	ret = hynix_read_1xnm_rr_otp(chip, info, buf);
 	if (ret)
 		goto out;
 
@@ -306,6 +354,71 @@ out:
 	return ret;
 }
 
+static int hynix_mlc_20nm_rr_init(struct nand_chip *chip,
+				  const struct hynix_read_retry_otp *info)
+{
+	struct hynix_nand *hynix = nand_get_manufacturer_data(chip);
+	struct hynix_read_retry *rr = NULL;
+	int ret, i, j, k;
+	u8 *buf;
+
+	buf = kmalloc(info->size, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	ret = hynix_read_20nm_rr_otp(chip, info, buf);
+	if (ret)
+		goto out;
+
+	for (i = 0; i < 8; i++) {
+		for (j = 0; j < 64; j++) {
+#if 0
+			u8 *tmp = buf + 2 + (128 * i);
+			if ((tmp[j] | tmp[j + 64]) != 0xff) {
+				printk("%s: OTP value %d/%d: 0x%02x vs 0x%02x\n",
+					__func__, i, j, tmp[j], tmp[j + 64]);
+				ret = -EINVAL;
+				goto out;
+			}
+#else
+			for (k = 0; k < 7; k++) {
+				if (((unsigned char)(buf[k+j]^buf[k+j+64]) != 0xFF)) {
+					printk("%s: OTP value %d/%d: 0x%02x vs 0x%02x\n",
+						__func__, j, k, buf[k+j], buf[k+j+64]);
+					ret = -EINVAL;
+					goto out;
+				}
+			}
+#endif
+		}
+	}
+
+	rr = kzalloc(sizeof(*rr) + 64, GFP_KERNEL);
+	if (!rr) {
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	/* H27UCG8T2BTR uses the same read retry registers */
+	rr->nregs = ARRAY_SIZE(hynix_1xnm_mlc_read_retry_regs);
+	rr->regs = hynix_1xnm_mlc_read_retry_regs;
+	memcpy(rr->values, buf, 64);
+
+	hynix->read_retry = rr;
+	chip->setup_read_retry = hynix_nand_setup_read_retry;
+	chip->read_retries = 7;
+
+	return 0;
+
+out:
+	kfree(buf);
+
+	if (rr)
+		kfree(rr);
+
+	return ret;
+}
+
 static const u8 hynix_mlc_1xnm_rr_otp_regs[] = { 0x38 };
 static const u8 hynix_mlc_1xnm_rr_otp_values[] = { 0x52 };
 
@@ -326,21 +439,26 @@ static const struct hynix_read_retry_otp hynix_mlc_1xnm_rr_otps[] = {
 	},
 };
 
+static const u8 hynix_mlc_20nm_rr_otp_regs[] = { 0xcc };
+static const u8 hynix_mlc_20nm_rr_otp_values[] = { 0x40, 0x4d };
+
+static const struct hynix_read_retry_otp hynix_mlc_20nm_rr_otp = {
+	.nregs = ARRAY_SIZE(hynix_mlc_20nm_rr_otp_regs),
+	.regs = hynix_mlc_20nm_rr_otp_regs,
+	.values = hynix_mlc_20nm_rr_otp_values,
+	.page = 0x200,
+	.size = 528,
+};
+
 static int hynix_nand_rr_init(struct nand_chip *chip)
 {
 	int i, ret = 0;
-	bool valid_jedecid;
+	u8 nand_tech;
 
-	valid_jedecid = hynix_nand_has_valid_jedecid(chip);
+	if (hynix_nand_has_valid_jedecid(chip)) {
+		nand_tech = chip->id.data[5] >> 4;
 
-	/*
-	 * We only support read-retry for 1xnm NANDs, and those NANDs all
-	 * expose a valid JEDEC ID.
-	 */
-	if (valid_jedecid) {
-		u8 nand_tech = chip->id.data[5] >> 4;
-
-		/* 1xnm technology */
+		/* 1xnm technology, those NANDs all expose a valid JEDEC ID. */
 		if (nand_tech == 4) {
 			for (i = 0; i < ARRAY_SIZE(hynix_mlc_1xnm_rr_otps);
 			     i++) {
@@ -354,6 +472,17 @@ static int hynix_nand_rr_init(struct nand_chip *chip)
 					break;
 			}
 		}
+	} else {
+#if 0
+		// TODO: WARNING: not working yet - might corrupt data!
+		nand_tech = chip->id.data[5] & 0x7;
+
+		/* 20nm technology, for example H27UCG8T2A and H27UCG8T2BTR */
+		if (nand_tech == 4) {
+			ret = hynix_mlc_20nm_rr_init(chip,
+						     &hynix_mlc_20nm_rr_otp);
+		}
+#endif
 	}
 
 	if (ret)
