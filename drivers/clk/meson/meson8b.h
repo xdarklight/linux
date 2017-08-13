@@ -70,7 +70,7 @@
  * will remain defined here.
  */
 
-#define CLK_NR_CLKS		99
+#define CLK_NR_CLKS		104
 
 /*
  * include the CLKID and RESETID that have
