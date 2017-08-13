@@ -171,9 +171,8 @@
 #define CLKID_SYS_PLL_DIV3	100
 #define CLKID_SYS_PLL_SCALE_DIV	101
 #define CLKID_SYS_PLL_SCALE_SEL	102
-#define CLKID_CPU_CLK_SEL	103
 
-#define CLK_NR_CLKS		104
+#define CLK_NR_CLKS		103
 
 /*
  * include the CLKID and RESETID that have
