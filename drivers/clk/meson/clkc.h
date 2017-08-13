@@ -102,14 +102,11 @@ struct meson_clk_pll {
 
 struct meson_clk_cpu {
 	struct clk_hw hw;
-	void __iomem *base;
-	u16 reg_off;
-	struct notifier_block clk_nb;
-	const struct clk_div_table *div_table;
+	struct clk_hw *xtal;
+	struct clk_hw *cpu_clk_sel;
+	struct clk_hw *sys_pll_scale_out_sel;
+	struct clk_hw *sys_pll_scale_div;
 };
-
-int meson_clk_cpu_notifier_cb(struct notifier_block *nb, unsigned long event,
-		void *data);
 
 struct meson_clk_mpll {
 	struct clk_hw hw;
