@@ -167,8 +167,13 @@
 #define CLKID_NAND_SEL		96
 #define CLKID_NAND_DIV		97
 /* #define CLKID_NAND_CLK */
+#define CLKID_SYS_PLL_DIV2	99
+#define CLKID_SYS_PLL_DIV3	100
+#define CLKID_SYS_PLL_SCALE_DIV	101
+#define CLKID_SYS_PLL_SCALE_SEL	102
+#define CLKID_CPU_CLK_SEL	103
 
-#define CLK_NR_CLKS		99
+#define CLK_NR_CLKS		104
 
 /*
  * include the CLKID and RESETID that have
