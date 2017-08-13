@@ -26,6 +26,10 @@ static const struct of_device_id machines[] __initconst = {
 	{ .compatible = "allwinner,sun8i-a83t", },
 	{ .compatible = "allwinner,sun8i-h3", },
 
+	{ .compatible = "amlogic,meson8", },
+	{ .compatible = "amlogic,meson8b", },
+	{ .compatible = "amlogic,meson8m2", },
+
 	{ .compatible = "apm,xgene-shadowcat", },
 
 	{ .compatible = "arm,integrator-ap", },
