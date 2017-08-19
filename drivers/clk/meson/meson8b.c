@@ -32,9 +32,6 @@
 #include "clkc.h"
 #include "meson8b.h"
 
-static int meson8b_clk_cpu_notifier_cb(struct notifier_block *nb,
-				       unsigned long event, void *data);
-
 static DEFINE_SPINLOCK(clk_lock);
 
 static void __iomem *clk_base;
@@ -182,10 +179,91 @@ static struct meson_clk_pll meson8b_sys_pll = {
 	.lock = &clk_lock,
 	.hw.init = &(struct clk_init_data){
 		.name = "sys_pll",
-		.ops = &meson_clk_pll_ro_ops, // TODO: should not be _ro_ops (R/W instead) but CLK_SET_RATE_GATE doesn't work at the moment
+		.ops = &meson_clk_pll_ops,
 		.parent_names = (const char *[]){ "xtal" },
 		.num_parents = 1,
 		.flags = (CLK_SET_RATE_GATE | CLK_GET_RATE_NOCACHE),
+	},
+};
+
+static struct clk_fixed_factor meson8b_sys_pll_div2 = {
+	.mult = 1,
+	.div = 2,
+	.hw.init = &(struct clk_init_data){
+		.name = "sys_pll_div2",
+		.ops = &clk_fixed_factor_ops,
+		.parent_names = (const char *[]){ "sys_pll" },
+		.num_parents = 1,
+	}
+};
+
+static struct clk_fixed_factor meson8b_sys_pll_div3 = {
+	.mult = 1,
+	.div = 3,
+	.hw.init = &(struct clk_init_data){
+		.name = "sys_pll_div3",
+		.ops = &clk_fixed_factor_ops,
+		.parent_names = (const char *[]){ "sys_pll" },
+		.num_parents = 1,
+	}
+};
+
+// TODO: verify if this table is complete/correct
+static const struct clk_div_table sys_pll_scale_div_table[] = {
+//	{ .val = 1, .div = 2 },
+	{ .val = 2, .div = 4 },
+	{ .val = 3, .div = 6 },
+	{ .val = 4, .div = 8 },
+	{ .val = 5, .div = 10 },
+	{ .val = 6, .div = 12 },
+	{ .val = 7, .div = 14 },
+	{ .val = 8, .div = 16 },
+	{ .val = 9, .div = 18 },
+	{ /* sentinel */ },
+};
+
+static struct clk_divider meson8b_sys_pll_scale_div = {
+	.reg = (void *)HHI_SYS_CPU_CLK_CNTL1,
+	.shift = 20,
+	.width = 9,
+	.flags = CLK_DIVIDER_ALLOW_ZERO,
+	.table = sys_pll_scale_div_table,
+	.lock = &clk_lock,
+	.hw.init = &(struct clk_init_data){
+		.name = "sys_pll_scale_div",
+		.ops = &clk_divider_ops,
+		.parent_names = (const char *[]){ "sys_pll" },
+		.num_parents = 1,
+	},
+};
+
+static struct clk_mux meson8b_sys_pll_scale_out_sel = {
+	.reg = (void *)HHI_SYS_CPU_CLK_CNTL0,
+	.mask = 0x3,
+	.shift = 2,
+	.lock = &clk_lock,
+	.hw.init = &(struct clk_init_data){
+		.name = "sys_pll_scale_out_sel",
+		.ops = &clk_mux_ops,
+		.parent_names = (const char *[]){ "sys_pll", "sys_pll_div2",
+			"sys_pll_div3", "sys_pll_scale_div" },
+		.num_parents = 4,
+		.flags = CLK_SET_RATE_PARENT,
+	},
+};
+
+static struct clk_mux meson8b_cpu_clk_sel = {
+	.reg = (void *)HHI_SYS_CPU_CLK_CNTL0,
+	.mask = 0x1,
+	.shift = 7,
+	.lock = &clk_lock,
+	.hw.init = &(struct clk_init_data){
+		.name = "cpu_clk_sel",
+		.ops = &clk_mux_ops,
+		.parent_names = (const char *[]){ "xtal",
+			"sys_pll_scale_out_sel", },
+		.num_parents = 2,
+		.flags = CLK_SET_RATE_PARENT,
 	},
 };
 
@@ -336,83 +414,6 @@ static struct meson_clk_mpll meson8b_mpll2 = {
 		.ops = &meson_clk_mpll_ops,
 		.parent_names = (const char *[]){ "fixed_pll" },
 		.num_parents = 1,
-	},
-};
-
-static struct clk_fixed_factor meson8b_sys_pll_div2 = {
-	.mult = 1,
-	.div = 2,
-	.hw.init = &(struct clk_init_data){
-		.name = "sys_pll_div2",
-		.ops = &clk_fixed_factor_ops,
-		.parent_names = (const char *[]){ "sys_pll" },
-		.num_parents = 1,
-		.flags = CLK_SET_RATE_PARENT,
-	}
-};
-
-static struct clk_fixed_factor meson8b_sys_pll_div3 = {
-	.mult = 1,
-	.div = 3,
-	.hw.init = &(struct clk_init_data){
-		.name = "sys_pll_div3",
-		.ops = &clk_fixed_factor_ops,
-		.parent_names = (const char *[]){ "sys_pll" },
-		.num_parents = 1,
-		.flags = CLK_SET_RATE_PARENT,
-	}
-};
-
-static struct clk_divider meson8b_sys_pll_scale_div = {
-	.reg = (void *)HHI_SYS_CPU_CLK_CNTL1,
-	.shift = 20,
-	.width = 9,
-	.flags = CLK_DIVIDER_ROUND_CLOSEST,
-	.lock = &clk_lock,
-	.hw.init = &(struct clk_init_data){
-		.name = "sys_pll_scale_div",
-		.ops = &clk_divider_ops,
-		.parent_names = (const char *[]){ "sys_pll" },
-		.num_parents = 1,
-		.flags = CLK_SET_RATE_PARENT,
-	},
-};
-
-static struct clk_mux meson8b_sys_pll_scale_out_sel = {
-	.reg = (void *)HHI_SYS_CPU_CLK_CNTL0,
-	.mask = 0x3,
-	.shift = 2,
-	.flags = CLK_MUX_ROUND_CLOSEST,
-	.lock = &clk_lock,
-	.hw.init = &(struct clk_init_data){
-		.name = "sys_pll_scale_out_sel",
-		.ops = &clk_mux_ops,
-		.parent_names = (const char *[]){ "sys_pll", "sys_pll_div2",
-			"sys_pll_div3", "sys_pll_scale_div" },
-		.num_parents = 4,
-		.flags = CLK_SET_RATE_PARENT,
-	},
-};
-
-static struct clk_mux meson8b_cpu_clk_sel = {
-	.reg = (void *)HHI_SYS_CPU_CLK_CNTL0,
-	.mask = 0x1,
-	.shift = 7,
-	.lock = &clk_lock,
-	.hw.init = &(struct clk_init_data){
-		.name = "cpu_clk_sel",
-		.ops = &clk_mux_ops,
-		.parent_names = (const char *[]){ "xtal",
-			"sys_pll_scale_out_sel", },
-		.num_parents = 2,
-		/*
-		 * re-parenting should only be done manually when changing the
-		 * frequency of any (direct or indirect) parent clock. however,
-		 * we want to populate the rate change information up so the
-		 * parent clock (sys_pll_scale_out_sel) is adjusted
-		 * automatically by the CCF.
-		 */
-		.flags = (CLK_SET_RATE_NO_REPARENT | CLK_SET_RATE_PARENT),
 	},
 };
 
@@ -699,6 +700,7 @@ static struct clk_hw_onecell_data meson8b_hw_onecell_data = {
 		[CLKID_SYS_PLL_DIV3]	    = &meson8b_sys_pll_div3.hw,
 		[CLKID_SYS_PLL_SCALE_DIV]   = &meson8b_sys_pll_scale_div.hw,
 		[CLKID_SYS_PLL_SCALE_SEL]   = &meson8b_sys_pll_scale_out_sel.hw,
+		[CLK_NR_CLKS]		    = NULL,
 	},
 	.num = CLK_NR_CLKS,
 };
@@ -910,7 +912,7 @@ static const struct reset_control_ops meson8b_clk_reset_ops = {
 };
 
 static int meson8b_clk_cpu_notifier_cb(struct notifier_block *nb,
-				       unsigned long event, void *data)
+					unsigned long event, void *data)
 {
 	if (event == PRE_RATE_CHANGE)
 		/*
@@ -927,16 +929,74 @@ static int meson8b_clk_cpu_notifier_cb(struct notifier_block *nb,
 				&meson8b_sys_pll_scale_out_sel.hw);
 
 	return NOTIFY_OK;
-}
+};
 
 static struct notifier_block meson8b_clk_cpu_notifier_block = {
 	.notifier_call = meson8b_clk_cpu_notifier_cb,
 };
 
+static int meson8b_init_sys_pll(void)
+{
+	struct clk *sys_pll_clk, *scale_out_sel_clk, *scale_out_div_clk;
+	int ret;
+
+	sys_pll_clk = __clk_lookup(clk_hw_get_name(&meson8b_sys_pll.hw));
+	scale_out_div_clk = __clk_lookup(clk_hw_get_name(&meson8b_sys_pll_scale_div.hw));
+	scale_out_sel_clk = __clk_lookup(clk_hw_get_name(&meson8b_sys_pll_scale_out_sel.hw));
+
+	meson8b_clk_cpu_notifier_cb(NULL, PRE_RATE_CHANGE, NULL);
+
+	ret = clk_set_parent(scale_out_sel_clk, sys_pll_clk);
+	if (ret) {
+		pr_err("%s: failed to set sys_pll as parent\n", __func__);
+		goto out;
+	}
+
+	ret = clk_set_rate(scale_out_div_clk, ~0);
+	if (ret) {
+		pr_err("%s: failed to set max valid rate for scale_out_div\n",
+		       __func__);
+		goto out;
+	}
+
+	ret = clk_set_rate(sys_pll_clk, 1536 * 1000 * 1000);
+	if (ret) {
+		pr_err("%s: failed to set (fixed) rate for sys_pll\n",
+		       __func__);
+		goto out;
+	}
+
+	ret = clk_prepare_enable(sys_pll_clk);
+	if (ret) {
+		pr_err("%s: failed to lock rate of sys_pll by enabling it\n",
+		       __func__);
+		goto out;
+	}
+
+	ret = clk_notifier_register(scale_out_div_clk,
+				    &meson8b_clk_cpu_notifier_block);
+	if (ret) {
+		pr_err("%s: failed to register notifier for scale_out_div\n",
+		       __func__);
+		goto out;
+	}
+
+	ret = clk_notifier_register(scale_out_sel_clk,
+				    &meson8b_clk_cpu_notifier_block);
+	if (ret) {
+		pr_err("%s: failed to register notifier for scale_out_sel\n",
+		       __func__);
+		goto out;
+	}
+out:
+	meson8b_clk_cpu_notifier_cb(NULL, POST_RATE_CHANGE, NULL);
+
+	return ret;
+}
+
 static int meson8b_clkc_probe(struct platform_device *pdev)
 {
 	int ret, clkid, i;
-	struct clk *sys_pll_clk;
 	struct device *dev = &pdev->dev;
 
 	if (!clk_base)
@@ -980,21 +1040,9 @@ static int meson8b_clkc_probe(struct platform_device *pdev)
 			return ret;
 	}
 
-	/*
-	 * Register CPU clk notifier
-	 *
-	 * FIXME We shouldn't program a mux in a notifier handler. The tricky
-	 * programming sequence will be handled by the forthcoming coordinated
-	 * clock rates mechanism once that feature is released.
-	 */
-	sys_pll_clk = __clk_lookup(clk_hw_get_name(&meson8b_sys_pll.hw));
-	ret = clk_notifier_register(sys_pll_clk,
-				    &meson8b_clk_cpu_notifier_block);
-	if (ret) {
-		pr_err("%s: failed to register clock notifier for cpu_clk\n",
-				__func__);
+	ret = meson8b_init_sys_pll();
+	if (ret)
 		return ret;
-	}
 
 	return of_clk_add_hw_provider(dev->of_node, of_clk_hw_onecell_get,
 			&meson8b_hw_onecell_data);
