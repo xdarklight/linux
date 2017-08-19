@@ -853,7 +853,9 @@ static int clk_core_round_rate_nolock(struct clk_core *core,
 		req->best_parent_rate = 0;
 	}
 
-	if (core->ops->determine_rate) {
+	if ((core->flags & CLK_SET_RATE_GATE) && core->prepare_count) {
+		req->rate = core->rate;
+	} else if (core->ops->determine_rate) {
 		return core->ops->determine_rate(core->hw, req);
 	} else if (core->ops->round_rate) {
 		rate = core->ops->round_rate(core->hw, req->rate,
@@ -870,6 +872,53 @@ static int clk_core_round_rate_nolock(struct clk_core *core,
 
 	return 0;
 }
+
+#if 0
+static int clk_core_round_rate_nolock(struct clk_core *core,
+				      struct clk_rate_request *req)
+{
+	struct clk_core *parent;
+	unsigned long min_rate, max_rate;
+	long rate;
+
+	lockdep_assert_held(&prepare_lock);
+
+	if (!core)
+		return 0;
+
+	parent = core->parent;
+	if (parent) {
+		req->best_parent_hw = parent->hw;
+		req->best_parent_rate = parent->rate;
+	} else {
+		req->best_parent_hw = NULL;
+		req->best_parent_rate = 0;
+	}
+
+	if (core->ops->determine_rate) {
+		rate = core->ops->determine_rate(core->hw, req);
+		if (rate < 0)
+			return rate;
+	} else if (core->ops->round_rate) {
+		rate = core->ops->round_rate(core->hw, req->rate,
+					     &req->best_parent_rate);
+		if (rate < 0)
+			return rate;
+
+		req->rate = rate;
+	} else if (core->flags & CLK_SET_RATE_PARENT) {
+		return clk_core_round_rate_nolock(parent, req);
+	} else {
+		req->rate = core->rate;
+	}
+
+	clk_core_get_boundaries(core, &min_rate, &max_rate);
+	if (req->rate < min_rate || req->rate > max_rate)
+		return -EINVAL;
+
+	return 0;
+}
+#endif
 
 /**
  * __clk_determine_rate - get the closest rate actually supported by a clock
@@ -1500,7 +1549,6 @@ static void clk_change_rate(struct clk_core *core)
 	if (core->new_parent && core->new_parent != core->parent) {
 		old_parent = __clk_set_parent_before(core, core->new_parent);
 		trace_clk_set_parent(core, core->new_parent);
-
 		if (core->ops->set_rate_and_parent) {
 			skip_set_rate = true;
 			core->ops->set_rate_and_parent(core->hw, core->new_rate,
