@@ -291,8 +291,8 @@
 			efuse: nvmem@0 {
 				compatible = "amlogic,meson6-efuse";
 				reg = <0x0 0x2000>;
-				#address-cells = <1>;
-				#size-cells = <1>;
+				#address-cells	= <1>;
+				#size-cells	= <1>;
 			};
 		};
 	};

@@ -415,6 +415,10 @@
 	compatible = "amlogic,meson8-efuse";
 	clocks = <&clkc CLKID_EFUSE>;
 	clock-names = "core";
+
+	temper_cvbs_calib: temper-cvbs-calib@1f6 {
+		reg = <0x1f6 0x4>;
+	};
 };
 
 &ethmac {
@@ -468,6 +472,8 @@
 		<&clkc CLKID_SAR_ADC>,
 		<&clkc CLKID_SANA>;
 	clock-names = "clkin", "core", "sana";
+	nvmem-cells = <&temper_cvbs_calib>;
+	nvmem-cell-names = "temper_cvbs";
 };
 
 &sdio {
