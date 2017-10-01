@@ -29,6 +29,7 @@
 
 &saradc {
 	compatible = "amlogic,meson8m2-saradc", "amlogic,meson-saradc";
+	// TODO: amlogic,ts-syscon = <&clkc>;
 };
 
 &wdt {

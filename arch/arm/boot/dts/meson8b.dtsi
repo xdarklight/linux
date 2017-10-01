@@ -232,7 +232,7 @@
 	clkc: clock-controller@4000 {
 		#clock-cells = <1>;
 		#reset-cells = <1>;
-		compatible = "amlogic,meson8b-clkc";
+		compatible = "amlogic,meson8b-clkc", "syscon";
 		reg = <0x8000 0x4>, <0x4000 0x460>;
 	};
 
@@ -384,6 +384,16 @@
 	compatible = "amlogic,meson8b-efuse";
 	clocks = <&clkc CLKID_EFUSE>;
 	clock-names = "core";
+
+	temperature_calibration: temperature-calibration@1f4 {
+		/* only the upper two bytes are relevant */
+		reg = <0x1f4 0x4>;
+	};
+
+	cvbs_trimming: cvbs-trimming@1f8 {
+		/* only the lower two bytes are relevant */
+		reg = <0x1f8 0x4>;
+	};
 };
 
 &ethmac {
@@ -448,6 +458,9 @@
 		<&clkc CLKID_SAR_ADC>,
 		<&clkc CLKID_SANA>;
 	clock-names = "clkin", "core", "sana";
+	// TODO: amlogic,ts-syscon = <&clkc>;
+	nvmem-cells = <&temperature_calibration>, <&cvbs_trimming>;
+	nvmem-cell-names = "temperature_calibration", "cvbs_trimming";
 };
 
 &sdio {
