@@ -100,17 +100,6 @@ struct meson_clk_pll {
 
 #define to_meson_clk_pll(_hw) container_of(_hw, struct meson_clk_pll, hw)
 
-struct meson_clk_cpu {
-	struct clk_hw hw;
-	void __iomem *base;
-	u16 reg_off;
-	struct notifier_block clk_nb;
-	const struct clk_div_table *div_table;
-};
-
-int meson_clk_cpu_notifier_cb(struct notifier_block *nb, unsigned long event,
-		void *data);
-
 struct meson_clk_mpll {
 	struct clk_hw hw;
 	void __iomem *base;
@@ -147,7 +136,6 @@ struct clk_gate _name = { 						\
 /* clk_ops */
 extern const struct clk_ops meson_clk_pll_ro_ops;
 extern const struct clk_ops meson_clk_pll_ops;
-extern const struct clk_ops meson_clk_cpu_ops;
 extern const struct clk_ops meson_clk_mpll_ro_ops;
 extern const struct clk_ops meson_clk_mpll_ops;
 extern const struct clk_ops meson_clk_audio_divider_ro_ops;
