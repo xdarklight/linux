@@ -88,6 +88,7 @@ config ARMADA_370_XP_TIMER
 config MESON6_TIMER
 	bool "Meson6 timer driver" if COMPILE_TEST
 	select CLKSRC_MMIO
+	select TIMER_OF
 	help
 	  Enables the support for the Meson6 timer driver.
 
