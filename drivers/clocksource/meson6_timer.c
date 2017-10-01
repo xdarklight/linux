@@ -22,6 +22,16 @@
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
 
+#include "timer-of.h"
+
+struct meson6_timer_clkevt {
+	void __iomem		*mux_base;
+	struct timer_of		of_timer;
+	u32			enable_mask;
+	u32			mode_mask;
+	u32			input_clock_mask;
+};
+
 enum meson6_timera_input_clock {
 	MESON_TIMERA_CLOCK_1US = 0x0,
 	MESON_TIMERA_CLOCK_10US = 0x1,
@@ -60,79 +70,83 @@ enum meson6_timere_input_clock {
 
 static void __iomem *timer_base;
 
+static struct meson6_timer_clkevt *to_meson6_timer_clkevt(
+	struct clock_event_device *evt)
+{
+	struct timer_of *of_timer = to_timer_of(evt);
+
+	return container_of(of_timer, struct meson6_timer_clkevt, of_timer);
+}
+
 static u64 notrace meson6_timer_sched_read(void)
 {
 	return (u64)readl(timer_base + MESON_ISA_TIMERE);
 }
 
-static void meson6_clkevt_time_stop(void)
+static void meson6_clkevt_time_stop(struct meson6_timer_clkevt *meson_timer)
 {
-	u32 val = readl(timer_base + MESON_ISA_TIMER_MUX);
+	u32 val = readl(meson_timer->mux_base);
 
-	writel(val & ~MESON_ISA_TIMER_MUX_TIMERA_EN,
-	       timer_base + MESON_ISA_TIMER_MUX);
+	writel(val & ~meson_timer->enable_mask, meson_timer->mux_base);
 }
 
-static void meson6_clkevt_time_setup(unsigned long delay)
+static void meson6_clkevt_time_setup(struct meson6_timer_clkevt *meson_timer,
+				     unsigned long delay)
 {
-	writel(delay, timer_base + MESON_ISA_TIMERA);
+	writel(delay, timer_of_base(&meson_timer->of_timer));
 }
 
-static void meson6_clkevt_time_start(bool periodic)
+static void meson6_clkevt_time_start(struct meson6_timer_clkevt *meson_timer,
+				     bool periodic)
 {
-	u32 val = readl(timer_base + MESON_ISA_TIMER_MUX);
+	u32 val = readl(meson_timer->mux_base);
 
 	if (periodic)
-		val |= MESON_ISA_TIMER_MUX_TIMERA_MODE;
+		val |= meson_timer->mode_mask;
 	else
-		val &= ~MESON_ISA_TIMER_MUX_TIMERA_MODE;
+		val &= ~meson_timer->mode_mask;
 
-	writel(val | MESON_ISA_TIMER_MUX_TIMERA_EN,
-	       timer_base + MESON_ISA_TIMER_MUX);
+	writel(val | meson_timer->enable_mask, meson_timer->mux_base);
 }
 
 static int meson6_shutdown(struct clock_event_device *evt)
 {
-	meson6_clkevt_time_stop();
+	struct meson6_timer_clkevt *meson_timer = to_meson6_timer_clkevt(evt);
+
+	meson6_clkevt_time_stop(meson_timer);
 	return 0;
 }
 
 static int meson6_set_oneshot(struct clock_event_device *evt)
 {
-	meson6_clkevt_time_stop();
-	meson6_clkevt_time_start(false);
+	struct meson6_timer_clkevt *meson_timer = to_meson6_timer_clkevt(evt);
+
+	meson6_clkevt_time_stop(meson_timer);
+	meson6_clkevt_time_start(meson_timer, false);
 	return 0;
 }
 
 static int meson6_set_periodic(struct clock_event_device *evt)
 {
-	meson6_clkevt_time_stop();
-	meson6_clkevt_time_setup(USEC_PER_SEC / HZ - 1);
-	meson6_clkevt_time_start(true);
+	struct meson6_timer_clkevt *meson_timer = to_meson6_timer_clkevt(evt);
+
+	meson6_clkevt_time_stop(meson_timer);
+	meson6_clkevt_time_setup(meson_timer, USEC_PER_SEC / HZ - 1);
+	meson6_clkevt_time_start(meson_timer, true);
 	return 0;
 }
 
-static int meson6_clkevt_next_event(unsigned long evt,
-				    struct clock_event_device *unused)
+static int meson6_clkevt_next_event(unsigned long delta,
+				    struct clock_event_device *evt)
 {
-	meson6_clkevt_time_stop();
-	meson6_clkevt_time_setup(evt);
-	meson6_clkevt_time_start(false);
+	struct meson6_timer_clkevt *meson_timer = to_meson6_timer_clkevt(evt);
+
+	meson6_clkevt_time_stop(meson_timer);
+	meson6_clkevt_time_setup(meson_timer, delta);
+	meson6_clkevt_time_start(meson_timer, false);
 
 	return 0;
 }
-
-static struct clock_event_device meson6_clockevent = {
-	.name			= "meson6_tick",
-	.rating			= 400,
-	.features		= CLOCK_EVT_FEAT_PERIODIC |
-				  CLOCK_EVT_FEAT_ONESHOT,
-	.set_state_shutdown	= meson6_shutdown,
-	.set_state_periodic	= meson6_set_periodic,
-	.set_state_oneshot	= meson6_set_oneshot,
-	.tick_resume		= meson6_shutdown,
-	.set_next_event		= meson6_clkevt_next_event,
-};
 
 static irqreturn_t meson6_timer_interrupt(int irq, void *dev_id)
 {
@@ -143,28 +157,70 @@ static irqreturn_t meson6_timer_interrupt(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static struct irqaction meson6_timer_irq = {
-	.name		= "meson6_timer",
-	.flags		= IRQF_TIMER | IRQF_IRQPOLL,
-	.handler	= meson6_timer_interrupt,
-	.dev_id		= &meson6_clockevent,
-};
+static int __init meson6_timer_init_clockevt(struct device_node *node,
+					     u8 timer_reg,
+					     u32 enable_mask,
+					     u32 mode_mask,
+					     u32 input_clock_mask)
+{
+	struct meson6_timer_clkevt *meson_timer;
+	u32 timer_mux;
+	int ret;
+
+	meson_timer = kzalloc(sizeof(*meson_timer), GFP_KERNEL);
+	if (!meson_timer)
+		return -ENOMEM;
+
+	meson_timer->mux_base = timer_base + MESON_ISA_TIMER_MUX;
+	meson_timer->enable_mask = enable_mask;
+	meson_timer->mode_mask = mode_mask;
+	meson_timer->input_clock_mask = input_clock_mask;
+
+	meson_timer->of_timer.flags = TIMER_OF_IRQ;
+
+	meson_timer->of_timer.of_base.base = timer_base + timer_reg;
+
+	meson_timer->of_timer.of_irq.handler = meson6_timer_interrupt;
+	meson_timer->of_timer.of_irq.flags = IRQF_TIMER | IRQF_IRQPOLL;
+	meson_timer->of_timer.of_irq.index = 0;
+
+	meson_timer->of_timer.clkevt.name = "meson6_tick";
+	meson_timer->of_timer.clkevt.rating = 400;
+	meson_timer->of_timer.clkevt.features = CLOCK_EVT_FEAT_PERIODIC |
+						CLOCK_EVT_FEAT_ONESHOT;
+	meson_timer->of_timer.clkevt.set_state_shutdown = meson6_shutdown;
+	meson_timer->of_timer.clkevt.set_state_periodic = meson6_set_periodic;
+	meson_timer->of_timer.clkevt.set_state_oneshot = meson6_set_oneshot;
+	meson_timer->of_timer.clkevt.tick_resume = meson6_shutdown;
+	meson_timer->of_timer.clkevt.set_next_event = meson6_clkevt_next_event;
+	meson_timer->of_timer.clkevt.cpumask = cpu_possible_mask;
+
+	/* stop the timer before initializing / registering it */
+	meson6_clkevt_time_stop(meson_timer);
+
+	timer_mux = readl(meson_timer->mux_base);
+	timer_mux &= ~meson_timer->input_clock_mask;
+	timer_mux |= MESON_TIMERA_CLOCK_1US << (ffs(input_clock_mask) - 1);
+	writel(timer_mux, meson_timer->mux_base);
+
+	ret = timer_of_init(node, &meson_timer->of_timer);
+	if (ret)
+		return ret;
+
+	clockevents_config_and_register(&meson_timer->of_timer.clkevt,
+					USEC_PER_SEC, 1, 0xfffe);
+
+	return 0;
+}
 
 static int __init meson6_timer_init(struct device_node *node)
 {
 	u32 val;
-	int ret, irq;
 
 	timer_base = of_io_request_and_map(node, 0, "meson6-timer");
 	if (IS_ERR(timer_base)) {
 		pr_err("Can't map registers\n");
 		return -ENXIO;
-	}
-
-	irq = irq_of_parse_and_map(node, 0);
-	if (irq <= 0) {
-		pr_err("Can't parse IRQ\n");
-		return -EINVAL;
 	}
 
 	/* Set 1us for timer E */
@@ -178,27 +234,10 @@ static int __init meson6_timer_init(struct device_node *node)
 	clocksource_mmio_init(timer_base + MESON_ISA_TIMERE, node->name,
 			      1000 * 1000, 300, 32, clocksource_mmio_readl_up);
 
-	/* Timer A base 1us */
-	val &= ~MESON_ISA_TIMER_MUX_TIMERA_INPUT_CLOCK_MASK;
-	val |= FIELD_PREP(MESON_ISA_TIMER_MUX_TIMERA_INPUT_CLOCK_MASK,
-			  MESON_TIMERA_CLOCK_1US);
-	writel(val, timer_base + MESON_ISA_TIMER_MUX);
-
-	/* Stop the timer A */
-	meson6_clkevt_time_stop();
-
-	ret = setup_irq(irq, &meson6_timer_irq);
-	if (ret) {
-		pr_warn("failed to setup irq %d\n", irq);
-		return ret;
-	}
-
-	meson6_clockevent.cpumask = cpu_possible_mask;
-	meson6_clockevent.irq = irq;
-
-	clockevents_config_and_register(&meson6_clockevent, USEC_PER_SEC,
-					1, 0xfffe);
-	return 0;
+	return meson6_timer_init_clockevt(node, MESON_ISA_TIMERA,
+				MESON_ISA_TIMER_MUX_TIMERA_EN,
+				MESON_ISA_TIMER_MUX_TIMERA_MODE,
+				MESON_ISA_TIMER_MUX_TIMERA_INPUT_CLOCK_MASK);
 }
-TIMER_OF_DECLARE(meson6, "amlogic,meson6-timer",
-		       meson6_timer_init);
+
+TIMER_OF_DECLARE(meson6, "amlogic,meson6-timer", meson6_timer_init);
