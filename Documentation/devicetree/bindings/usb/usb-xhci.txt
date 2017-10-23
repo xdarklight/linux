@@ -42,4 +42,27 @@ Example:
 		compatible = "generic-xhci";
 		reg = <0xf0931000 0x8c8>;
 		interrupts = <0x0 0x4e 0x0>;
+
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		/* see usb-roothub.txt */
+		roothub@0 {
+			compatible = "usb1d6b,3", "usb1d6b,2";
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0>;
+
+			port@1 {
+				reg = <1>;
+				phys = <&usb2_phy1>, <&usb3_phy1>;
+				phy-names = "usb2-phy", "usb3-phy";
+			};
+		};
+
+		/* see usb-device.txt */
+		hub: genesys@1 {
+			compatible = "usb5e3,608";
+			reg = <1>;
+		};
 	};
