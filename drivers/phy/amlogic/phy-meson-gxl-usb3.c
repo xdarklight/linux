@@ -88,6 +88,7 @@
 
 struct phy_meson_gxl_usb3_priv {
 	struct regmap		*regmap;
+	struct phy		*usb2_phy;
 };
 
 static const struct regmap_config phy_meson_gxl_usb3_regmap_conf = {
@@ -143,6 +144,20 @@ static int phy_meson_gxl_usb3_probe(struct platform_device *pdev)
 					     &phy_meson_gxl_usb3_regmap_conf);
 	if (IS_ERR(priv->regmap))
 		return PTR_ERR(priv->regmap);
+
+	priv->usb2_phy = devm_phy_optional_get(dev, "usb2-phy");
+	if (IS_ERR(priv->usb2_phy))
+		return PTR_ERR(priv->usb2_phy);
+
+#if 1
+	// TODO / FIXME: move this to some kind of detection logic
+	phy_set_mode(priv->usb2_phy, PHY_MODE_USB_DEVICE);
+
+	regmap_update_bits(priv->regmap, USB_R0, USB_R0_U2D_ACT,
+			   USB_R0_U2D_ACT);
+	regmap_update_bits(priv->regmap, USB_R4, USB_R4_P21_SLEEP_M0,
+			   USB_R4_P21_SLEEP_M0);
+#endif
 
 	phy = devm_phy_create(dev, np, &phy_meson_gxl_usb3_ops);
 	if (IS_ERR(phy)) {

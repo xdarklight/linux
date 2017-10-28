@@ -51,7 +51,6 @@
 	compatible = "amlogic,meson-gxl";
 
 	soc {
-
 		usb0: usb@c9000000 {
 			compatible = "snps,dwc3";
 			#address-cells = <1>;
@@ -82,6 +81,23 @@
 				};
 			};
 		};
+
+		usb1: usb@c9100000 {
+			compatible = "snps,dwc2";
+			reg = <0x0 0xc9100000 0x0 0x40000>;
+			interrupts = <GIC_SPI 31 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&clkc_AO CLKID_AO_CEC_32K>;
+			clock-names = "otg";
+			resets = <&reset RESET_USB_OTG>;
+			reset-names = "dwc2";
+			phys = <&usb2_phy1>;
+			phy-names = "usb2-phy";
+			dr_mode = "peripheral";
+			g-rx-fifo-size = <192>;
+			g-np-tx-fifo-size = <128>;
+			g-tx-fifo-size = <128 128 16 16 16>;
+			status = "disabled";
+		};
 	};
 };
 
@@ -104,6 +120,8 @@
 		compatible = "amlogic,meson-gxl-usb3-phy";
 		#phy-cells = <0>;
 		reg = <0x0 0x78080 0x0 0x20>;
+		phys = <&usb2_phy1>;
+		phy-names = "usb2-phy";
 		status = "okay";
 	};
 };
