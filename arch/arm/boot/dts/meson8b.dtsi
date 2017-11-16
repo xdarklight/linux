@@ -139,6 +139,13 @@
 				function = "uart_ao";
 			};
 		};
+
+		ir_recv_pins: remote {
+			mux {
+				groups = "remote_input";
+				function = "remote";
+			};
+		};
 	};
 };
 
@@ -184,6 +191,83 @@
 			gpio-controller;
 			#gpio-cells = <2>;
 			gpio-ranges = <&pinctrl_cbus 0 0 130>;
+		};
+
+		i2c_a_pins: i2c-a {
+			mux {
+				groups = "i2c_sda_a", "i2c_sck_a";
+				function = "i2c_a";
+			};
+		};
+
+		sd_a_pins: sd-a {
+			mux {
+				groups = "sd_d0_a", "sd_d1_a", "sd_d2_a",
+					"sd_d3_a", "sd_clk_a", "sd_cmd_a";
+				function = "sd_a";
+			};
+		};
+
+		sd_b_pins: sd-b {
+			mux {
+				groups = "sd_d0_b", "sd_d1_b", "sd_d2_b",
+					"sd_d3_b", "sd_clk_b", "sd_cmd_b";
+				function = "sd_b";
+			};
+		};
+
+		sd_c_pins: sd-c {
+			mux {
+				groups = "sd_d0_c", "sd_d1_c", "sd_d2_c",
+					"sd_d3_c", "sd_clk_c", "sd_cmd_c";
+				function = "sd_c";
+			};
+		};
+
+		pwm_d_pins: pwm-d {
+			mux {
+				groups = "pwm_d";
+				function = "pwm_d";
+			};
+		};
+
+		pwm_e_pins: pwm-e {
+			mux {
+				groups = "pwm_e";
+				function = "pwm_e";
+			};
+		};
+
+		uart_a1_pins: uart-a1 {
+			mux {
+				groups = "uart_tx_a1",
+				       "uart_rx_a1";
+				function = "uart_a";
+			};
+		};
+
+		uart_a1_cts_rts_pins: uart-a1-cts-rts {
+			mux {
+				groups = "uart_cts_a1",
+				       "uart_rts_a1";
+				function = "uart_a";
+			};
+		};
+
+		uart_b0_pins: uart-b0 {
+			mux {
+				groups = "uart_tx_b0",
+				       "uart_rx_b0";
+				function = "uart_b";
+			};
+		};
+
+		uart_b0_cts_rts_pins: uart-b0-cts-rts {
+			mux {
+				groups = "uart_cts_b0",
+				       "uart_rts_b0";
+				function = "uart_b";
+			};
 		};
 	};
 };
