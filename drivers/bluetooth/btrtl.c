@@ -418,9 +418,33 @@ struct btrtl_device_info *btrtl_initialize(struct hci_dev *hdev)
 		has_rom_version = false;
 		break;
 	case RTL_ROM_LMP_8723B:
-		fw_name = "rtl_bt/rtl8723b_fw.bin";
-		cfg_name = "rtl_bt/rtl8723b_config.bin";
+		/* all variants support reading the ROM version */
 		has_rom_version = true;
+
+		/*
+		 * RTL8723 devices exist in different variants:
+		 * - RTL8723BS (SDIO chip with UART Bluetooth)
+		 * - RTL8723DS (SDIO chip with UART Bluetooth)
+		 * - for backwards-compatibility everything else is assumed to
+		 *   be an RTL8723B communicating over USB
+		 *
+		 * Only UART devices really need the config because that
+		 * contains the UART speed / flow control settings.
+		 */
+		if (hdev->bus == HCI_UART && resp->hci_ver == 6 &&
+		    le16_to_cpu(resp->hci_rev) == 0xb) {
+			fw_name = "rtl_bt/rtl8723bs_fw.bin";
+			cfg_name = "rtl_bt/rtl8723bs_config.bin";
+			cfg_needed = true;
+		} else if (hdev->bus == HCI_UART && resp->hci_ver == 8 &&
+			   le16_to_cpu(resp->hci_rev) == 0xd) {
+			fw_name = "rtl_bt/rtl8723ds_fw.bin";
+			cfg_name = "rtl_bt/rtl872ds_config.bin";
+			cfg_needed = true;
+		} else {
+			fw_name = "rtl_bt/rtl8723b_fw.bin";
+			cfg_name = "rtl_bt/rtl8723b_config.bin";
+		}
 		break;
 	case RTL_ROM_LMP_8821A:
 		fw_name = "rtl_bt/rtl8821a_fw.bin";
@@ -641,6 +665,10 @@ MODULE_LICENSE("GPL");
 MODULE_FIRMWARE("rtl_bt/rtl8723a_fw.bin");
 MODULE_FIRMWARE("rtl_bt/rtl8723b_fw.bin");
 MODULE_FIRMWARE("rtl_bt/rtl8723b_config.bin");
+MODULE_FIRMWARE("rtl_bt/rtl8723bs_fw.bin");
+MODULE_FIRMWARE("rtl_bt/rtl8723bs_config.bin");
+MODULE_FIRMWARE("rtl_bt/rtl8723ds_fw.bin");
+MODULE_FIRMWARE("rtl_bt/rtl8723ds_config.bin");
 MODULE_FIRMWARE("rtl_bt/rtl8761a_fw.bin");
 MODULE_FIRMWARE("rtl_bt/rtl8761a_config.bin");
 MODULE_FIRMWARE("rtl_bt/rtl8821a_fw.bin");
