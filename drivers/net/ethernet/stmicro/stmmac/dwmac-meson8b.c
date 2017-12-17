@@ -29,14 +29,12 @@
 
 #define PRG_ETH0_RGMII_MODE		BIT(0)
 
-/* mux to choose between fclk_div2 (bit unset) and mpll2 (bit set) */
 #define PRG_ETH0_CLK_M250_SEL_SHIFT	4
 #define PRG_ETH0_CLK_M250_SEL_MASK	GENMASK(4, 4)
 
 #define PRG_ETH0_TXDLY_SHIFT		5
 #define PRG_ETH0_TXDLY_MASK		GENMASK(6, 5)
 
-/* divider for the result of m250_sel */
 #define PRG_ETH0_CLK_M250_DIV_SHIFT	7
 #define PRG_ETH0_CLK_M250_DIV_WIDTH	3
 
@@ -47,6 +45,22 @@
 
 #define MUX_CLK_NUM_PARENTS		2
 
+/**
+ * struct meson8b_dwmac - Amlogic Meson platform specific stmmac information.
+ *
+ * @pdev The platform device
+ * @phy_mode The PHY interface mode
+ * @m250_mux The RGMII mux clock configuration
+ * @m250_mux_clk The RGMII mux clock
+ * @m250_mux_parent The RGMII mux parent clocks
+ * @m250_div The RGMII 250MHz divider clock configuration
+ * @m250_div_clk The RGMII 250MHz divider clock
+ * @fixed_div10 The configuration of the internal "divide by 10" clock
+ * @fixed_div10_clk The internal "divide by 10" clock
+ * @m25_en The RGMII gate clock configuration
+ * @m25_en_clk The RGMII gate clock (= the final RGMII clock)
+ * @tx_delay_ns The RGMII TX delay in nanoseconds
+ */
 struct meson8b_dwmac {
 	struct platform_device	*pdev;
 
