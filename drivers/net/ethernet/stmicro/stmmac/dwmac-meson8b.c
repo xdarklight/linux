@@ -111,7 +111,7 @@ static int meson8b_init_rgmii_clk(struct meson8b_dwmac *dwmac)
 	init.name = devm_kasprintf(dev, GFP_KERNEL, "%s#m250_sel",
 				   dev_name(dev));
 	init.ops = &clk_mux_ops;
-	init.flags = 0;
+	init.flags = CLK_SET_RATE_PARENT;
 	init.parent_names = mux_parent_names;
 	init.num_parents = MUX_CLK_NUM_PARENTS;
 
