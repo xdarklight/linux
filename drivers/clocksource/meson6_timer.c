@@ -67,7 +67,7 @@ enum meson6_timere_input_clock {
 #define MESON_ISA_TIMERD					0x10
 #define MESON_ISA_TIMERE					0x14
 
-#define MESON_MAX_TIMERS					1
+#define MESON_MAX_TIMERS					4
 
 static struct meson6_timer_clkevt meson_timers[MESON_MAX_TIMERS] = {};
 static void __iomem *timer_base;
@@ -207,7 +207,7 @@ static int __init meson6_timer_init_clockevt(struct device_node *node,
 static int __init meson6_timer_init(struct device_node *node)
 {
 	u32 val;
-	int ret;
+	int ret, max_timers, i;
 
 	timer_base = of_io_request_and_map(node, 0, "meson6-timer");
 	if (IS_ERR(timer_base)) {
@@ -226,16 +226,40 @@ static int __init meson6_timer_init(struct device_node *node)
 	clocksource_mmio_init(timer_base + MESON_ISA_TIMERE, node->name,
 			      1000 * 1000, 300, 32, clocksource_mmio_readl_up);
 
-	meson_timers[0].base = timer_base;
 	meson_timers[0].timer_offset = MESON_ISA_TIMERA;
 	meson_timers[0].enable_mask = MESON_ISA_TIMER_MUX_TIMERA_EN;
 	meson_timers[0].mode_mask = MESON_ISA_TIMER_MUX_TIMERA_MODE;
 	meson_timers[0].input_clock_mask =
 				MESON_ISA_TIMER_MUX_TIMERA_INPUT_CLOCK_MASK;
 
-	ret = meson6_timer_init_clockevt(node, 0);
-	if (ret)
-		return ret;
+	meson_timers[1].timer_offset = MESON_ISA_TIMERB;
+	meson_timers[1].enable_mask = MESON_ISA_TIMER_MUX_TIMERB_EN;
+	meson_timers[1].mode_mask = MESON_ISA_TIMER_MUX_TIMERB_MODE;
+	meson_timers[1].input_clock_mask =
+				MESON_ISA_TIMER_MUX_TIMERB_INPUT_CLOCK_MASK;
+
+	meson_timers[2].timer_offset = MESON_ISA_TIMERC;
+	meson_timers[2].enable_mask = MESON_ISA_TIMER_MUX_TIMERC_EN;
+	meson_timers[2].mode_mask = MESON_ISA_TIMER_MUX_TIMERC_MODE;
+	meson_timers[2].input_clock_mask =
+				MESON_ISA_TIMER_MUX_TIMERC_INPUT_CLOCK_MASK;
+
+	meson_timers[3].timer_offset = MESON_ISA_TIMERC;
+	meson_timers[3].enable_mask = MESON_ISA_TIMER_MUX_TIMERC_EN;
+	meson_timers[3].mode_mask = MESON_ISA_TIMER_MUX_TIMERC_MODE;
+	meson_timers[3].input_clock_mask =
+				MESON_ISA_TIMER_MUX_TIMERC_INPUT_CLOCK_MASK;
+
+	/* old DTs only specify one IRQ so we only support one timer on them */
+	max_timers = min(of_irq_count(node), MESON_MAX_TIMERS);
+
+	for (i = 0; i < max_timers; i++) {
+		meson_timers[i].base = timer_base;
+
+		ret = meson6_timer_init_clockevt(node, i);
+		if (ret)
+			return ret;
+	}
 
 	clockevents_config_and_register(&meson_timers[0].clkevt,
 					USEC_PER_SEC, 1, 0xfffe);
