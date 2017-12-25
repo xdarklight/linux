@@ -14,6 +14,7 @@
 #include <linux/bitops.h>
 #include <linux/clk.h>
 #include <linux/clockchips.h>
+#include <linux/cpuhotplug.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 #include <linux/irqreturn.h>
@@ -22,14 +23,12 @@
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
 
-#include "timer-of.h"
-
 struct meson6_timer_clkevt {
-	void __iomem		*base;
-	struct timer_of		timer_of;
-	u32			enable_mask;
-	u32			mode_mask;
-	u32			timer_offset;
+	struct clock_event_device	clkevt;
+	void __iomem			*base;
+	u32				enable_mask;
+	u32				mode_mask;
+	u32				timer_offset;
 };
 
 enum meson6_timera_input_clock {
@@ -73,26 +72,30 @@ static struct meson6_timer_clkevt meson_timers[] = {
 		.enable_mask = MESON_ISA_TIMER_MUX_TIMERA_EN,
 		.mode_mask = MESON_ISA_TIMER_MUX_TIMERA_MODE,
 		.timer_offset = MESON_ISA_TIMERA,
-		.timer_of = {
-			.flags = TIMER_OF_IRQ,
-			.clkevt = {
-				.name = "meson6-timer_A",
-				.cpumask = cpu_possible_mask,
-			},
-			.of_irq = {
-				.index = 0,
-			},
-		},
+	},
+	{
+		.enable_mask = MESON_ISA_TIMER_MUX_TIMERB_EN,
+		.mode_mask = MESON_ISA_TIMER_MUX_TIMERB_MODE,
+		.timer_offset = MESON_ISA_TIMERB,
+	},
+	{
+		.enable_mask = MESON_ISA_TIMER_MUX_TIMERC_EN,
+		.mode_mask = MESON_ISA_TIMER_MUX_TIMERC_MODE,
+		.timer_offset = MESON_ISA_TIMERC,
+	},
+	{
+		.enable_mask = MESON_ISA_TIMER_MUX_TIMERD_EN,
+		.mode_mask = MESON_ISA_TIMER_MUX_TIMERD_MODE,
+		.timer_offset = MESON_ISA_TIMERD,
 	},
 };
+
 static void __iomem *timer_base;
 
 static struct meson6_timer_clkevt *to_meson6_timer_clkevt(
 	struct clock_event_device *evt)
 {
-	struct timer_of *timer_of = to_timer_of(evt);
-
-	return container_of(timer_of, struct meson6_timer_clkevt, timer_of);
+	return container_of(evt, struct meson6_timer_clkevt, clkevt);
 }
 
 static void meson6_timer_mux_mask_bits(struct meson6_timer_clkevt *meson_timer,
@@ -171,7 +174,10 @@ static int meson6_clkevt_next_event(unsigned long delta,
 static irqreturn_t meson6_timer_interrupt(int irq, void *dev_id)
 {
 	struct clock_event_device *evt = (struct clock_event_device *)dev_id;
-
+#if 0
+	if (printk_ratelimit())
+		printk("%s(%d) @ %d\n", __func__, irq, smp_processor_id());
+#endif
 	evt->event_handler(evt);
 
 	return IRQ_HANDLED;
@@ -180,29 +186,80 @@ static irqreturn_t meson6_timer_interrupt(int irq, void *dev_id)
 static int __init meson6_timer_init_clockevt(struct device_node *node, int idx)
 {
 	struct meson6_timer_clkevt *meson_timer = &meson_timers[idx];
-	struct timer_of *timer_of = &meson_timer->timer_of;
 
-	meson_timer->base = timer_base;
+	meson_timer->clkevt.rating = 400;
+	meson_timer->clkevt.cpumask = cpu_possible_mask;
+	meson_timer->clkevt.features = CLOCK_EVT_FEAT_PERIODIC |
+				       CLOCK_EVT_FEAT_ONESHOT;
+	meson_timer->clkevt.set_state_shutdown = meson6_shutdown;
+	meson_timer->clkevt.set_state_periodic = meson6_set_periodic;
+	meson_timer->clkevt.set_state_oneshot = meson6_set_oneshot;
+	meson_timer->clkevt.tick_resume = meson6_shutdown;
+	meson_timer->clkevt.set_next_event = meson6_clkevt_next_event;
+	meson_timer->clkevt.name = kasprintf(GFP_KERNEL, "%pOF#timer%c",
+					     node, 'A' + idx);
 
-	timer_of->of_irq.flags = IRQF_TIMER | IRQF_IRQPOLL;
-	timer_of->of_irq.handler = meson6_timer_interrupt;
+	meson_timer->clkevt.irq = irq_of_parse_and_map(node, idx);
+	if (!meson_timer->clkevt.irq) {
+		pr_err("Failed to map interrupt #%d for %pOF\n", idx, node);
+		return -EINVAL;
+	}
 
-	timer_of->clkevt.rating = 400;
-	timer_of->clkevt.features = CLOCK_EVT_FEAT_PERIODIC |
-				    CLOCK_EVT_FEAT_ONESHOT;
-	timer_of->clkevt.set_state_shutdown = meson6_shutdown;
-	timer_of->clkevt.set_state_periodic = meson6_set_periodic;
-	timer_of->clkevt.set_state_oneshot = meson6_set_oneshot;
-	timer_of->clkevt.tick_resume = meson6_shutdown;
-	timer_of->clkevt.set_next_event = meson6_clkevt_next_event;
+	return request_irq(meson_timer->clkevt.irq, meson6_timer_interrupt,
+			   IRQF_TIMER | IRQF_IRQPOLL, meson_timer->clkevt.name,
+			   &meson_timer->clkevt);
+}
 
-	return timer_of_init(node, timer_of);
+static void meson6_timer_register(struct meson6_timer_clkevt *meson_timer)
+{
+	clockevents_config_and_register(&meson_timer->clkevt, USEC_PER_SEC, 1,
+					0xfffe);
+}
+
+static int meson6_timer_starting_cpu(unsigned int cpu)
+{
+	struct meson6_timer_clkevt *meson_timer;
+	struct clock_event_device *evt;
+
+	if (cpu >= ARRAY_SIZE(meson_timers))
+		return -EINVAL;
+
+	meson_timer = &meson_timers[cpu];
+	evt = &meson_timer->clkevt;
+
+//	evt->cpumask = cpumask_of(cpu);
+
+	if (cpu)
+		irq_force_affinity(evt->irq, cpumask_of(cpu));
+
+	enable_percpu_irq(evt->irq, IRQ_TYPE_NONE);
+
+	meson6_timer_register(meson_timer);
+
+	return 0;
+}
+
+static int meson6_timer_dying_cpu(unsigned int cpu)
+{
+	struct meson6_timer_clkevt *meson_timer;
+	struct clock_event_device *evt;
+
+	if (cpu >= ARRAY_SIZE(meson_timers))
+		return -EINVAL;
+
+	meson_timer = &meson_timers[cpu];
+	evt = &meson_timer->clkevt;
+
+	evt->set_state_shutdown(evt);
+	disable_percpu_irq(evt->irq);
+
+	return 0;
 }
 
 static int __init meson6_timer_init(struct device_node *node)
 {
 	u32 val;
-	int ret;
+	int ret, num_timers, i;
 
 	timer_base = of_io_request_and_map(node, 0, "meson6-timer");
 	if (IS_ERR(timer_base)) {
@@ -216,6 +273,12 @@ static int __init meson6_timer_init(struct device_node *node)
 	/* set 1us input clock for all timers */
 	val |= FIELD_PREP(MESON_ISA_TIMER_MUX_TIMERA_INPUT_CLOCK_MASK,
 			  MESON_TIMERA_CLOCK_1US);
+	val |= FIELD_PREP(MESON_ISA_TIMER_MUX_TIMERB_INPUT_CLOCK_MASK,
+			  MESON_TIMERA_CLOCK_1US);
+	val |= FIELD_PREP(MESON_ISA_TIMER_MUX_TIMERC_INPUT_CLOCK_MASK,
+			  MESON_TIMERA_CLOCK_1US);
+	val |= FIELD_PREP(MESON_ISA_TIMER_MUX_TIMERD_INPUT_CLOCK_MASK,
+			  MESON_TIMERA_CLOCK_1US);
 	val |= FIELD_PREP(MESON_ISA_TIMER_MUX_TIMERE_INPUT_CLOCK_MASK,
 			  MESON_TIMERE_CLOCK_1US);
 
@@ -225,12 +288,29 @@ static int __init meson6_timer_init(struct device_node *node)
 	clocksource_mmio_init(timer_base + MESON_ISA_TIMERE, node->name,
 			      1000 * 1000, 300, 32, clocksource_mmio_readl_up);
 
-	ret = meson6_timer_init_clockevt(node, 0);
-	if (ret)
-		return ret;
+	/* old DTs only specify one IRQ so we only support one timer on them */
+	num_timers = min_t(int, of_irq_count(node), ARRAY_SIZE(meson_timers));
 
-	clockevents_config_and_register(&meson_timers[0].timer_of.clkevt,
-					USEC_PER_SEC, 1, 0xfffe);
+	for (i = 0; i < num_timers; i++) {
+		meson_timers[i].base = timer_base;
+
+		ret = meson6_timer_init_clockevt(node, i);
+		if (ret)
+			return ret;
+	}
+
+	if (num_timers == 1)
+		meson6_timer_register(&meson_timers[0]);
+	else {
+		ret = cpuhp_setup_state(CPUHP_AP_MESON6_TIMER_STARTING,
+					"clockevents/meson6_timer:starting",
+					meson6_timer_starting_cpu,
+					meson6_timer_dying_cpu);
+		if (ret) {
+			pr_err("Failed to setup hotplug state and timer\n");
+			return ret;
+		}
+	}
 
 	return 0;
 }
