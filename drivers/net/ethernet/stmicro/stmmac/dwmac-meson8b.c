@@ -40,9 +40,7 @@
 #define PRG_ETH0_CLK_M250_DIV_SHIFT	7
 #define PRG_ETH0_CLK_M250_DIV_WIDTH	3
 
-/* divides the result of m25_sel by either 5 (bit unset) or 10 (bit set) */
-#define PRG_ETH0_CLK_M25_DIV_SHIFT	10
-#define PRG_ETH0_CLK_M25_DIV_WIDTH	1
+#define PRG_ETH0_GENERATE_25M_PHY_CLOCK	10
 
 #define PRG_ETH0_INVERTED_RMII_CLK	BIT(11)
 #define PRG_ETH0_TX_AND_PHY_REF_CLK	BIT(12)
@@ -63,8 +61,11 @@ struct meson8b_dwmac {
 	struct clk_divider	m250_div;
 	struct clk		*m250_div_clk;
 
-	struct clk_divider	m25_div;
-	struct clk		*m25_div_clk;
+	struct clk_fixed_factor	fixed_div10;
+	struct clk		*fixed_div10_clk;
+
+	struct clk_gate		m25_en;
+	struct clk		*m25_en_clk;
 
 	u32			tx_delay_ns;
 };
@@ -88,11 +89,6 @@ static int meson8b_init_rgmii_clk(struct meson8b_dwmac *dwmac)
 	struct device *dev = &dwmac->pdev->dev;
 	const char *clk_div_parents[1];
 	const char *mux_parent_names[MUX_CLK_NUM_PARENTS];
-	static const struct clk_div_table clk_25m_div_table[] = {
-		{ .val = 0, .div = 5 },
-		{ .val = 1, .div = 10 },
-		{ /* sentinel */ },
-	};
 
 	/* get the mux parents from DT */
 	for (i = 0; i < MUX_CLK_NUM_PARENTS; i++) {
@@ -149,25 +145,39 @@ static int meson8b_init_rgmii_clk(struct meson8b_dwmac *dwmac)
 	if (WARN_ON(IS_ERR(dwmac->m250_div_clk)))
 		return PTR_ERR(dwmac->m250_div_clk);
 
-	/* create the m25_div */
-	init.name = devm_kasprintf(dev, GFP_KERNEL, "%s#m25_div",
+	/* create the fixed_div10 */
+	init.name = devm_kasprintf(dev, GFP_KERNEL, "%s#fixed_div10",
 				   dev_name(dev));
-	init.ops = &clk_divider_ops;
-	init.flags = CLK_IS_BASIC | CLK_SET_RATE_PARENT;
+	init.ops = &clk_fixed_factor_ops;
+	init.flags = CLK_SET_RATE_PARENT;
 	clk_div_parents[0] = __clk_get_name(dwmac->m250_div_clk);
 	init.parent_names = clk_div_parents;
 	init.num_parents = ARRAY_SIZE(clk_div_parents);
 
-	dwmac->m25_div.reg = dwmac->regs + PRG_ETH0;
-	dwmac->m25_div.shift = PRG_ETH0_CLK_M25_DIV_SHIFT;
-	dwmac->m25_div.width = PRG_ETH0_CLK_M25_DIV_WIDTH;
-	dwmac->m25_div.table = clk_25m_div_table;
-	dwmac->m25_div.hw.init = &init;
-	dwmac->m25_div.flags = CLK_DIVIDER_ALLOW_ZERO;
+	dwmac->fixed_div10.mult = 1;
+	dwmac->fixed_div10.div = 10;
+	dwmac->fixed_div10.hw.init = &init;
 
-	dwmac->m25_div_clk = devm_clk_register(dev, &dwmac->m25_div.hw);
-	if (WARN_ON(IS_ERR(dwmac->m25_div_clk)))
-		return PTR_ERR(dwmac->m25_div_clk);
+	dwmac->fixed_div10_clk = devm_clk_register(dev, &dwmac->fixed_div10.hw);
+	if (WARN_ON(IS_ERR(dwmac->fixed_div10_clk)))
+		return PTR_ERR(dwmac->fixed_div10_clk);
+
+	/* create the m25_en */
+	init.name = devm_kasprintf(dev, GFP_KERNEL, "%s#m25_en",
+				   dev_name(dev));
+	init.ops = &clk_gate_ops;
+	init.flags = CLK_SET_RATE_PARENT;
+	clk_div_parents[0] = __clk_get_name(dwmac->fixed_div10_clk);
+	init.parent_names = clk_div_parents;
+	init.num_parents = ARRAY_SIZE(clk_div_parents);
+
+	dwmac->m25_en.reg = dwmac->regs + PRG_ETH0;
+	dwmac->m25_en.bit_idx = PRG_ETH0_GENERATE_25M_PHY_CLOCK;
+	dwmac->m25_en.hw.init = &init;
+
+	dwmac->m25_en_clk = devm_clk_register(dev, &dwmac->m25_en.hw);
+	if (WARN_ON(IS_ERR(dwmac->m25_en_clk)))
+		return PTR_ERR(dwmac->m25_en_clk);
 
 	return 0;
 }
@@ -200,16 +210,16 @@ static int meson8b_init_prg_eth(struct meson8b_dwmac *dwmac)
 		meson8b_dwmac_mask_bits(dwmac, PRG_ETH0, PRG_ETH0_TXDLY_MASK,
 					tx_dly_val << PRG_ETH0_TXDLY_SHIFT);
 
-		ret = clk_prepare_enable(dwmac->m25_div_clk);
+		ret = clk_prepare_enable(dwmac->m25_en_clk);
 		if (ret) {
 			dev_err(&dwmac->pdev->dev, "failed to enable the PHY clock\n");
 			return ret;
 		}
 
 		/* Generate the 25MHz RGMII clock for the PHY */
-		ret = clk_set_rate(dwmac->m25_div_clk, 25 * 1000 * 1000);
+		ret = clk_set_rate(dwmac->m25_en_clk, 25 * 1000 * 1000);
 		if (ret) {
-			clk_disable_unprepare(dwmac->m25_div_clk);
+			clk_disable_unprepare(dwmac->m25_en_clk);
 
 			dev_err(&dwmac->pdev->dev, "failed to set PHY clock\n");
 			return ret;
@@ -305,7 +315,7 @@ static int meson8b_dwmac_probe(struct platform_device *pdev)
 
 err_clk_disable:
 	if (phy_interface_mode_is_rgmii(dwmac->phy_mode))
-		clk_disable_unprepare(dwmac->m25_div_clk);
+		clk_disable_unprepare(dwmac->m25_en_clk);
 err_remove_config_dt:
 	stmmac_remove_config_dt(pdev, plat_dat);
 
@@ -317,7 +327,7 @@ static int meson8b_dwmac_remove(struct platform_device *pdev)
 	struct meson8b_dwmac *dwmac = get_stmmac_bsp_priv(&pdev->dev);
 
 	if (phy_interface_mode_is_rgmii(dwmac->phy_mode))
-		clk_disable_unprepare(dwmac->m25_div_clk);
+		clk_disable_unprepare(dwmac->m25_en_clk);
 
 	return stmmac_pltfr_remove(pdev);
 }
