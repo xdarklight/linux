@@ -86,7 +86,6 @@ static int meson8b_init_rgmii_clk(struct meson8b_dwmac *dwmac)
 	struct clk_init_data init;
 	int i, ret;
 	struct device *dev = &dwmac->pdev->dev;
-	char clk_name[32];
 	const char *clk_div_parents[1];
 	const char *mux_parent_names[MUX_CLK_NUM_PARENTS];
 	static const struct clk_div_table clk_25m_div_table[] = {
@@ -113,8 +112,8 @@ static int meson8b_init_rgmii_clk(struct meson8b_dwmac *dwmac)
 	}
 
 	/* create the m250_mux */
-	snprintf(clk_name, sizeof(clk_name), "%s#m250_sel", dev_name(dev));
-	init.name = clk_name;
+	init.name = devm_kasprintf(dev, GFP_KERNEL, "%s#m250_sel",
+				   dev_name(dev));
 	init.ops = &clk_mux_ops;
 	init.flags = 0;
 	init.parent_names = mux_parent_names;
@@ -132,8 +131,8 @@ static int meson8b_init_rgmii_clk(struct meson8b_dwmac *dwmac)
 		return PTR_ERR(dwmac->m250_mux_clk);
 
 	/* create the m250_div */
-	snprintf(clk_name, sizeof(clk_name), "%s#m250_div", dev_name(dev));
-	init.name = devm_kstrdup(dev, clk_name, GFP_KERNEL);
+	init.name = devm_kasprintf(dev, GFP_KERNEL, "%s#m250_div",
+				   dev_name(dev));
 	init.ops = &clk_divider_ops;
 	init.flags = CLK_SET_RATE_PARENT;
 	clk_div_parents[0] = __clk_get_name(dwmac->m250_mux_clk);
@@ -151,8 +150,8 @@ static int meson8b_init_rgmii_clk(struct meson8b_dwmac *dwmac)
 		return PTR_ERR(dwmac->m250_div_clk);
 
 	/* create the m25_div */
-	snprintf(clk_name, sizeof(clk_name), "%s#m25_div", dev_name(dev));
-	init.name = devm_kstrdup(dev, clk_name, GFP_KERNEL);
+	init.name = devm_kasprintf(dev, GFP_KERNEL, "%s#m25_div",
+				   dev_name(dev));
 	init.ops = &clk_divider_ops;
 	init.flags = CLK_IS_BASIC | CLK_SET_RATE_PARENT;
 	clk_div_parents[0] = __clk_get_name(dwmac->m250_div_clk);
