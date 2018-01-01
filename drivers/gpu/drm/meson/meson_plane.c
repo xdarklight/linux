@@ -93,6 +93,7 @@ static void meson_plane_atomic_update(struct drm_plane *plane,
 		.x2 = state->crtc_x + state->crtc_w,
 		.y2 = state->crtc_y + state->crtc_h,
 	};
+	u8 canvas_index = meson_canvas_id_osd1(priv);
 	unsigned long flags;
 
 	/*
@@ -109,7 +110,7 @@ static void meson_plane_atomic_update(struct drm_plane *plane,
 				   OSD_BLK0_ENABLE;
 
 	/* Set up BLK0 to point to the right canvas */
-	priv->viu.osd1_blk0_cfg[0] = ((MESON_CANVAS_ID_OSD1 << OSD_CANVAS_SEL) |
+	priv->viu.osd1_blk0_cfg[0] = ((canvas_index << OSD_CANVAS_SEL) |
 				      OSD_ENDIANNESS_LE);
 
 	/* On GXBB, Use the old non-HDR RGB2YUV converter */
@@ -164,7 +165,7 @@ static void meson_plane_atomic_update(struct drm_plane *plane,
 	/* Update Canvas with buffer address */
 	gem = drm_fb_cma_get_gem_obj(fb, 0);
 
-	meson_canvas_setup(priv, MESON_CANVAS_ID_OSD1,
+	meson_canvas_setup(priv, canvas_index,
 			   gem->paddr, fb->pitches[0],
 			   fb->height, MESON_CANVAS_WRAP_NONE,
 			   MESON_CANVAS_BLKMODE_LINEAR);

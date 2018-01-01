@@ -22,8 +22,6 @@
 #ifndef __MESON_CANVAS_H
 #define __MESON_CANVAS_H
 
-#define MESON_CANVAS_ID_OSD1	0x4e
-
 /* Canvas configuration. */
 #define MESON_CANVAS_WRAP_NONE	0x00
 #define	MESON_CANVAS_WRAP_X	0x01
@@ -32,6 +30,8 @@
 #define	MESON_CANVAS_BLKMODE_LINEAR	0x00
 #define	MESON_CANVAS_BLKMODE_32x32	0x01
 #define	MESON_CANVAS_BLKMODE_64x64	0x02
+
+u8 meson_canvas_id_osd1(struct meson_drm *priv);
 
 void meson_canvas_setup(struct meson_drm *priv,
 			uint32_t canvas_index, uint32_t addr,

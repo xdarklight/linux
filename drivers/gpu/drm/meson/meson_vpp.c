@@ -61,6 +61,7 @@ void meson_vpp_setup_mux(struct meson_drm *priv, unsigned int mux)
 void meson_vpp_setup_interlace_vscaler_osd1(struct meson_drm *priv,
 					    struct drm_rect *input)
 {
+#if 0
 	writel_relaxed(BIT(3) /* Enable scaler */ |
 		       BIT(2), /* Select OSD1 */
 			priv->io_base + _REG(VPP_OSD_SC_CTRL0));
@@ -79,6 +80,33 @@ void meson_vpp_setup_interlace_vscaler_osd1(struct meson_drm *priv,
 	writel_relaxed(BIT(25), priv->io_base + _REG(VPP_OSD_VSC_PHASE_STEP));
 
 	writel_relaxed(0, priv->io_base + _REG(VPP_OSD_HSC_CTRL0));
+#else
+	printk("%s: VPP_OSD_SC_CTRL0 = 0x%08x\n", __func__, readl(priv->io_base + _REG(VPP_OSD_SC_CTRL0)));
+	printk("%s: VPP_OSD_SCI_WH_M1 = 0x%08x\n", __func__, readl(priv->io_base + _REG(VPP_OSD_SCI_WH_M1)));
+	printk("%s: VPP_OSD_SCO_H_START_END = 0x%08x\n", __func__, readl(priv->io_base + _REG(VPP_OSD_SCO_H_START_END)));
+	printk("%s: VPP_OSD_SCO_V_START_END = 0x%08x\n", __func__, readl(priv->io_base + _REG(VPP_OSD_SCO_V_START_END)));
+	printk("%s: VPP_OSD_VSC_INI_PHASE = 0x%08x\n", __func__, readl(priv->io_base + _REG(VPP_OSD_VSC_INI_PHASE)));
+	printk("%s: VPP_OSD_VSC_PHASE_STEP = 0x%08x\n", __func__, readl(priv->io_base + _REG(VPP_OSD_VSC_PHASE_STEP)));
+	printk("%s: VPP_OSD_HSC_CTRL0 = 0x%08x\n", __func__, readl(priv->io_base + _REG(VPP_OSD_HSC_CTRL0)));
+
+	writel_relaxed(BIT(3) /* Enable scaler */ |
+		       BIT(0), /* Select OSD2 - FIXME */
+			priv->io_base + _REG(VPP_OSD_SC_CTRL0));
+
+//	writel_relaxed(((drm_rect_width(input) - 1) << 16) |
+//		       (drm_rect_height(input) - 1),
+//			priv->io_base + _REG(VPP_OSD_SCI_WH_M1));
+
+//	writel_relaxed((drm_rect_height(input) - 1),
+//		       priv->io_base + _REG(VPP_OSD_SCO_H_START_END));
+
+	writel_relaxed(0x04ff02cf, priv->io_base + _REG(VPP_OSD_SCI_WH_M1));
+	writel_relaxed(0x000002cf, priv->io_base + _REG(VPP_OSD_SCO_H_START_END));
+	writel_relaxed(0x0000011f, priv->io_base + _REG(VPP_OSD_SCO_V_START_END));
+	writel_relaxed(0x40000000, priv->io_base + _REG(VPP_OSD_VSC_INI_PHASE));
+	writel_relaxed(0x02800000, priv->io_base + _REG(VPP_OSD_VSC_PHASE_STEP));
+	writel_relaxed(0x00400124, priv->io_base + _REG(VPP_OSD_HSC_CTRL0));
+#endif
 
 	writel_relaxed((4 << 0) /* osd_vsc_bank_length */ |
 		       (4 << 3) /* osd_vsc_top_ini_rcv_num0 */ |

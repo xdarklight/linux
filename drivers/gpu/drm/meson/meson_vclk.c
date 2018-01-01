@@ -247,7 +247,20 @@ static void meson_venci_cvbs_clock_config(struct meson_drm *priv)
 	unsigned int val;
 
 	/* Setup PLL to output 1.485GHz */
-	if (meson_vpu_is_compatible(priv, "amlogic,meson-gxbb-vpu")) {
+	if (meson_vpu_is_compatible(priv, "amlogic,meson8-vpu") ||
+	    meson_vpu_is_compatible(priv, "amlogic,meson8b-vpu") ||
+	    meson_vpu_is_compatible(priv, "amlogic,meson8m2-vpu")) {
+#if 0
+		regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL, 0x2001042d);
+		regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL2, 0x814d3928);
+		regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL3, 0x6b425012);
+		regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL4, 0x00000110);
+		regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL, 0x0001042d);
+#else
+		/* TODO! */
+		return;
+#endif
+	} else if (meson_vpu_is_compatible(priv, "amlogic,meson-gxbb-vpu")) {
 		regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL, 0x5800023d);
 		regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL2, 0x00404e00);
 		regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL3, 0x0d5c5091);
@@ -428,7 +441,11 @@ void meson_hdmi_pll_set(struct meson_drm *priv,
 {
 	unsigned int val;
 
-	if (meson_vpu_is_compatible(priv, "amlogic,meson-gxbb-vpu")) {
+	if (meson_vpu_is_compatible(priv, "amlogic,meson8-vpu") ||
+	    meson_vpu_is_compatible(priv, "amlogic,meson8b-vpu") ||
+	    meson_vpu_is_compatible(priv, "amlogic,meson8m2-vpu")) {
+		return; // TODO
+	} else if (meson_vpu_is_compatible(priv, "amlogic,meson-gxbb-vpu")) {
 		switch (base) {
 		case 2970000:
 			regmap_write(priv->hhi, HHI_HDMI_PLL_CNTL, 0x5800023d);
