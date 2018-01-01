@@ -303,9 +303,12 @@ void meson_viu_init(struct meson_drm *priv)
 	/* Disable OSDs */
 	writel_bits_relaxed(BIT(0) | BIT(21), 0,
 			priv->io_base + _REG(VIU_OSD1_CTRL_STAT));
+#if 0
 	writel_bits_relaxed(BIT(0) | BIT(21), 0,
 			priv->io_base + _REG(VIU_OSD2_CTRL_STAT));
-
+#else
+	printk("%s: VIU_OSD2_CTRL_STAT = 0x%08x\n", __func__, readl(priv->io_base + _REG(VIU_OSD2_CTRL_STAT)));
+#endif
 	/* On GXL/GXM, Use the 10bit HDR conversion matrix */
 	if (meson_vpu_is_compatible(priv, "amlogic,meson-gxm-vpu") ||
 	    meson_vpu_is_compatible(priv, "amlogic,meson-gxl-vpu"))

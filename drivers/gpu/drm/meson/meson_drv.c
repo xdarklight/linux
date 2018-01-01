@@ -378,6 +378,9 @@ static int meson_drv_probe(struct platform_device *pdev)
 };
 
 static const struct of_device_id dt_match[] = {
+	{ .compatible = "amlogic,meson8-vpu" },
+	{ .compatible = "amlogic,meson8b-vpu" },
+	{ .compatible = "amlogic,meson8m2-vpu" },
 	{ .compatible = "amlogic,meson-gxbb-vpu" },
 	{ .compatible = "amlogic,meson-gxl-vpu" },
 	{ .compatible = "amlogic,meson-gxm-vpu" },

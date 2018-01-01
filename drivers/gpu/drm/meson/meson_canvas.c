@@ -43,6 +43,17 @@
 #define CANVAS_LUT_WR_EN        (0x2 << 8)
 #define CANVAS_LUT_RD_EN        (0x1 << 8)
 
+u8 meson_canvas_id_osd1(struct meson_drm *priv)
+{
+	if (meson_vpu_is_compatible(priv, "amlogic,meson8-vpu") ||
+	    meson_vpu_is_compatible(priv, "amlogic,meson8b-vpu") ||
+	    meson_vpu_is_compatible(priv, "amlogic,meson8m2-vpu")) {
+		return 0x43; // HACK: OSD1 = 0x40, OSD2 = 0x43
+	} else {
+		return 0x4e;
+	}
+}
+
 void meson_canvas_setup(struct meson_drm *priv,
 			uint32_t canvas_index, uint32_t addr,
 			uint32_t stride, uint32_t height,
