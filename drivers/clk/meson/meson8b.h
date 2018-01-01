@@ -19,20 +19,26 @@
  *
  * [0] http://dn.odroid.com/S805/Datasheet/S805_Datasheet%20V0.8%2020150126.pdf
  */
+#define HHI_VIID_CLK_DIV		0x128 /* 0x4a offset in data sheet */
+#define HHI_VIID_CLK_CNTL		0x12c /* 0x4b offset in data sheet */
 #define HHI_GCLK_MPEG0			0x140 /* 0x50 offset in data sheet */
 #define HHI_GCLK_MPEG1			0x144 /* 0x51 offset in data sheet */
 #define HHI_GCLK_MPEG2			0x148 /* 0x52 offset in data sheet */
 #define HHI_GCLK_OTHER			0x150 /* 0x54 offset in data sheet */
 #define HHI_GCLK_AO			0x154 /* 0x55 offset in data sheet */
 #define HHI_SYS_CPU_CLK_CNTL1		0x15c /* 0x57 offset in data sheet */
+#define HHI_VID_CLK_DIV			0x164 /* 0x59 offset in data sheet */
 #define HHI_MPEG_CLK_CNTL		0x174 /* 0x5d offset in data sheet */
 #define HHI_VID_CLK_CNTL		0x17c /* 0x5f offset in data sheet */
+#define HHI_VID_CLK_CNTL2		0x194 /* 0x65 offset in data sheet */
 #define HHI_VID_DIVIDER_CNTL		0x198 /* 0x66 offset in data sheet */
 #define HHI_SYS_CPU_CLK_CNTL0		0x19c /* 0x67 offset in data sheet */
+#define HHI_HDMI_CLK_CNTL		0x1cc /* 0x73 offset in data sheet */
 #define HHI_NAND_CLK_CNTL		0x25c /* 0x97 offset in data sheet */
 #define HHI_MPLL_CNTL			0x280 /* 0xa0 offset in data sheet */
 #define HHI_SYS_PLL_CNTL		0x300 /* 0xc0 offset in data sheet */
 #define HHI_VID_PLL_CNTL		0x320 /* 0xc8 offset in data sheet */
+#define HHI_VID_PLL_CNTL2		0x324 /* 0xc9 offset in data sheet */
 
 /*
  * MPLL register offeset taken from the S905 datasheet. Vendor kernel source
@@ -89,8 +95,39 @@
 #define CLKID_PERIPH_SEL	125
 #define CLKID_AXI_SEL		127
 #define CLKID_L2_DRAM_SEL	129
+#define CLKID_VID_PLL_PRE_MULT	131
+#define CLKID_VID_PLL_PRE_DIV	132
+#define CLKID_VID_PLL_POST_DIV	133
+#define CLKID_VID_PLL_POST_SEL	134
+#define CLKID_VCLK_CLK_DIV_EN	137
+#define CLKID_VCLK_DIV1		138
+#define CLKID_VCLK_DIV2_DIV	139
+#define CLKID_VCLK_DIV2		140
+#define CLKID_VCLK_DIV4_DIV	141
+#define CLKID_VCLK_DIV4		142
+#define CLKID_VCLK_DIV6_DIV	143
+#define CLKID_VCLK_DIV6		144
+#define CLKID_VCLK_DIV12_DIV	145
+#define CLKID_VCLK_DIV12	146
+#define CLKID_VCLK2_SEL		147
+#define CLKID_VCLK2_CLK_DIV_EN	148
+#define CLKID_VCLK2_DIV1	149
+#define CLKID_VCLK2_DIV2_DIV	150
+#define CLKID_VCLK2_DIV2	151
+#define CLKID_VCLK2_DIV4_DIV	152
+#define CLKID_VCLK2_DIV4	153
+#define CLKID_VCLK2_DIV6_DIV	154
+#define CLKID_VCLK2_DIV6	155
+#define CLKID_VCLK2_DIV12_DIV	156
+#define CLKID_VCLK2_DIV12	157
+#define CLKID_CTS_ENCT_SEL	158
+#define CLKID_CTS_ENCP_SEL	160
+#define CLKID_CTS_ENCI_SEL	162
+#define CLKID_CTS_ENCL_SEL	164
+#define CLKID_CTS_VDAC0_SEL	166
+#define CLKID_HDMI_TX_PIXEL_SEL	168
 
-#define CLK_NR_CLKS		131
+#define CLK_NR_CLKS		170
 
 /*
  * include the CLKID and RESETID that have
