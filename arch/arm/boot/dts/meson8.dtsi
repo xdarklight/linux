@@ -210,6 +210,22 @@
 		reg = <0xc4300000 0x100>;
 	};
 
+	vpu: vpu@d0100000 {
+		compatible = "amlogic,meson8-vpu";
+		reg = <0xd0100000 0x100000>,
+		      <0xc1104000 0x1000>,
+		      <0xc8006000 0x1000>;
+		reg-names = "vpu", "hhi", "dmc";
+		interrupts = <GIC_SPI 3 IRQ_TYPE_EDGE_RISING>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		/* CVBS VDAC output port */
+		cvbs_vdac_port: port@0 {
+			reg = <0>;
+		};
+	};
+
 	apb: apb@d0040000 {
 		compatible = "simple-bus";
 		reg = <0xd0040000 0x200000>;

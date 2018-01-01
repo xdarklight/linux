@@ -68,6 +68,16 @@
 		clock-names = "ext_clock";
 	};
 
+	tv-connector {
+		compatible = "composite-video-connector";
+
+		port {
+			cvbs_connector_in: endpoint {
+				remote-endpoint = <&cvbs_vdac_out>;
+			};
+		};
+	};
+
 	vcc_1v8: regulator-vcc1v8 {
 		compatible = "regulator-fixed";
 		regulator-name = "VCC1V8";
@@ -87,6 +97,12 @@
 		#clock-cells = <0>;
 		clock-frequency = <32768>;
 		pwms = <&pwm_ef 0 30518 0>; /* PWM_E at 32.768KHz */
+	};
+};
+
+&cvbs_vdac_port {
+	cvbs_vdac_out: endpoint {
+		remote-endpoint = <&cvbs_connector_in>;
 	};
 };
 
