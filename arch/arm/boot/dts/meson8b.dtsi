@@ -203,8 +203,18 @@
 };
 
 &ethmac {
-	clocks = <&clkc CLKID_ETH>;
-	clock-names = "stmmaceth";
+	compatible = "amlogic,meson8b-dwmac", "snps,dwmac-3.70a", "snps,dwmac";
+
+	reg = <0xc9410000 0x10000
+	       0xc1108140 0x4>;
+
+	clocks = <&clkc CLKID_ETH>,
+		 <&clkc CLKID_MPLL2>,
+		 <&clkc CLKID_MPLL2>;
+	clock-names = "stmmaceth", "clkin0", "clkin1";
+
+	resets = <&reset RESET_ETHERNET>;
+	reset-names = "stmmaceth";
 };
 
 &gpio_intc {
