@@ -28,6 +28,18 @@
 		};
 	};
 
+	reserved-memory {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		/* 1 MiB reserved for Hardware ROM Firmware */
+		hwrom@0 {
+			reg = <0x1ff00000 0x100000>;
+			no-map;
+		};
+	};
+
 	apb2: bus@d0000000 {
 		compatible = "simple-bus";
 		reg = <0xd0000000 0x40000>;
