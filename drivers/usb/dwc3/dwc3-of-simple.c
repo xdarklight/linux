@@ -217,6 +217,11 @@ static const struct dwc3_of_simple_params dwc3_of_simple_default_params = {
 	.pulse_resets = false,
 };
 
+static const struct dwc3_of_simple_params dwc3_of_simple_amlogic_params = {
+	.shared_resets = true,
+	.pulse_resets = true,
+};
+
 static const struct of_device_id of_dwc3_simple_match[] = {
 	{
 		.compatible = "qcom,dwc3",
@@ -237,6 +242,14 @@ static const struct of_device_id of_dwc3_simple_match[] = {
 	{
 		.compatible = "sprd,sc9860-dwc3",
 		.data = &dwc3_of_simple_default_params
+	},
+	{
+		.compatible = "amlogic,meson-axg-dwc3",
+		.data = &dwc3_of_simple_amlogic_params
+	},
+	{
+		.compatible = "amlogic,meson-gxl-dwc3",
+		.data = &dwc3_of_simple_amlogic_params
 	},
 	{ /* Sentinel */ }
 };
