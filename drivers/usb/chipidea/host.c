@@ -124,9 +124,7 @@ static int host_start(struct ci_hdrc *ci)
 
 	hcd->power_budget = ci->platdata->power_budget;
 	hcd->tpl_support = ci->platdata->tpl_support;
-	if (ci->phy)
-		hcd->phy = ci->phy;
-	else
+	if (!ci->phy)
 		hcd->usb_phy = ci->usb_phy;
 
 	ehci = hcd_to_ehci(hcd);
