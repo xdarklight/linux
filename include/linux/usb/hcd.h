@@ -99,6 +99,12 @@ struct usb_hcd {
 	const struct hc_driver	*driver;	/* hw-specific hooks */
 
 	/*
+	 * do not manage the PHY state in the HCD core, instead let the driver
+	 * handle this (for example if the PHY can only be turned on after a
+	 * specific event)
+	 */
+	bool skip_phy_initialization;
+	/*
 	 * OTG and some Host controllers need software interaction with phys;
 	 * other external phys should be software-transparent
 	 */
