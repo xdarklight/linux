@@ -1,0 +1,21 @@
+/*
+ * Copyright (c) 2018 Martin Blumenstingl <martin.blumenstingl@googlemail.com>.
+ * Based on meson-gxl-s905x.dtsi:
+ * - Copyright (c) 2016 Endless Computers, Inc.
+ *   Author: Carlo Caione <carlo@endlessm.com>
+ *
+ * SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+ */
+
+#include "meson-gxl.dtsi"
+#include "meson-gxl-mali.dtsi"
+
+/ {
+	compatible = "amlogic,s905w", "amlogic,meson-gxl";
+};
+
+/* S905W only has access to its internal PHY */
+&ethmac {
+	phy-mode = "rmii";
+	phy-handle = <&internal_phy>;
+};
