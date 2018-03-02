@@ -464,6 +464,13 @@
 				bias-disable;
 			};
 		};
+
+		xtal_32k_out_pins: xtal-32k-out {
+			mux {
+				groups = "xtal_32k_out";
+				function = "xtal";
+			};
+		};
 	};
 };
 
