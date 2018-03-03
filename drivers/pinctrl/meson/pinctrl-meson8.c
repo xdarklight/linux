@@ -303,7 +303,7 @@ static const unsigned int eth_rxd2_pins[]	= { GPIOZ_0 };
 static const unsigned int eth_rxd3_pins[]	= { GPIOZ_1 };
 static const unsigned int eth_txd2_pins[]	= { GPIOZ_2 };
 static const unsigned int eth_txd3_pins[]	= { GPIOZ_3 };
-static const unsigned int eth_tx_clk_pins[]	= { GPIOZ_4 };
+static const unsigned int eth_tx_clk_50m_pins[]	= { GPIOZ_4 };
 static const unsigned int eth_tx_en_pins[]	= { GPIOZ_5 };
 static const unsigned int eth_txd1_pins[]	= { GPIOZ_6 };
 static const unsigned int eth_txd0_pins[]	= { GPIOZ_7 };
@@ -644,7 +644,7 @@ static struct meson_pmx_group meson8_cbus_groups[] = {
 	GROUP(spi_miso_1,	8,	13),
 	GROUP(spi_ss2_1,	8,	17),
 
-	GROUP(eth_tx_clk,	6,	15),
+	GROUP(eth_tx_clk_50m,	6,	15),
 	GROUP(eth_tx_en,	6,	14),
 	GROUP(eth_txd1,		6,	13),
 	GROUP(eth_txd0,		6,	12),
@@ -887,7 +887,7 @@ static const char * const spi_groups[] = {
 };
 
 static const char * const ethernet_groups[] = {
-	"eth_tx_clk", "eth_tx_en", "eth_txd1",
+	"eth_tx_clk_50m", "eth_tx_en", "eth_txd1",
 	"eth_txd0", "eth_rx_clk_in", "eth_rx_clk_out", "eth_rx_dv",
 	"eth_rxd1", "eth_rxd0", "eth_mdio", "eth_mdc", "eth_rxd2",
 	"eth_rxd3", "eth_txd2", "eth_txd3"
