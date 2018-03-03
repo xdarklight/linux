@@ -132,6 +132,27 @@ static int rn5t618_regulator_probe(struct platform_device *pdev)
 	config.regmap = rn5t618->regmap;
 
 	for (i = 0; i < num_regulators; i++) {
+		{
+			int ret;
+			unsigned int val;
+			struct regulator_desc *rdesc = &regulators[i];
+
+			ret = regmap_read(rn5t618->regmap, rdesc->enable_reg,
+					  &val);
+			if (ret != 0) {
+				dev_err(&pdev->dev,
+					"failed to regmap_read regulator %d\n",
+					i);
+				return ret;
+			}
+
+			val &= rdesc->enable_mask;
+
+			dev_err(&pdev->dev,
+				"regulator %s (%d) bootloader status: %d\n",
+				rdesc->name, i, val);
+		}
+
 		rdev = devm_regulator_register(&pdev->dev,
 					       &regulators[i],
 					       &config);
