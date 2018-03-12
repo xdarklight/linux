@@ -7,6 +7,7 @@
 #include <dt-bindings/interrupt-controller/irq.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include <dt-bindings/clock/axg-clkc.h>
+#include <dt-bindings/reset/amlogic,meson-axg-reset.h>
 
 / {
 	compatible = "amlogic,meson-axg";
@@ -112,6 +113,60 @@
 		#address-cells = <2>;
 		#size-cells = <2>;
 		ranges;
+
+		apb: apb@ffe00000 {
+			compatible = "simple-bus";
+			reg = <0x0 0xffe00000 0x0 0x200000>;
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges = <0x0 0x0 0x0 0xffe00000 0x0 0x200000>;
+
+			usb2_phy1: phy@9020 {
+				compatible = "amlogic,meson-gxl-usb2-phy";
+				#phy-cells = <0>;
+				reg = <0x0 0x9020 0x0 0x20>;
+				clocks = <&clkc CLKID_USB>;
+				clock-names = "phy";
+				resets = <&reset RESET_USB_OTG>;
+				reset-names = "phy";
+				status = "okay";
+			};
+
+			usb3_phy: phy@9080 {
+				compatible = "amlogic,meson-gxl-usb3-phy";
+				#phy-cells = <0>;
+				reg = <0x0 0x9080 0x0 0x20>;
+				clocks = <&clkc CLKID_USB>,
+					 <>; /* TODO: <&clkc_AO CLKID_AO_CEC_32K>; */
+				clock-names = "phy", "peripheral";
+				resets = <&reset RESET_USB_OTG>,
+					 <&reset RESET_USB_OTG>;
+				reset-names = "phy", "peripheral";
+				status = "okay";
+			};
+		};
+
+		usb0: usb@ff500000 {
+			compatible = "amlogic,meson-axg-dwc3";
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges;
+
+			clocks = <&clkc CLKID_USB>;
+			clock-names = "usb_general";
+			resets = <&reset RESET_USB_OTG>;
+			reset-names = "usb_otg";
+
+			dwc3: dwc3@ff500000 {
+				compatible = "snps,dwc3";
+				reg = <0x0 0xff500000 0x0 0x100000>;
+				interrupts = <GIC_SPI 30 IRQ_TYPE_LEVEL_HIGH>;
+				dr_mode = "host";
+				maximum-speed = "high-speed";
+				snps,dis_u2_susphy_quirk;
+				phys = <&usb2_phy1>, <&usb3_phy>;
+			};
+		};
 
 		cbus: bus@ffd00000 {
 			compatible = "simple-bus";
