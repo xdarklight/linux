@@ -155,3 +155,32 @@ void usb_phy_roothub_power_off(struct usb_phy_roothub *phy_roothub)
 		phy_power_off(roothub_entry->phy);
 }
 EXPORT_SYMBOL_GPL(usb_phy_roothub_power_off);
+
+int usb_phy_roothub_suspend(struct device *dev,
+			    struct usb_phy_roothub *phy_roothub)
+{
+	usb_phy_roothub_power_off(phy_roothub);
+
+	/* keep the PHYs initialized so the device can wake up the system */
+	if (device_can_wakeup(dev))
+		return 0;
+
+	return usb_phy_roothub_exit(phy_roothub);
+}
+EXPORT_SYMBOL_GPL(usb_phy_roothub_suspend);
+
+int usb_phy_roothub_resume(struct device *dev,
+			   struct usb_phy_roothub *phy_roothub)
+{
+	int err;
+
+	/* if the device can't wake up the system _exit was called */
+	if (device_can_wakeup(dev)) {
+		err = usb_phy_roothub_init(phy_roothub);
+		if (err)
+			return err;
+	}
+
+	return usb_phy_roothub_power_on(phy_roothub);
+}
+EXPORT_SYMBOL_GPL(usb_phy_roothub_resume);
