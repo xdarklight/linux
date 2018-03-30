@@ -104,6 +104,7 @@ eeti	eGalax_eMPIA Technology Inc
 elan	Elan Microelectronic Corp.
 embest	Shenzhen Embest Technology Co., Ltd.
 emmicro	EM Microelectronic
+endless	Endless Mobile, Inc.
 energymicro	Silicon Laboratories (formerly Energy Micro AS)
 engicam	Engicam S.r.l.
 epcos	EPCOS AG
