@@ -32,6 +32,7 @@ config PHY_MESON_GXL_USB3
 	depends on USB_SUPPORT
 	select GENERIC_PHY
 	select REGMAP_MMIO
+	select USB_COMMON
 	help
 	  Enable this to support the Meson USB3 PHY and OTG detection
 	  IP block found in Meson GXL and GXM SoCs.

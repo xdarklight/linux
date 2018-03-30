@@ -14,6 +14,7 @@
 #include <linux/regmap.h>
 #include <linux/reset.h>
 #include <linux/platform_device.h>
+#include <linux/usb/otg.h>
 
 #define USB_R0							0x00
 	#define USB_R0_P30_FSEL_MASK				GENMASK(5, 0)
@@ -86,6 +87,7 @@ struct phy_meson_gxl_usb3_priv {
 	struct clk		*clk_phy;
 	struct clk		*clk_peripheral;
 	struct reset_control	*reset;
+	struct phy		*usb2_phy;
 };
 
 static const struct regmap_config phy_meson_gxl_usb3_regmap_conf = {
@@ -98,6 +100,11 @@ static const struct regmap_config phy_meson_gxl_usb3_regmap_conf = {
 static int phy_meson_gxl_usb3_power_on(struct phy *phy)
 {
 	struct phy_meson_gxl_usb3_priv *priv = phy_get_drvdata(phy);
+	int ret;
+
+	ret = phy_power_on(priv->usb2_phy);
+	if (ret)
+		return ret;
 
 	regmap_update_bits(priv->regmap, USB_R5, USB_R5_ID_DIG_EN_0,
 			   USB_R5_ID_DIG_EN_0);
@@ -112,6 +119,11 @@ static int phy_meson_gxl_usb3_power_on(struct phy *phy)
 static int phy_meson_gxl_usb3_power_off(struct phy *phy)
 {
 	struct phy_meson_gxl_usb3_priv *priv = phy_get_drvdata(phy);
+	int ret;
+
+	ret = phy_power_off(priv->usb2_phy);
+	if (ret)
+		return ret;
 
 	regmap_update_bits(priv->regmap, USB_R5, USB_R5_ID_DIG_EN_0, 0);
 	regmap_update_bits(priv->regmap, USB_R5, USB_R5_ID_DIG_EN_1, 0);
@@ -122,6 +134,11 @@ static int phy_meson_gxl_usb3_power_off(struct phy *phy)
 static int phy_meson_gxl_usb3_set_mode(struct phy *phy, enum phy_mode mode)
 {
 	struct phy_meson_gxl_usb3_priv *priv = phy_get_drvdata(phy);
+	int ret;
+
+	ret = phy_set_mode(priv->usb2_phy, mode);
+	if (ret)
+		return ret;
 
 	switch (mode) {
 	case PHY_MODE_USB_HOST:
@@ -168,6 +185,10 @@ static int phy_meson_gxl_usb3_init(struct phy *phy)
 	if (ret)
 		goto err_disable_clk_peripheral;
 
+	ret = phy_init(priv->usb2_phy);
+	if (ret)
+		goto err_disable_clk_peripheral;
+
 	regmap_update_bits(priv->regmap, USB_R1,
 			   USB_R1_U3H_FLADJ_30MHZ_REG_MASK,
 			   FIELD_PREP(USB_R1_U3H_FLADJ_30MHZ_REG_MASK, 0x20));
@@ -185,6 +206,11 @@ err:
 static int phy_meson_gxl_usb3_exit(struct phy *phy)
 {
 	struct phy_meson_gxl_usb3_priv *priv = phy_get_drvdata(phy);
+	int ret;
+
+	ret = phy_exit(priv->usb2_phy);
+	if (ret)
+		return ret;
 
 	clk_disable_unprepare(priv->clk_peripheral);
 	clk_disable_unprepare(priv->clk_phy);
@@ -211,6 +237,7 @@ static int phy_meson_gxl_usb3_probe(struct platform_device *pdev)
 	struct phy_provider *phy_provider;
 	void __iomem *base;
 	int ret;
+	enum usb_dr_mode dr_mode;
 
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
@@ -238,6 +265,10 @@ static int phy_meson_gxl_usb3_probe(struct platform_device *pdev)
 	if (IS_ERR(priv->reset))
 		return PTR_ERR(priv->reset);
 
+	priv->usb2_phy = devm_phy_optional_get(dev, "usb2-phy");
+	if (IS_ERR(priv->usb2_phy))
+		return PTR_ERR(priv->usb2_phy);
+
 	/*
 	 * default to host mode as hardware defaults and/or boot-loader
 	 * behavior can result in this PHY starting up in device mode. this
@@ -245,6 +276,10 @@ static int phy_meson_gxl_usb3_probe(struct platform_device *pdev)
 	 * that we reproducibly start in a known mode on all devices.
 	 */
 	priv->mode = PHY_MODE_USB_HOST;
+
+	dr_mode = usb_get_dr_mode(dev);
+	if (dr_mode == USB_DR_MODE_PERIPHERAL)
+		priv->mode = PHY_MODE_USB_DEVICE;
 
 	phy = devm_phy_create(dev, np, &phy_meson_gxl_usb3_ops);
 	if (IS_ERR(phy)) {
