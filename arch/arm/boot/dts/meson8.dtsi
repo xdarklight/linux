@@ -65,7 +65,7 @@
 			enable-method = "amlogic,meson8-smp";
 			resets = <&clkc CLKC_RESET_CPU0_SOFT_RESET>;
 			operating-points-v2 = <&cpu_opp_table>;
-			clocks = <&clkc CLKID_CPUCLK>;
+			clocks = <&cpu_clk>;
 		};
 
 		cpu1: cpu@201 {
@@ -76,7 +76,7 @@
 			enable-method = "amlogic,meson8-smp";
 			resets = <&clkc CLKC_RESET_CPU1_SOFT_RESET>;
 			operating-points-v2 = <&cpu_opp_table>;
-			clocks = <&clkc CLKID_CPUCLK>;
+			clocks = <&cpu_clk>;
 		};
 
 		cpu2: cpu@202 {
@@ -87,7 +87,7 @@
 			enable-method = "amlogic,meson8-smp";
 			resets = <&clkc CLKC_RESET_CPU2_SOFT_RESET>;
 			operating-points-v2 = <&cpu_opp_table>;
-			clocks = <&clkc CLKID_CPUCLK>;
+			clocks = <&cpu_clk>;
 		};
 
 		cpu3: cpu@203 {
@@ -98,7 +98,7 @@
 			enable-method = "amlogic,meson8-smp";
 			resets = <&clkc CLKC_RESET_CPU3_SOFT_RESET>;
 			operating-points-v2 = <&cpu_opp_table>;
-			clocks = <&clkc CLKID_CPUCLK>;
+			clocks = <&cpu_clk>;
 		};
 	};
 
@@ -166,16 +166,6 @@
 			opp-microvolt = <1100000>;
 			clock-latency-ns = <8300000>;
 		};
-		opp-1800000000 {
-			opp-hz = /bits/ 64 <1800000000>;
-			opp-microvolt = <1125000>;
-			clock-latency-ns = <8300000>;
-		};
-		opp-1992000000 {
-			opp-hz = /bits/ 64 <1992000000>;
-			opp-microvolt = <1150000>;
-			clock-latency-ns = <8300000>;
-		};
 	};
 
 	pmu {
@@ -212,6 +202,13 @@
 			reg = <0x4f00000 0x100000>;
 			no-map;
 		};
+	};
+
+	cpu_clk: cpu-clk {
+		compatible = "amlogic,meson8-cpu-clk";
+		#clock-cells = <0>;
+		clocks = <&clkc CLKID_CPUCLK>, <&clkc CLKID_XTAL>;
+		clock-names = "cpu_clk_sel", "xtal";
 	};
 
 	scu@c4300000 {

@@ -94,6 +94,30 @@ static const struct pll_rate_table sys_pll_rate_table[] = {
 	PLL_RATE(1488000000, 62, 1, 0),
 	PLL_RATE(1512000000, 63, 1, 0),
 	PLL_RATE(1536000000, 64, 1, 0),
+	PLL_RATE(1560000000, 65, 1, 0),
+	PLL_RATE(1584000000, 66, 1, 0),
+	PLL_RATE(1608000000, 67, 1, 0),
+	PLL_RATE(1632000000, 68, 1, 0),
+//	PLL_RATE(1656000000, 68, 1, 0),//0x40004244, 0x01003546 }, /* fvco 1656, / 1, / 1 */
+	PLL_RATE(1680000000, 68, 1, 1),
+//	PLL_RATE(1704000000, 68, 1, 0),//0x4000c244, 0x01003546 }, /* fvco 1704, / 1, / 1 */
+	PLL_RATE(1728000000, 69, 1, 0),
+//	PLL_RATE(1752000000, 69, 1, 0),//0x40004245, 0x01003546 }, /* fvco 1752, / 1, / 1 */
+	PLL_RATE(1776000000, 69, 1, 1),
+//	PLL_RATE(1800000000, 69, 1, 0),//0x4000c245, 0x01003546 }, /* fvco 1800, / 1, / 1 */
+	PLL_RATE(1824000000, 70, 1, 0),
+//	PLL_RATE(1848000000, 70, 1, 0),//0x40004246, 0x01003546 }, /* fvco 1848, / 1, / 1 */
+	PLL_RATE(1872000000, 70, 1, 1),
+//	PLL_RATE(1896000000, 70, 1, 0),//0x4000c246, 0x01003546 }, /* fvco 1896, / 1, / 1 */
+	PLL_RATE(1920000000, 71, 1, 0),
+//	PLL_RATE(1944000000, 71, 1, 0),//0x40004247, 0x01003546 }, /* fvco 1944, / 1, / 1 */
+	PLL_RATE(1968000000, 71, 1, 1),
+//	PLL_RATE(1992000000, 71, 1, 0),//0x4000c247, 0x01003546 }, /* fvco 1992, / 1, / 1 */
+	PLL_RATE(2016000000, 72, 1, 0),
+//	PLL_RATE(2040000000, 72, 1, 0),//0x40004248, 0x01003546 }, /* fvco 2040, / 1, / 1 */
+	PLL_RATE(2064000000, 72, 1, 1),
+//	PLL_RATE(2088000000, 72, 1, 0),//0x4000c248, 0x01003546 }, /* fvco 2088, / 1, / 1 */
+	PLL_RATE(2112000000, 73, 1, 0),
 	{ /* sentinel */ },
 };
 
@@ -192,7 +216,7 @@ static struct meson_clk_pll meson8b_sys_pll = {
 	.lock = &meson_clk_lock,
 	.hw.init = &(struct clk_init_data){
 		.name = "sys_pll",
-		.ops = &meson_clk_pll_ro_ops,
+		.ops = &meson_clk_pll_ops,
 		.parent_names = (const char *[]){ "xtal" },
 		.num_parents = 1,
 		.flags = CLK_GET_RATE_NOCACHE,
@@ -255,7 +279,6 @@ static struct clk_mux meson8b_cpu_scale_out_sel = {
 	.reg = (void *)HHI_SYS_CPU_CLK_CNTL0,
 	.mask = 0x3,
 	.shift = 2,
-	.flags = CLK_MUX_READ_ONLY,
 	.lock = &meson_clk_lock,
 	.hw.init = &(struct clk_init_data){
 		.name = "cpu_scale_out_sel",
@@ -278,7 +301,7 @@ static struct clk_mux meson8b_cpu_clk_sel = {
 		.parent_names = (const char *[]){ "xtal",
 			"cpu_scale_out_sel" },
 		.num_parents = 2,
-		.flags = (CLK_SET_RATE_PARENT | CLK_SET_RATE_NO_REPARENT),
+		.flags = CLK_SET_RATE_PARENT,
 	},
 };
 
