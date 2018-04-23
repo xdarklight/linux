@@ -200,7 +200,7 @@ static struct clk_regmap meson8b_sys_pll_dco = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "sys_pll_dco",
-		.ops = &meson_clk_pll_ro_ops,
+		.ops = &meson_clk_pll_ops,
 		.parent_names = (const char *[]){ "xtal" },
 		.num_parents = 1,
 	},
@@ -215,7 +215,7 @@ static struct clk_regmap meson8b_sys_pll = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "sys_pll",
-		.ops = &clk_regmap_divider_ro_ops,
+		.ops = &clk_regmap_divider_ops,
 		.parent_names = (const char *[]){ "sys_pll_dco" },
 		.num_parents = 1,
 		.flags = CLK_SET_RATE_PARENT,
@@ -549,7 +549,7 @@ static struct clk_regmap meson8b_cpu_in_sel = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "cpu_in_sel",
-		.ops = &clk_regmap_mux_ro_ops,
+		.ops = &clk_regmap_mux_ops,
 		.parent_names = (const char *[]){ "xtal", "sys_pll" },
 		.num_parents = 2,
 		.flags = (CLK_SET_RATE_PARENT |
@@ -603,7 +603,7 @@ static struct clk_regmap meson8b_cpu_scale_div = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "cpu_scale_div",
-		.ops = &clk_regmap_divider_ro_ops,
+		.ops = &clk_regmap_divider_ops,
 		.parent_names = (const char *[]){ "cpu_in_sel" },
 		.num_parents = 1,
 		.flags = CLK_SET_RATE_PARENT,
@@ -620,7 +620,7 @@ static struct clk_regmap meson8b_cpu_scale_out_sel = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "cpu_scale_out_sel",
-		.ops = &clk_regmap_mux_ro_ops,
+		.ops = &clk_regmap_mux_ops,
 		/*
 		 * NOTE: We are skipping the parent with value 0x2 (which is
 		 * "cpu_div3") because it results in a duty cycle of 33% which
@@ -643,7 +643,7 @@ static struct clk_regmap meson8b_cpu_clk = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "cpu_clk",
-		.ops = &clk_regmap_mux_ro_ops,
+		.ops = &clk_regmap_mux_ops,
 		.parent_names = (const char *[]){ "xtal",
 						  "cpu_scale_out_sel" },
 		.num_parents = 2,
