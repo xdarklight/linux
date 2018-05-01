@@ -1,5 +1,5 @@
 /*
- * Toggles a GPIO pin to power down a device
+ * Toggles GPIO pins to power down a device
  *
  * Jamie Lentin <jm@lentin.co.uk>
  * Andrew Lunn <andrew@lunn.ch>
@@ -24,22 +24,30 @@
  * Hold configuration here, cannot be more than one instance of the driver
  * since pm_power_off itself is global.
  */
-static struct gpio_desc *reset_gpio;
+static struct gpio_descs *reset_gpios;
 static u32 timeout = DEFAULT_TIMEOUT_MS;
 
 static void gpio_poweroff_do_poweroff(void)
 {
-	BUG_ON(!reset_gpio);
+	int i;
 
-	/* drive it active, also inactive->active edge */
-	gpiod_direction_output(reset_gpio, 1);
+	BUG_ON(!reset_gpios);
+
+	/* drive them active, also inactive->active edge */
+	for (i = 0; i < reset_gpios->ndescs; i++)
+		gpiod_direction_output(reset_gpios->desc[i], 1);
+
 	mdelay(100);
+
 	/* drive inactive, also active->inactive edge */
-	gpiod_set_value(reset_gpio, 0);
+	for (i = 0; i < reset_gpios->ndescs; i++)
+		gpiod_set_value(reset_gpios->desc[i], 0);
+
 	mdelay(100);
 
-	/* drive it active, also inactive->active edge */
-	gpiod_set_value(reset_gpio, 1);
+	/* drive them active, also inactive->active edge */
+	for (i = 0; i < reset_gpios->ndescs; i++)
+		gpiod_set_value(reset_gpios->desc[i], 1);
 
 	/* give it some time */
 	mdelay(timeout);
@@ -68,9 +76,9 @@ static int gpio_poweroff_probe(struct platform_device *pdev)
 
 	device_property_read_u32(&pdev->dev, "timeout-ms", &timeout);
 
-	reset_gpio = devm_gpiod_get(&pdev->dev, NULL, flags);
-	if (IS_ERR(reset_gpio))
-		return PTR_ERR(reset_gpio);
+	reset_gpios = devm_gpiod_get_array(&pdev->dev, NULL, flags);
+	if (IS_ERR(reset_gpios))
+		return PTR_ERR(reset_gpios);
 
 	pm_power_off = &gpio_poweroff_do_poweroff;
 	return 0;
