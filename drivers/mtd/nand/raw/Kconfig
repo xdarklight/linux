@@ -561,4 +561,10 @@ config MTD_NAND_TEGRA
 	  is supported. Extra OOB bytes when using HW ECC are currently
 	  not supported.
 
+config MTD_NAND_MESON
+	tristate "Support for NAND flash controller on Amlogic's Meson SoCs"
+	depends on ARCH_MESON || COMPILE_TEST
+	help
+	  Enables support for NAND controller on Amlogic's Meson SoCs.
+
 endif # MTD_NAND
