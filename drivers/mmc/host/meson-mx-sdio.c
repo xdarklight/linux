@@ -523,7 +523,8 @@ static struct platform_device *meson_mx_mmc_slot_pdev(struct device *parent)
 	 * controllers with multiple slots properly. So we only register
 	 * the first slot for now
 	 */
-	slot_node = of_find_compatible_node(parent->of_node, NULL, "mmc-slot");
+	slot_node = of_find_compatible_node(of_node_get(parent->of_node), NULL,
+					    "mmc-slot");
 	if (!slot_node) {
 		dev_warn(parent, "no 'mmc-slot' sub-node found\n");
 		return ERR_PTR(-ENOENT);
