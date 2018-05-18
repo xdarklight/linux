@@ -189,14 +189,14 @@ struct meson_nfc {
 enum {
 	NFC_ECC_NONE	= 0,
 	/* bch8 with ecc page size of 512B */
-	NFC_ECC_BCH8,
+	NFC_ECC_BCH8 = 1,
 	/* bch8 with ecc page size of 1024B */
-	NFC_ECC_BCH8_1K,
-	NFC_ECC_BCH24_1K,
-	NFC_ECC_BCH30_1K,
-	NFC_ECC_BCH40_1K,
-	NFC_ECC_BCH50_1K,
-	NFC_ECC_BCH60_1K,
+	NFC_ECC_BCH8_1K = 2,
+	NFC_ECC_BCH24_1K = 3,
+	NFC_ECC_BCH30_1K = 4,
+	NFC_ECC_BCH40_1K = 5,
+	NFC_ECC_BCH50_1K = 6,
+	NFC_ECC_BCH60_1K = 7,
 
 	/*
 	 * Short mode is special only for page 0 when inplement booting
@@ -206,21 +206,21 @@ enum {
 	 * For gxl serial, first page adopt short mode and 60bit ecc; for axg
 	 * serial, adopt short mode and 8bit ecc.
 	 */
-	NFC_ECC_BCH_SHORT,
+	NFC_ECC_BCH_SHORT = 8,
 };
 
 #define MESON_ECC_DATA(b, s, p) \
 	{ .bch = (b),	.strength = (s),	.parity = (p) }
 
-struct meson_ecc_t meson_gxl_ecc[] = {
+struct meson_ecc_t meson8_ecc[] = {
 	MESON_ECC_DATA(NFC_ECC_NONE, 0, 0),
 	MESON_ECC_DATA(NFC_ECC_BCH8, 8, 14),
 	MESON_ECC_DATA(NFC_ECC_BCH8_1K, 8, 14),
 	MESON_ECC_DATA(NFC_ECC_BCH24_1K, 24, 42),
 	MESON_ECC_DATA(NFC_ECC_BCH30_1K, 30, 54),
-	MESON_ECC_DATA(NFC_ECC_BCH30_1K, 40, 70),
-	MESON_ECC_DATA(NFC_ECC_BCH30_1K, 50, 88),
-	MESON_ECC_DATA(NFC_ECC_BCH30_1K, 60, 106),
+	MESON_ECC_DATA(NFC_ECC_BCH40_1K, 40, 70),
+	MESON_ECC_DATA(NFC_ECC_BCH50_1K, 50, 88),
+	MESON_ECC_DATA(NFC_ECC_BCH60_1K, 60, 106),
 	MESON_ECC_DATA(NFC_ECC_BCH_SHORT, 0xff, 0xff),
 };
 
@@ -923,14 +923,19 @@ static int meson_nfc_ecc_init(struct device *dev, struct mtd_info *mtd)
 	}
 
 	meson_chip->bch_mode = meson_ecc[i - 1].bch;
+	dev_info(dev, "BCH mode = %d\n", meson_chip->bch_mode);
 
-	if (nand->ecc.size != 512 && nand->ecc.size != 1024)
+	if (nand->ecc.size != 512 && nand->ecc.size != 1024) {
+		dev_err(dev, "invalid ECC size %d\n", nand->ecc.size);
 		return -EINVAL;
+	}
 
 	nsectors = mtd->writesize / nand->ecc.size;
 	bytes = (meson_chip->user_mode == 2) ? nsectors * 2 : 16;
-	if (mtd->oobsize < (nand->ecc.bytes * nsectors + bytes))
+	if (mtd->oobsize < (nand->ecc.bytes * nsectors + bytes)) {
+		dev_err(dev, "oobsize %d < (ECC bytes %d * nsectors %d + bytes %d)\n", mtd->oobsize, nand->ecc.bytes, nsectors, bytes);
 		return -EINVAL;
+	}
 
 	return 0;
 }
@@ -960,12 +965,6 @@ static int meson_nfc_clk_init(struct meson_nfc *nfc)
 	if (IS_ERR(nfc->clk_gate)) {
 		dev_err(nfc->dev, "failed to get mod_gate\n");
 		return PTR_ERR(nfc->clk_gate);
-	}
-
-	nfc->clk_master = devm_clk_get(nfc->dev, "clk_master");
-	if (IS_ERR(nfc->clk_master)) {
-		dev_err(nfc->dev, "failed to get clk_master\n");
-		return PTR_ERR(nfc->clk_master);
 	}
 
 	nfc->clk_nand = devm_clk_get(nfc->dev, "clk_nand");
@@ -1033,8 +1032,9 @@ static int meson_nfc_calc_set_timing(struct meson_nfc *nfc,
 	int div, bt_min, bt_max, bus_timing;
 	int ret;
 
-	regmap_update_bits(nfc->reg_clk, 0, 0xFFFFFFFF,
-				CLK_ALWAYS_ON | BIT(31) | BIT(0) | BIT(9));
+	if (nfc->reg_clk)
+		regmap_update_bits(nfc->reg_clk, 0, 0xFFFFFFFF,
+				   CLK_ALWAYS_ON | BIT(31) | BIT(0) | BIT(9));
 
 	div = DIV_ROUND_UP((rc_min / 1000), NFC_CLK_CYCLE);
 	ret = clk_set_rate(nfc->clk_nand, 1000000000 / div);
@@ -1240,10 +1240,10 @@ static irqreturn_t meson_nfc_irq(int irq, void *id)
 	return IRQ_HANDLED;
 }
 
-static const struct meson_nfc_data meson_gxl_data = {
+static const struct meson_nfc_data meson8_data = {
 	.short_bch	= NFC_ECC_BCH60_1K,
-	.ecc		= meson_gxl_ecc,
-	.ecc_num	= ARRAY_SIZE(meson_gxl_ecc),
+	.ecc		= meson8_ecc,
+	.ecc_num	= ARRAY_SIZE(meson8_ecc),
 };
 
 static const struct meson_nfc_data meson_axg_data = {
@@ -1254,8 +1254,11 @@ static const struct meson_nfc_data meson_axg_data = {
 
 static const struct of_device_id meson_nfc_id_table[] = {
 	{
+		.compatible = "amlogic,meson8-nfc",
+		.data = &meson8_data,
+	}, {
 		.compatible = "amlogic,meson-gxl-nfc",
-		.data = &meson_gxl_data,
+		.data = &meson8_data,
 	}, {
 		.compatible = "amlogic,meson-axg-nfc",
 		.data = &meson_axg_data,
@@ -1291,10 +1294,8 @@ static int meson_nfc_probe(struct platform_device *pdev)
 
 	nfc->reg_clk = syscon_regmap_lookup_by_phandle(dev->of_node,
 						      "amlogic,clk-syscon");
-	if (IS_ERR(nfc->reg_clk)) {
-		dev_err(dev, "Failed to lookup clock regmap\n");
-		return PTR_ERR(nfc->reg_clk);
-	}
+	if (IS_ERR(nfc->reg_clk))
+		nfc->reg_clk = NULL;
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
