@@ -473,6 +473,10 @@ static void hynix_nand_extract_oobsize(struct nand_chip *chip,
 			WARN(1, "Invalid OOB size");
 			break;
 		}
+
+		/* Reference: H27UCG8T2BTR - "Redundant Area Size / 8KB" */
+		if (mtd->writesize == SZ_16K)
+			mtd->oobsize *= 2;
 	}
 }
 
