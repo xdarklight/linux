@@ -179,8 +179,6 @@
 	pinctrl-0 = <&sdio_pins>;
 	pinctrl-1 = <&sdio_clk_gate_pins>;
 	pinctrl-names = "default", "clk-gate";
-	#address-cells = <1>;
-	#size-cells = <0>;
 
 	bus-width = <4>;
 	cap-sd-highspeed;
