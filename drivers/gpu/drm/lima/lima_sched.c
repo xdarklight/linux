@@ -169,8 +169,7 @@ int lima_sched_context_init(struct lima_sched_pipe *pipe,
 		return -ENOMEM;
 
 	mutex_init(&context->lock);
-	err = drm_sched_entity_init(&pipe->base, &context->base, rq,
-				    lima_sched_max_tasks, guilty);
+	err = drm_sched_entity_init(&pipe->base, &context->base, rq, guilty);
 	if (err) {
 		kfree(context->fences);
 		context->fences = NULL;
