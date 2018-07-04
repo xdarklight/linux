@@ -10,6 +10,7 @@ menuconfig ARCH_MESON
 	select COMMON_CLK
 	select COMMON_CLK_AMLOGIC
 	select HAVE_ARM_SCU if SMP
+	select HAVE_ARM_TWD if SMP
 
 if ARCH_MESON
 
