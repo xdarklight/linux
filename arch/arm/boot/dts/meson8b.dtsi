@@ -332,6 +332,22 @@
 			};
 		};
 
+		sd_b_clk_gate_pins: sd-b-clk-gate {
+			sd-mux {
+				groups = "sd_d0_b", "sd_d1_b", "sd_d2_b",
+					"sd_d3_b", "sd_cmd_b";
+				function = "sd_b";
+			};
+			clk-mux {
+				groups = "CARD_2";
+				function = "gpio";
+			};
+			cfg-pull-down {
+				pins = "CARD_2";
+				bias-pull-down;
+			};
+		};
+
 		pwm_c1_pins: pwm-c1 {
 			mux {
 				groups = "pwm_c1";
