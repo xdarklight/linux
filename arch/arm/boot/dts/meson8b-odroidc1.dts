@@ -158,7 +158,8 @@
 	status = "okay";
 
 	pinctrl-0 = <&sd_b_pins>;
-	pinctrl-names = "default";
+	pinctrl-1 = <&sd_b_clk_gate_pins>;
+	pinctrl-names = "default", "clk-gate";
 
 	/* SD card */
 	sd_card_slot: slot@1 {
@@ -170,6 +171,10 @@
 		no-sdio;
 		cap-mmc-highspeed;
 		cap-sd-highspeed;
+		sd-uhs-sdr12;
+		sd-uhs-sdr25;
+		sd-uhs-sdr50;
+		sd-uhs-sdr104;
 		disable-wp;
 
 		cd-gpios = <&gpio CARD_6 GPIO_ACTIVE_HIGH>;
