@@ -20,6 +20,7 @@
 #include <linux/module.h>
 #include <linux/interrupt.h>
 #include <linux/ioport.h>
+#include <linux/pinctrl/consumer.h>
 #include <linux/platform_device.h>
 #include <linux/of_platform.h>
 #include <linux/timer.h>
@@ -110,6 +111,10 @@ struct meson_mx_mmc_host {
 	struct clk			*cfg_div_clk;
 	struct clk_fixed_factor		fixed_factor;
 	struct clk			*fixed_factor_clk;
+
+	struct pinctrl *pinctrl;
+	struct pinctrl_state *pins_default;
+	struct pinctrl_state *pins_clk_gate;
 
 	void __iomem			*base;
 	int				irq;
@@ -281,12 +286,32 @@ static void meson_mx_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		return;
 	}
 
-	host->error = clk_set_rate(host->cfg_div_clk, ios->clock);
-	if (host->error) {
-		dev_warn(mmc_dev(mmc),
-				"failed to set MMC clock to %lu: %d\n",
-				clk_rate, host->error);
-		return;
+	if (ios->clock) {
+		host->error = clk_set_rate(host->cfg_div_clk, ios->clock);
+		if (host->error) {
+			dev_warn(mmc_dev(mmc),
+					"failed to set MMC clock to %lu: %d\n",
+					clk_rate, host->error);
+			return;
+		}
+
+		host->error = pinctrl_select_state(host->pinctrl,
+						   host->pins_default);
+		if (host->error) {
+			dev_warn(mmc_dev(mmc),
+				 "failed to select default pins: %d\n",
+				 host->error);
+			return;
+		}
+	} else {
+		host->error = pinctrl_select_state(host->pinctrl,
+						   host->pins_clk_gate);
+		if (host->error) {
+			dev_warn(mmc_dev(mmc),
+				 "failed to select clk-gate pins: %d\n",
+				 host->error);
+			return;
+		}
 	}
 
 	mmc->actual_clock = clk_get_rate(host->cfg_div_clk);
@@ -507,11 +532,12 @@ static void meson_mx_mmc_timeout(struct timer_list *t)
 }
 
 static struct mmc_host_ops meson_mx_mmc_ops = {
-	.request		= meson_mx_mmc_request,
-	.set_ios		= meson_mx_mmc_set_ios,
-	.card_busy		= meson_mx_mmc_card_busy,
-	.get_cd			= mmc_gpio_get_cd,
-	.get_ro			= mmc_gpio_get_ro,
+	.request			= meson_mx_mmc_request,
+	.set_ios			= meson_mx_mmc_set_ios,
+	.card_busy			= meson_mx_mmc_card_busy,
+	.get_cd				= mmc_gpio_get_cd,
+	.get_ro				= mmc_gpio_get_ro,
+	.start_signal_voltage_switch	= mmc_regulator_set_vqmmc,
 };
 
 static struct platform_device *meson_mx_mmc_slot_pdev(struct device *parent)
@@ -671,6 +697,27 @@ static int meson_mx_mmc_probe(struct platform_device *pdev)
 					NULL, host);
 	if (ret)
 		goto error_free_mmc;
+
+	host->pinctrl = devm_pinctrl_get(&pdev->dev);
+	if (IS_ERR(host->pinctrl)) {
+		ret = PTR_ERR(host->pinctrl);
+		goto error_free_mmc;
+	}
+
+	host->pins_default = pinctrl_lookup_state(host->pinctrl,
+						  PINCTRL_STATE_DEFAULT);
+	if (IS_ERR(host->pins_default)) {
+		ret = PTR_ERR(host->pins_default);
+		goto error_free_mmc;
+	}
+
+	host->pins_clk_gate = pinctrl_lookup_state(host->pinctrl,
+						   "clk-gate");
+	if (IS_ERR(host->pins_clk_gate)) {
+		dev_warn(&pdev->dev,
+			 "can't get clk-gate pinctrl, UHS modes won't work\n");
+		host->pins_clk_gate = host->pins_default;
+	}
 
 	host->core_clk = devm_clk_get(host->controller_dev, "core");
 	if (IS_ERR(host->core_clk)) {
