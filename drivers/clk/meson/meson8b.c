@@ -633,6 +633,17 @@ static struct clk_regmap meson8b_cpu_clk = {
 	},
 };
 
+static struct clk_fixed_factor meson8b_cpu_div16_div = {
+	.mult = 1,
+	.div = 16,
+	.hw.init = &(struct clk_init_data){
+		.name = "cpu_div16_div",
+		.ops = &clk_fixed_factor_ops,
+		.parent_names = (const char *[]){ "cpu_clk" },
+		.num_parents = 1,
+	},
+};
+
 static struct clk_regmap meson8b_nand_clk_sel = {
 	.data = &(struct clk_regmap_mux_data){
 		.offset = HHI_NAND_CLK_CNTL,
@@ -879,6 +890,7 @@ static struct clk_hw_onecell_data meson8b_hw_onecell_data = {
 		[CLKID_NAND_SEL]	    = &meson8b_nand_clk_sel.hw,
 		[CLKID_NAND_DIV]	    = &meson8b_nand_clk_div.hw,
 		[CLKID_NAND_CLK]	    = &meson8b_nand_clk_gate.hw,
+		[CLKID_CPU_DIV16]	    = &meson8b_cpu_div16_div.hw,
 		[CLK_NR_CLKS]		    = NULL,
 	},
 	.num = CLK_NR_CLKS,
