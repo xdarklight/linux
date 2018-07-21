@@ -76,7 +76,7 @@
 #define CLKID_NAND_SEL		110
 #define CLKID_NAND_DIV		111
 
-#define CLK_NR_CLKS		113
+#define CLK_NR_CLKS		114
 
 /*
  * include the CLKID and RESETID that have
