@@ -23,7 +23,7 @@ static DEFINE_SPINLOCK(meson_clk_lock);
 
 struct meson8b_clk_reset {
 	struct reset_controller_dev reset;
-	void __iomem *base;
+	struct regmap *regmap;
 };
 
 static const struct pll_params_table sys_pll_params_table[] = {
@@ -1076,7 +1076,6 @@ static int meson8b_clk_reset_update(struct reset_controller_dev *rcdev,
 		container_of(rcdev, struct meson8b_clk_reset, reset);
 	unsigned long flags;
 	const struct meson8b_clk_reset_line *reset;
-	u32 val;
 
 	if (id >= ARRAY_SIZE(meson8b_clk_reset_bits))
 		return -EINVAL;
@@ -1085,12 +1084,12 @@ static int meson8b_clk_reset_update(struct reset_controller_dev *rcdev,
 
 	spin_lock_irqsave(&meson_clk_lock, flags);
 
-	val = readl(meson8b_clk_reset->base + reset->reg);
 	if (assert)
-		val |= BIT(reset->bit_idx);
+		regmap_update_bits(meson8b_clk_reset->regmap, reset->reg,
+				   BIT(reset->bit_idx), BIT(reset->bit_idx));
 	else
-		val &= ~BIT(reset->bit_idx);
-	writel(val, meson8b_clk_reset->base + reset->reg);
+		regmap_update_bits(meson8b_clk_reset->regmap, reset->reg,
+				   BIT(reset->bit_idx), 0);
 
 	spin_unlock_irqrestore(&meson_clk_lock, flags);
 
@@ -1143,7 +1142,7 @@ static void __init meson8b_clkc_init(struct device_node *np)
 		return;
 
 	/* Reset Controller */
-	rstc->base = clk_base;
+	rstc->regmap = map;
 	rstc->reset.ops = &meson8b_clk_reset_ops;
 	rstc->reset.nr_resets = ARRAY_SIZE(meson8b_clk_reset_bits);
 	rstc->reset.of_node = np;
