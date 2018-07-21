@@ -197,6 +197,14 @@
 		reg = <0xc4300000 0x100>;
 	};
 
+	timer@c4300200 {
+		compatible = "arm,cortex-a5-global-timer";
+		reg = <0xc4300200 0x20>;
+		interrupts = <GIC_PPI 11 (GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_EDGE_RISING)>;
+		clocks = <&clkc CLKID_CPU_DIV16>; // FIXME: wrong
+		status = "disabled";
+	};
+
 	timer@c4300600 {
 		compatible = "arm,cortex-a5-twd-timer";
 		reg = <0xc4300600 0x20>;
