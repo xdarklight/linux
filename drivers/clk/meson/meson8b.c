@@ -597,6 +597,17 @@ static struct clk_fixed_factor meson8b_cpu_div3 = {
 	},
 };
 
+static struct clk_fixed_factor meson8b_cpu_div4 = {
+	.mult = 1,
+	.div = 4,
+	.hw.init = &(struct clk_init_data){
+		.name = "cpu_div4",
+		.ops = &clk_fixed_factor_ops,
+		.parent_names = (const char *[]){ "cpu_in_sel" },
+		.num_parents = 1,
+	},
+};
+
 static const struct clk_div_table cpu_scale_table[] = {
 	{ .val = 2, .div = 4 },
 	{ .val = 3, .div = 6 },
@@ -657,17 +668,6 @@ static struct clk_regmap meson8b_cpu_clk = {
 		.num_parents = 2,
 		.flags = (CLK_SET_RATE_PARENT |
 			  CLK_SET_RATE_NO_REPARENT),
-	},
-};
-
-static struct clk_fixed_factor meson8b_cpu_div16_div = {
-	.mult = 1,
-	.div = 16,
-	.hw.init = &(struct clk_init_data){
-		.name = "cpu_div16_div",
-		.ops = &clk_fixed_factor_ops,
-		.parent_names = (const char *[]){ "cpu_clk" },
-		.num_parents = 1,
 	},
 };
 
@@ -1460,7 +1460,7 @@ static struct clk_hw_onecell_data meson8b_hw_onecell_data = {
 		[CLKID_NAND_SEL]	    = &meson8b_nand_clk_sel.hw,
 		[CLKID_NAND_DIV]	    = &meson8b_nand_clk_div.hw,
 		[CLKID_NAND_CLK]	    = &meson8b_nand_clk_gate.hw,
-		[CLKID_CPU_DIV16]	    = &meson8b_cpu_div16_div.hw,
+		[CLKID_CPU_DIV4]	    = &meson8b_cpu_div4.hw,
 		[CLKID_PLL_FIXED_DCO]	    = &meson8b_fixed_pll_dco.hw,
 		[CLKID_PLL_VID_DCO]	    = &meson8b_vid_pll_dco.hw,
 		[CLKID_PLL_SYS_DCO]	    = &meson8b_sys_pll_dco.hw,
