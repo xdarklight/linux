@@ -74,6 +74,19 @@ config BT_HCIBTSDIO
 	  Say Y here to compile support for Bluetooth SDIO devices into the
 	  kernel or say M to compile it as module (btsdio).
 
+config BT_HCIBT3WIRE
+	tristate "HCI 3-Wire UART driver"
+	depends on SERIAL_DEV_BUS
+	select CRC_CCITT
+	select BITREVERSE
+	help
+	  Bluetooth HCI 3-Wire UART driver.
+	  This driver is required if you want to use Bluetooth device with
+	  3-Wire UART interface.
+
+	  Say Y here to compile support for Bluetooth 3-Wire UART devices into
+	  the kernel or say M to compile it as module (bt3wire).
+
 config BT_HCIUART
 	tristate "HCI UART driver"
 	depends on SERIAL_DEV_BUS || !SERIAL_DEV_BUS
