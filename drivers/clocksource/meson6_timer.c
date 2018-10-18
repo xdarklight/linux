@@ -22,6 +22,10 @@
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
 
+#ifdef CONFIG_ARM
+#include <asm/delay.h>
+#endif
+
 enum meson6_timera_input_clock {
 	MESON_TIMERA_CLOCK_1US = 0x0,
 	MESON_TIMERA_CLOCK_10US = 0x1,
@@ -59,6 +63,18 @@ enum meson6_timere_input_clock {
 #define MESON_ISA_TIMERE					0x14
 
 static void __iomem *timer_base;
+
+#ifdef CONFIG_ARM
+static unsigned long meson6_read_current_timer(void)
+{
+	return readl_relaxed(timer_base + MESON_ISA_TIMERE);
+}
+
+static struct delay_timer meson6_delay_timer = {
+	.read_current_timer = meson6_read_current_timer,
+	.freq = 1000 * 1000,
+};
+#endif
 
 static u64 notrace meson6_timer_sched_read(void)
 {
@@ -198,6 +214,12 @@ static int __init meson6_timer_init(struct device_node *node)
 
 	clockevents_config_and_register(&meson6_clockevent, USEC_PER_SEC,
 					1, 0xfffe);
+
+#ifdef CONFIG_ARM
+	/* Also use MESON_ISA_TIMERE for delays */
+	register_current_timer_delay(&meson6_delay_timer);
+#endif
+
 	return 0;
 }
 TIMER_OF_DECLARE(meson6, "amlogic,meson6-timer",
