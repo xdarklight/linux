@@ -1871,7 +1871,7 @@ static void clk_change_rate(struct clk_core *core)
 	unsigned long old_rate;
 	unsigned long best_parent_rate = 0;
 	bool skip_set_rate = false;
-	struct clk_core *old_parent;
+	struct clk_core *old_parent = NULL;
 	struct clk_core *parent = NULL;
 
 	old_rate = core->rate;
@@ -1937,7 +1937,8 @@ static void clk_change_rate(struct clk_core *core)
 	if (core->flags & CLK_OPS_PARENT_ENABLE)
 		clk_core_disable_unprepare(parent);
 
-	if (core->notifier_count && old_rate != core->rate)
+	if (core->notifier_count &&
+	    (old_rate != core->rate || core->new_parent != old_parent))
 		__clk_notify(core, POST_RATE_CHANGE, old_rate, core->rate);
 
 	if (core->flags & CLK_RECALC_NEW_RATES)
