@@ -62,12 +62,30 @@ static int clk_factor_set_rate(struct clk_hw *hw, unsigned long rate,
 	return 0;
 }
 
+static int clk_factor_get_duty_cycle(struct clk_hw *hw, struct clk_duty *duty)
+{
+	struct clk_fixed_factor *fix = to_clk_fixed_factor(hw);
+
+	duty->num = fix->mult;
+	duty->den = fix->div;
+
+	return 0;
+}
+
 const struct clk_ops clk_fixed_factor_ops = {
 	.round_rate = clk_factor_round_rate,
 	.set_rate = clk_factor_set_rate,
 	.recalc_rate = clk_factor_recalc_rate,
 };
 EXPORT_SYMBOL_GPL(clk_fixed_factor_ops);
+
+const struct clk_ops clk_fixed_factor_with_duty_cycle_ops = {
+	.round_rate = clk_factor_round_rate,
+	.set_rate = clk_factor_set_rate,
+	.recalc_rate = clk_factor_recalc_rate,
+	.get_duty_cycle = clk_factor_get_duty_cycle,
+};
+EXPORT_SYMBOL_GPL(clk_fixed_factor_with_duty_cycle_ops);
 
 struct clk_hw *clk_hw_register_fixed_factor(struct device *dev,
 		const char *name, const char *parent_name, unsigned long flags,
