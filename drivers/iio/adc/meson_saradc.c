@@ -172,8 +172,8 @@
 
 /* temperature sensor calibration information in eFuse */
 #define MESON_SAR_ADC_EFUSE_BYTES				4
-#define MESON_SARADC_EFUSE_BYTE3_UPPER_ADC_VAL			GENMASK(6, 0)
-#define MESON_SARADC_EFUSE_BYTE3_IS_CALIBRATED			BIT(7)
+#define MESON_SAR_ADC_EFUSE_BYTE3_UPPER_ADC_VAL			GENMASK(6, 0)
+#define MESON_SAR_ADC_EFUSE_BYTE3_IS_CALIBRATED			BIT(7)
 
 #define MESON_HHI_DPLL_TOP_0					0x318
 #define MESON_HHI_DPLL_TOP_0_TSC_BIT4				BIT(9)
@@ -196,14 +196,12 @@
 
 #define MESON_SAR_ADC_TEMP_CHAN(_chan) {				\
 	.type = IIO_TEMP,						\
-	.indexed = 0,							\
 	.channel = _chan,						\
 	.address = MESON_SAR_ADC_VOLTAGE_AND_TEMP_CHANNEL,		\
 	.info_mask_separate = BIT(IIO_CHAN_INFO_RAW) |			\
 				BIT(IIO_CHAN_INFO_AVERAGE_RAW),		\
 	.info_mask_shared_by_type = BIT(IIO_CHAN_INFO_OFFSET) |		\
-					BIT(IIO_CHAN_INFO_SCALE) |	\
-					BIT(IIO_CHAN_INFO_ENABLE),	\
+					BIT(IIO_CHAN_INFO_SCALE),	\
 	.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_CALIBBIAS) |	\
 				BIT(IIO_CHAN_INFO_CALIBSCALE),		\
 	.datasheet_name = "TEMP_SENSOR",				\
@@ -265,8 +263,6 @@ struct meson_sar_adc_param {
 	u8					temperature_trimming_bits;
 	unsigned int				temperature_multiplier;
 	unsigned int				temperature_divider;
-	const struct iio_chan_spec		*channels;
-	unsigned int				num_channels;
 };
 
 struct meson_sar_adc_data {
@@ -437,14 +433,13 @@ static void meson_sar_adc_enable_channel(struct iio_dev *indio_dev,
 
 	if (chan->address == MESON_SAR_ADC_VOLTAGE_AND_TEMP_CHANNEL) {
 		if (chan->type == IIO_TEMP)
-			regmap_update_bits(priv->regmap,
-					   MESON_SAR_ADC_DELTA_10,
-					   MESON_SAR_ADC_DELTA_10_TEMP_SEL,
-					   MESON_SAR_ADC_DELTA_10_TEMP_SEL);
+			regval = MESON_SAR_ADC_DELTA_10_TEMP_SEL;
 		else
-			regmap_update_bits(priv->regmap,
-					   MESON_SAR_ADC_DELTA_10,
-					   MESON_SAR_ADC_DELTA_10_TEMP_SEL, 0);
+			regval = 0;
+
+		regmap_update_bits(priv->regmap,
+				   MESON_SAR_ADC_DELTA_10,
+				   MESON_SAR_ADC_DELTA_10_TEMP_SEL, regval);
 	}
 }
 
@@ -654,10 +649,6 @@ static int meson_sar_adc_iio_info_read_raw(struct iio_dev *indio_dev,
 		*val -= priv->temperature_sensor_adc_val;
 		return IIO_VAL_INT;
 
-	case IIO_CHAN_INFO_ENABLE:
-		*val = priv->temperature_sensor_calibrated;
-		return IIO_VAL_INT;
-
 	default:
 		return -EINVAL;
 	}
@@ -760,14 +751,11 @@ static int meson_sar_adc_temp_sensor_init(struct iio_dev *indio_dev)
 	trimming_bits = priv->param->temperature_trimming_bits;
 	trimming_mask = BIT(trimming_bits) - 1;
 
-	if (buf[3] & MESON_SARADC_EFUSE_BYTE3_IS_CALIBRATED)
-		priv->temperature_sensor_calibrated = true;
-	else
-		priv->temperature_sensor_calibrated = false;
-
+	priv->temperature_sensor_calibrated =
+		buf[3] & MESON_SAR_ADC_EFUSE_BYTE3_IS_CALIBRATED;
 	priv->temperature_sensor_coefficient = buf[2] & trimming_mask;
 
-	upper_adc_val = FIELD_GET(MESON_SARADC_EFUSE_BYTE3_UPPER_ADC_VAL,
+	upper_adc_val = FIELD_GET(MESON_SAR_ADC_EFUSE_BYTE3_UPPER_ADC_VAL,
 				  buf[3]);
 
 	priv->temperature_sensor_adc_val = buf[2];
@@ -1092,8 +1080,6 @@ static const struct meson_sar_adc_param meson_sar_adc_meson8_param = {
 	.temperature_trimming_bits = 4,
 	.temperature_multiplier = 18 * 10000,
 	.temperature_divider = 1024 * 10 * 85,
-	.channels = meson_sar_adc_and_temp_iio_channels,
-	.num_channels = ARRAY_SIZE(meson_sar_adc_and_temp_iio_channels),
 };
 
 static const struct meson_sar_adc_param meson_sar_adc_meson8b_param = {
@@ -1105,8 +1091,6 @@ static const struct meson_sar_adc_param meson_sar_adc_meson8b_param = {
 	.temperature_trimming_bits = 5,
 	.temperature_multiplier = 10,
 	.temperature_divider = 32,
-	.channels = meson_sar_adc_and_temp_iio_channels,
-	.num_channels = ARRAY_SIZE(meson_sar_adc_and_temp_iio_channels),
 };
 
 static const struct meson_sar_adc_param meson_sar_adc_gxbb_param = {
@@ -1115,8 +1099,6 @@ static const struct meson_sar_adc_param meson_sar_adc_gxbb_param = {
 	.bandgap_reg = MESON_SAR_ADC_REG11,
 	.regmap_config = &meson_sar_adc_regmap_config_gxbb,
 	.resolution = 10,
-	.channels = meson_sar_adc_iio_channels,
-	.num_channels = ARRAY_SIZE(meson_sar_adc_iio_channels),
 };
 
 static const struct meson_sar_adc_param meson_sar_adc_gxl_param = {
@@ -1125,8 +1107,6 @@ static const struct meson_sar_adc_param meson_sar_adc_gxl_param = {
 	.bandgap_reg = MESON_SAR_ADC_REG11,
 	.regmap_config = &meson_sar_adc_regmap_config_gxbb,
 	.resolution = 12,
-	.channels = meson_sar_adc_iio_channels,
-	.num_channels = ARRAY_SIZE(meson_sar_adc_iio_channels),
 };
 
 static const struct meson_sar_adc_data meson_sar_adc_meson8_data = {
@@ -1225,8 +1205,6 @@ static int meson_sar_adc_probe(struct platform_device *pdev)
 	indio_dev->dev.of_node = pdev->dev.of_node;
 	indio_dev->modes = INDIO_DIRECT_MODE;
 	indio_dev->info = &meson_sar_adc_iio_info;
-	indio_dev->channels = priv->param->channels;
-	indio_dev->num_channels = priv->param->num_channels;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	base = devm_ioremap_resource(&pdev->dev, res);
@@ -1298,6 +1276,16 @@ static int meson_sar_adc_probe(struct platform_device *pdev)
 		ret = meson_sar_adc_temp_sensor_init(indio_dev);
 		if (ret)
 			return ret;
+	}
+
+	if (priv->temperature_sensor_calibrated) {
+		indio_dev->channels = meson_sar_adc_and_temp_iio_channels;
+		indio_dev->num_channels =
+			ARRAY_SIZE(meson_sar_adc_and_temp_iio_channels);
+	} else {
+		indio_dev->channels = meson_sar_adc_iio_channels;
+		indio_dev->num_channels =
+			ARRAY_SIZE(meson_sar_adc_iio_channels);
 	}
 
 	ret = meson_sar_adc_init(indio_dev);
