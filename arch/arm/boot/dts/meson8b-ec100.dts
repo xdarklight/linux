@@ -87,6 +87,13 @@
 		};
 	};
 
+	rtc32k_xtal: rtc32k-xtal-clk {
+		compatible = "fixed-clock";
+		clock-frequency = <32768>;
+		clock-output-names = "rtc-xtal";
+		#clock-cells = <0>;
+	};
+
 	tv-connector {
 		compatible = "composite-video-connector";
 
@@ -218,6 +225,16 @@
 		 * When the board is powered then the input is VCC3V3,
 		 * otherwise power is taken from the coin cell battery.
 		 */
+		vin-supply = <&vcc_3v3>;
+	};
+
+	vdd_rtc: regulator-vdd-rtc {
+		compatible = "regulator-fixed";
+
+		regulator-name = "VDD_RTC";
+		regulator-min-microvolt = <900000>;
+		regulator-max-microvolt = <900000>;
+
 		vin-supply = <&vcc_3v3>;
 	};
 };
@@ -360,6 +377,12 @@
 	pinctrl-names = "default";
 	clocks = <&clkc CLKID_XTAL>;
 	clock-names = "clkin0";
+};
+
+&rtc {
+	status = "okay";
+	clocks = <&rtc32k_xtal>;
+	vdd-supply = <&vdd_rtc>;
 };
 
 /* exposed through the pin headers labeled "URDUG1" on the top of the PCB */
