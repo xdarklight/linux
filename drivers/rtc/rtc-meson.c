@@ -1,43 +1,53 @@
-/* drivers/rtc/rtc-meson.c
- *
- * RTC driver for the interal RTC block in the AMlogic SoCs.
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * RTC driver for the interal RTC block in the Amlogic Meson6, Meson8,
+ * Meson8b and Meson8m2 SoCs.
  *
  * The RTC is split in to two parts, the AHB front end and a simple serial
  * connection to the actual registers. This driver manages both parts.
  *
- * Copyright (c) 2015 Codethink Ltd
- *	 Ben Dooks <ben.dooks@codethink.co.uk>
+ * Copyright (c) 2015 Ben Dooks <ben.dooks@codethink.co.uk> for Codethink Ltd
  * Based on origin by Carlo Caione <carlo@endlessm.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
-*/
+ */
 
-#include <linux/module.h>
-#include <linux/platform_device.h>
+#include <linux/bitfield.h>
 #include <linux/delay.h>
+#include <linux/io.h>
+#include <linux/module.h>
+#include <linux/nvmem-provider.h>
+#include <linux/of.h>
+#include <linux/platform_device.h>
+#include <linux/regmap.h>
+#include <linux/regulator/consumer.h>
 #include <linux/reset.h>
 #include <linux/rtc.h>
-#include <linux/io.h>
-#include <linux/of.h>
 
 /* registers accessed from cpu bus */
-#define RTC_REG(x)		((x) * 4)	/* rtc registers 0-4 */
+#define RTC_ADDR0				0x00
+	#define RTC_ADDR0_LINE_SCLK		BIT(0)
+	#define RTC_ADDR0_LINE_SEN		BIT(1)
+	#define RTC_ADDR0_LINE_SDI		BIT(2)
+	#define RTC_ADDR0_START_SER		BIT(17)
+	#define RTC_ADDR0_WAIT_SER		BIT(22)
+	#define RTC_ADDR0_DATA			GENMASK(31, 24)
 
-#define LINE_SDI		(1 << 2)
-#define LINE_SEN		(1 << 1)
-#define LINE_SCLK		(1 << 0)
+#define RTC_ADDR1				0x04
+	#define RTC_ADDR1_SDO			BIT(0)
+	#define RTC_ADDR1_S_READY		BIT(1)
 
-#define RTCREG0_START_SER	BIT(17)
-#define RTCREG0_WAIT_SER	BIT(22)
-#define RTC_REG0_DATA(__data)	((__data) << 24)
+#define RTC_ADDR2				0x08
+#define RTC_ADDR3				0x0c
 
-#define RTCREG1_READY		BIT(1)
+#define RTC_REG4				0x10
+	#define RTC_REG4_STATIC_VALUE		GENMASK(7, 0)
 
 /* rtc registers accessed via rtc-serial interface */
 #define RTC_COUNTER		(0)
 #define RTC_SEC_ADJ		(2)
+#define RTC_REGMEM_0		(4)
+#define RTC_REGMEM_1		(5)
+#define RTC_REGMEM_2		(6)
+#define RTC_REGMEM_3		(7)
 
 #define RTC_ADDR_BITS		(3)	/* number of address bits to send */
 #define RTC_DATA_BITS		(32)	/* number of data bits to tx/rx */
@@ -47,44 +57,43 @@
 #define MESON_STATIC_DEFAULT    (MESON_STATIC_BIAS_CUR | MESON_STATIC_VOLTAGE)
 
 struct meson_rtc {
-	struct rtc_device	*rtc;	/* rtc device we created */
-	struct device		*dev;	/* device we bound from */
-	struct reset_control	*reset;	/* reset source */
-	struct mutex		lock;	/* rtc lock */
-	void __iomem		*regs;	/* rtc register access */
+	struct rtc_device	*rtc;		/* rtc device we created */
+	struct device		*dev;		/* device we bound from */
+	struct reset_control	*reset;		/* reset source */
+	struct regulator	*vdd;		/* voltage input */
+	struct regmap		*peripheral;	/* peripheral registers */
+	struct regmap		*serial;	/* serial registers */
+};
+
+static const struct regmap_config meson_rtc_peripheral_regmap_config = {
+	.name		= "peripheral-registers",
+	.reg_bits	= 8,
+	.val_bits	= 32,
+	.reg_stride	= 4,
+	.max_register	= RTC_REG4,
+	.fast_io	= true,
 };
 
 /* RTC front-end serialiser controls */
 
-static void meson_rtc_setline(struct meson_rtc *rtc,
-			      unsigned int bit, unsigned int to)
-{
-	u32 reg0;
-
-	reg0 = readl(rtc->regs + RTC_REG(0));
-	if (to)
-		reg0 |= bit;
-	else
-		reg0 &= ~bit;
-	writel(reg0, rtc->regs + RTC_REG(0));
-}
-
 static void meson_rtc_sclk_pulse(struct meson_rtc *rtc)
 {
 	udelay(5);
-	meson_rtc_setline(rtc, LINE_SCLK, 0);
+	regmap_update_bits(rtc->peripheral, RTC_ADDR0, RTC_ADDR0_LINE_SCLK, 0);
 	udelay(5);
-	meson_rtc_setline(rtc, LINE_SCLK, 1);
+	regmap_update_bits(rtc->peripheral, RTC_ADDR0, RTC_ADDR0_LINE_SCLK,
+			   RTC_ADDR0_LINE_SCLK);
 }
 
 static void meson_rtc_send_bit(struct meson_rtc *rtc, unsigned int bit)
 {
-	meson_rtc_setline(rtc, LINE_SDI, bit ? 1 : 0);
+	regmap_update_bits(rtc->peripheral, RTC_ADDR0, RTC_ADDR0_LINE_SDI,
+			   bit ? RTC_ADDR0_LINE_SDI: 0);
 	meson_rtc_sclk_pulse(rtc);
 }
 
-static void meson_rtc_send_bits(struct meson_rtc *rtc,
-				u32 data, unsigned int nr)
+static void meson_rtc_send_bits(struct meson_rtc *rtc, u32 data,
+				unsigned int nr)
 {
 	u32 bit = 1 << (nr - 1);
 
@@ -96,47 +105,26 @@ static void meson_rtc_send_bits(struct meson_rtc *rtc,
 
 static void meson_rtc_set_dir(struct meson_rtc *rtc, u32 mode)
 {
-	meson_rtc_setline(rtc, LINE_SEN, 0);
-	meson_rtc_setline(rtc, LINE_SDI, 0);
+	regmap_update_bits(rtc->peripheral, RTC_ADDR0, RTC_ADDR0_LINE_SEN, 0);
+	regmap_update_bits(rtc->peripheral, RTC_ADDR0, RTC_ADDR0_LINE_SDI, 0);
 	meson_rtc_send_bit(rtc, mode);
-	meson_rtc_setline(rtc, LINE_SDI, 0);
-}
-
-static u32 meson_rtc_read_sdo(struct meson_rtc *rtc)
-{
-	return readl(rtc->regs + RTC_REG(1)) & BIT(0);
+	regmap_update_bits(rtc->peripheral, RTC_ADDR0, RTC_ADDR0_LINE_SDI, 0);
 }
 
 static u32 meson_rtc_get_data(struct meson_rtc *rtc)
 {
-	u32 val = 0;
+	u32 tmp, val = 0;
 	int bit;
 
 	for (bit = 0; bit < RTC_DATA_BITS; bit++) {
 		meson_rtc_sclk_pulse(rtc);
 		val <<= 1;
-		val |= meson_rtc_read_sdo(rtc);
+
+		regmap_read(rtc->peripheral, RTC_ADDR1, &tmp);
+		val |= tmp & RTC_ADDR1_SDO;
 	}
 
 	return val;
-}
-
-static int meson_rtc_wait_bus(struct meson_rtc *rtc, unsigned int timeout_ms)
-{
-	unsigned long timeout = jiffies + msecs_to_jiffies(timeout_ms);
-	u32 val;
-
-	while (time_before(jiffies, timeout)) {
-		val = readl(rtc->regs + RTC_REG(1));
-		if (val & RTCREG1_READY)
-			return 1;
-
-		dev_dbg(rtc->dev, "%s: reg0=%08x reg1=%08x\n",
-			__func__, readl(rtc->regs + RTC_REG(0)), val);
-		msleep(10);
-	}
-
-	return 0;
 }
 
 static int meson_rtc_get_bus(struct meson_rtc *rtc)
@@ -145,35 +133,39 @@ static int meson_rtc_get_bus(struct meson_rtc *rtc)
 	u32 val;
 
 	/* prepare bus for transfers, set all lines low */
-	val = readl(rtc->regs + RTC_REG(0));
-	val &= ~(LINE_SDI | LINE_SEN | LINE_SCLK);
-	writel(val, rtc->regs + RTC_REG(0));
+	val = RTC_ADDR0_LINE_SDI | RTC_ADDR0_LINE_SEN | RTC_ADDR0_LINE_SCLK;
+	regmap_update_bits(rtc->peripheral, RTC_ADDR0, val, 0);
 
-	while (retries) {
-		if (meson_rtc_wait_bus(rtc, 300))
+	for (retries = 0; retries < 3; retries++) {
+		/* wait for the bus to be ready */
+		if (!regmap_read_poll_timeout(rtc->peripheral, RTC_ADDR1, val,
+					      val & RTC_ADDR1_S_READY, 10,
+					      10000))
 			return 0;
 
-		dev_warn(rtc->dev, "failed to get bus, re-setting\n");
+		dev_warn(rtc->dev, "failed to get bus, resetting RTC\n");
 
-		retries--;
 		ret = reset_control_reset(rtc->reset);
 		if (ret)
 			return ret;
 	}
 
-	dev_err(rtc->dev, "%s: bus is not ready\n", __func__);
+	dev_err(rtc->dev, "bus is not ready\n");
 	return -ETIMEDOUT;
 }
 
-static int meson_rtc_read(struct meson_rtc *rtc, unsigned int reg, u32 *data)
+static int meson_rtc_serial_bus_reg_read(void *context, unsigned int reg,
+					 unsigned int *data)
 {
+	struct meson_rtc *rtc = context;
 	int ret;
 
 	ret = meson_rtc_get_bus(rtc);
 	if (ret)
 		return ret;
 
-	meson_rtc_setline(rtc, LINE_SEN, 1);
+	regmap_update_bits(rtc->peripheral, RTC_ADDR0, RTC_ADDR0_LINE_SEN,
+			   RTC_ADDR0_LINE_SEN);
 	meson_rtc_send_bits(rtc, reg, RTC_ADDR_BITS);
 	meson_rtc_set_dir(rtc, 0);
 	*data = meson_rtc_get_data(rtc);
@@ -181,17 +173,18 @@ static int meson_rtc_read(struct meson_rtc *rtc, unsigned int reg, u32 *data)
 	return 0;
 }
 
-static int meson_rtc_write(struct meson_rtc *rtc, unsigned int reg, u32 data)
+static int meson_rtc_serial_bus_reg_write(void *context, unsigned int reg,
+					  unsigned int data)
 {
+	struct meson_rtc *rtc = context;
 	int ret;
-
-	dev_dbg(rtc->dev, "%s: reg %d val %08x)\n", __func__, reg, data);
 
 	ret = meson_rtc_get_bus(rtc);
 	if (ret)
 		return ret;
 
-	meson_rtc_setline(rtc, LINE_SEN, 1);
+	regmap_update_bits(rtc->peripheral, RTC_ADDR0, RTC_ADDR0_LINE_SEN,
+			   RTC_ADDR0_LINE_SEN);
 	meson_rtc_send_bits(rtc, data, RTC_DATA_BITS);
 	meson_rtc_send_bits(rtc, reg, RTC_ADDR_BITS);
 	meson_rtc_set_dir(rtc, 1);
@@ -199,42 +192,35 @@ static int meson_rtc_write(struct meson_rtc *rtc, unsigned int reg, u32 data)
 	return 0;
 }
 
-static int meson_rtc_wait_serialiser(struct meson_rtc *rtc)
-{
-	unsigned long timeout = jiffies + msecs_to_jiffies(100);
+static const struct regmap_bus meson_rtc_serial_bus = {
+	.reg_read	= meson_rtc_serial_bus_reg_read,
+	.reg_write	= meson_rtc_serial_bus_reg_write,
+};
 
-	while (time_before(jiffies, timeout)) {
-		if (!(readl(rtc->regs + RTC_REG(0)) & RTCREG0_WAIT_SER))
-			return 0;
-		msleep(10);
-	}
-
-	return -ETIMEDOUT;
-}
+static const struct regmap_config meson_rtc_serial_regmap_config = {
+	.name		= "serial-registers",
+	.reg_bits	= 4,
+	.reg_stride	= 1,
+	.val_bits	= 32,
+	.max_register	= RTC_REGMEM_3,
+	.fast_io	= false,
+};
 
 static int meson_rtc_write_static(struct meson_rtc *rtc, u32 data)
 {
 	u32 tmp;
-	int ret = 0;
 
-	mutex_lock(&rtc->lock);
+	regmap_write(rtc->peripheral, RTC_REG4, (data >> 8));
 
-	writel(data >> 8, rtc->regs + RTC_REG(4));
+	/* write the static value and start the auto serializer */
+	tmp = FIELD_PREP(RTC_ADDR0_DATA, data & 0xff) | RTC_ADDR0_START_SER;
+	regmap_update_bits(rtc->peripheral, RTC_ADDR0,
+			   RTC_ADDR0_DATA | RTC_ADDR0_START_SER, tmp);
 
-	tmp = readl(rtc->regs + RTC_REG(0));
-	tmp &= ~RTC_REG0_DATA(0xff);
-	tmp |= RTC_REG0_DATA(data);
-	tmp |= RTCREG0_START_SER;
-	writel(tmp, rtc->regs + RTC_REG(0));
-
-	if (meson_rtc_wait_serialiser(rtc))
-		ret = -ETIMEDOUT;
-
-	dev_dbg(rtc->dev, "%s: ret=%d, rtc_reg0 = %08x\n",
-		__func__, ret, readl(rtc->regs + RTC_REG(0)));
-	mutex_unlock(&rtc->lock);
-
-	return ret;
+	/* wait for the auto serializer to complete */
+	return regmap_read_poll_timeout(rtc->peripheral, RTC_REG4, tmp,
+					!(tmp & RTC_ADDR0_WAIT_SER), 10,
+					10000);
 }
 
 /* RTC interface layer functions */
@@ -242,34 +228,21 @@ static int meson_rtc_write_static(struct meson_rtc *rtc, u32 data)
 static int meson_rtc_gettime(struct device *dev, struct rtc_time *tm)
 {
 	struct meson_rtc *rtc = dev_get_drvdata(dev);
-	int ret;
 	u32 time;
+	int ret;
 
-	mutex_lock(&rtc->lock);
+	ret = regmap_read(rtc->serial, RTC_COUNTER, &time);
+	if (!ret)
+		rtc_time64_to_tm(time, tm);
 
-	ret = meson_rtc_read(rtc, RTC_COUNTER, &time);
-	if (!ret) {
-		rtc_time_to_tm(time, tm);
-		dev_dbg(dev, "read time %lu\n", (unsigned long)time);
-	}
-
-	mutex_unlock(&rtc->lock);
 	return ret;
 }
 
 static int meson_rtc_settime(struct device *dev, struct rtc_time *tm)
 {
 	struct meson_rtc *rtc = dev_get_drvdata(dev);
-	unsigned long time;
-	int ret;
 
-	mutex_lock(&rtc->lock);
-
-	rtc_tm_to_time(tm, &time);
-	ret = meson_rtc_write(rtc, RTC_COUNTER, time);
-
-	mutex_unlock(&rtc->lock);
-	return ret;
+	return regmap_write(rtc->serial, RTC_COUNTER, rtc_tm_to_time64(tm));
 }
 
 static const struct rtc_class_ops meson_rtc_ops = {
@@ -277,11 +250,46 @@ static const struct rtc_class_ops meson_rtc_ops = {
 	.set_time	= meson_rtc_settime,
 };
 
+/* NVMEM interface layer functions */
+
+static int meson_rtc_regmem_read(void *context, unsigned int offset,
+				 void *buf, size_t bytes)
+{
+	struct meson_rtc *rtc = context;
+	unsigned int read_offset, read_size;
+
+	read_offset = RTC_REGMEM_0 + (offset / 4);
+	read_size = bytes / 4;
+
+	return regmap_bulk_read(rtc->serial, read_offset, buf, read_size);
+}
+
+static int meson_rtc_regmem_write(void *context, unsigned int offset,
+				  void *buf, size_t bytes)
+{
+	struct meson_rtc *rtc = context;
+	unsigned int write_offset, write_size;
+
+	write_offset = RTC_REGMEM_0 + (offset / 4);
+	write_size = bytes / 4;
+
+	return regmap_bulk_write(rtc->serial, write_offset, buf, write_size);
+}
+
 static int meson_rtc_probe(struct platform_device *pdev)
 {
-	struct meson_rtc *rtc;
+	struct nvmem_config meson_rtc_nvmem_config = {
+		.name = "meson-rtc-regmem",
+		.word_size = 4,
+		.stride = 4,
+		.size = SZ_16,
+		.reg_read = meson_rtc_regmem_read,
+		.reg_write = meson_rtc_regmem_write,
+	};
 	struct device *dev = &pdev->dev;
+	struct meson_rtc *rtc;
 	struct resource *res;
+	void __iomem *base;
 	u32 tm;
 	int ret;
 
@@ -289,47 +297,86 @@ static int meson_rtc_probe(struct platform_device *pdev)
 	if (!rtc)
 		return -ENOMEM;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	rtc->regs = devm_ioremap_resource(dev, res);
+	platform_set_drvdata(pdev, rtc);
+
 	rtc->dev = dev;
 
-	if (IS_ERR(rtc->regs))
-		return PTR_ERR(rtc->regs);
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	base = devm_ioremap_resource(dev, res);
+	if (IS_ERR(base))
+		return PTR_ERR(base);
 
-	mutex_init(&rtc->lock);
-	platform_set_drvdata(pdev, rtc);
+	rtc->peripheral = devm_regmap_init_mmio(dev, base,
+					&meson_rtc_peripheral_regmap_config);
+	if (IS_ERR(rtc->peripheral)) {
+		dev_err(dev, "failed to create peripheral regmap\n");
+		return PTR_ERR(rtc->peripheral);
+	}
+
+	rtc->reset = devm_reset_control_get(dev, NULL);
+	if (IS_ERR(rtc->reset)) {
+		dev_err(dev, "missing reset line\n");
+		return PTR_ERR(rtc->reset);
+	}
+
+	rtc->vdd = devm_regulator_get(dev, "vdd");
+	if (IS_ERR(rtc->vdd)) {
+		dev_err(dev, "failed to get the vdd-supply\n");
+		return PTR_ERR(rtc->vdd);
+	}
+
+	ret = regulator_enable(rtc->vdd);
+	if (ret) {
+		dev_err(dev, "failed to enable vdd-supply\n");
+		return ret;
+	}
 
 	ret = meson_rtc_write_static(rtc, MESON_STATIC_DEFAULT);
 	if (ret) {
 		dev_err(dev, "failed to set static values\n");
-		return ret;
+		goto out_disable_vdd;
 	}
 
-	rtc->reset = devm_reset_control_get(dev, NULL);
-	if (IS_ERR(rtc->reset))
-		dev_warn(dev, "no reset available, rtc may not work\n");
+	rtc->serial = devm_regmap_init(dev, &meson_rtc_serial_bus, rtc,
+				       &meson_rtc_serial_regmap_config);
+	if (IS_ERR(rtc->serial)) {
+		dev_err(dev, "failed to create serial regmap\n");
+		ret = PTR_ERR(rtc->serial);
+		goto out_disable_vdd;
+	}
 
-	/* check if we can read RTC counter, if not then the RTC is probably
+	/*
+	 * check if we can read RTC counter, if not then the RTC is probably
 	 * not functional. If it isn't probably best to not bind.
 	 */
-	ret = meson_rtc_read(rtc, RTC_COUNTER, &tm);
+	ret = regmap_read(rtc->serial, RTC_COUNTER, &tm);
 	if (ret) {
 		dev_err(dev, "cannot read RTC counter, RTC not functional\n");
-		return ret;
+		goto out_disable_vdd;
 	}
 
-	rtc->rtc = devm_rtc_device_register(dev, "meson",
+	rtc->rtc = devm_rtc_device_register(dev, pdev->name,
 					    &meson_rtc_ops, THIS_MODULE);
 	if (IS_ERR(rtc->rtc))
 		return PTR_ERR(rtc->rtc);
 
+	meson_rtc_nvmem_config.priv = rtc;
+	ret = rtc_nvmem_register(rtc->rtc, &meson_rtc_nvmem_config);
+	if (ret)
+		goto out_disable_vdd;
+
 	return 0;
+
+out_disable_vdd:
+	regulator_disable(rtc->vdd);
+	return ret;
 }
 
 static const struct of_device_id meson_rtc_dt_match[] = {
 	{ .compatible = "amlogic,meson6-rtc", },
 	{ .compatible = "amlogic,meson8-rtc", },
 	{ .compatible = "amlogic,meson8b-rtc", },
+	{ .compatible = "amlogic,meson8m2-rtc", },
 	{ },
 };
 MODULE_DEVICE_TABLE(of, meson_rtc_dt_match);
@@ -343,7 +390,7 @@ static struct platform_driver meson_rtc_driver = {
 };
 module_platform_driver(meson_rtc_driver);
 
-MODULE_DESCRIPTION("AMLogic MESON RTC Driver");
+MODULE_DESCRIPTION("Amlogic Meson RTC Driver");
 MODULE_AUTHOR("Ben Dooks <ben.doosk@codethink.co.uk>");
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("GPL v2");
 MODULE_ALIAS("platform:meson-rtc");
