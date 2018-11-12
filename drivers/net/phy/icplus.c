@@ -162,6 +162,25 @@ static int ip1001_config_init(struct phy_device *phydev)
 	return 0;
 }
 
+static int ip175c_read_status(struct phy_device *phydev)
+{
+	if (phydev->mdio.addr == 4) /* WAN port */
+		genphy_read_status(phydev);
+	else
+		/* Don't need to read status for switch ports */
+		phydev->irq = PHY_IGNORE_INTERRUPT;
+
+	return 0;
+}
+
+static int ip175c_config_aneg(struct phy_device *phydev)
+{
+	if (phydev->mdio.addr == 4) /* WAN port */
+		genphy_config_aneg(phydev);
+
+	return 0;
+}
+
 static int ip101a_g_config_init(struct phy_device *phydev)
 {
 	int c;
@@ -180,25 +199,6 @@ static int ip101a_g_config_init(struct phy_device *phydev)
 	c |= IP101A_G_APS_ON;
 
 	return phy_write(phydev, IP10XX_SPEC_CTRL_STATUS, c);
-}
-
-static int ip175c_read_status(struct phy_device *phydev)
-{
-	if (phydev->mdio.addr == 4) /* WAN port */
-		genphy_read_status(phydev);
-	else
-		/* Don't need to read status for switch ports */
-		phydev->irq = PHY_IGNORE_INTERRUPT;
-
-	return 0;
-}
-
-static int ip175c_config_aneg(struct phy_device *phydev)
-{
-	if (phydev->mdio.addr == 4) /* WAN port */
-		genphy_config_aneg(phydev);
-
-	return 0;
 }
 
 static int ip101a_g_ack_interrupt(struct phy_device *phydev)
