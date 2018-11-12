@@ -189,16 +189,18 @@ static int ip101a_g_config_init(struct phy_device *phydev)
 	if (c < 0)
 		return c;
 
-	/* INTR pin used: speed/link/duplex will cause an interrupt */
-	c = phy_write(phydev, IP101A_G_IRQ_CONF_STATUS, IP101A_G_IRQ_DEFAULT);
-	if (c < 0)
-		return c;
-
 	/* Enable Auto Power Saving mode */
 	c = phy_read(phydev, IP10XX_SPEC_CTRL_STATUS);
 	c |= IP101A_G_APS_ON;
 
 	return phy_write(phydev, IP10XX_SPEC_CTRL_STATUS, c);
+}
+
+static int ip101a_g_config_intr(struct phy_device *phydev)
+{
+	/* INTR pin used: speed/link/duplex will cause an interrupt */
+	return phy_write(phydev, IP101A_G_IRQ_CONF_STATUS,
+			 IP101A_G_IRQ_DEFAULT);
 }
 
 static int ip101a_g_ack_interrupt(struct phy_device *phydev)
@@ -236,6 +238,7 @@ static struct phy_driver icplus_driver[] = {
 	.features	= PHY_BASIC_FEATURES,
 	.flags		= PHY_HAS_INTERRUPT,
 	.ack_interrupt	= ip101a_g_ack_interrupt,
+	.config_intr	= &ip101a_g_config_intr,
 	.config_init	= &ip101a_g_config_init,
 	.suspend	= genphy_suspend,
 	.resume		= genphy_resume,
