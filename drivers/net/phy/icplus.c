@@ -43,7 +43,10 @@ MODULE_LICENSE("GPL");
 #define IP101A_G_APS_ON			2	/* IP101A/G APS Mode bit */
 #define IP101A_G_IRQ_CONF_STATUS	0x11	/* Conf Info IRQ & Status Reg */
 #define	IP101A_G_IRQ_PIN_USED		BIT(15) /* INTR pin used */
-#define	IP101A_G_IRQ_DEFAULT		IP101A_G_IRQ_PIN_USED
+#define IP101A_G_IRQ_ALL_MASK		BIT(11)
+#define IP101A_G_IRQ_SPEED_MASK		BIT(10)
+#define IP101A_G_IRQ_DUPLEX_MASK	BIT(9)
+#define IP101A_G_IRQ_LINK_MASK		BIT(8)
 
 static int ip175c_config_init(struct phy_device *phydev)
 {
@@ -198,9 +201,19 @@ static int ip101a_g_config_init(struct phy_device *phydev)
 
 static int ip101a_g_config_intr(struct phy_device *phydev)
 {
-	/* INTR pin used: speed/link/duplex will cause an interrupt */
-	return phy_write(phydev, IP101A_G_IRQ_CONF_STATUS,
-			 IP101A_G_IRQ_DEFAULT);
+	u16 val;
+
+	if (phydev->interrupts == PHY_INTERRUPT_ENABLED)
+		/* INTR pin used: speed/link/duplex will cause an interrupt */
+		val = IP101A_G_IRQ_PIN_USED;
+	else
+		/* disable the INTR pin and all interrupts */
+		val = IP101A_G_IRQ_ALL_MASK |
+		      IP101A_G_IRQ_SPEED_MASK |
+		      IP101A_G_IRQ_DUPLEX_MASK |
+		      IP101A_G_IRQ_LINK_MASK;
+
+	return phy_write(phydev, IP101A_G_IRQ_CONF_STATUS, val);
 }
 
 static int ip101a_g_ack_interrupt(struct phy_device *phydev)
