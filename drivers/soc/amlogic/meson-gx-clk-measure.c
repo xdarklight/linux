@@ -46,6 +46,55 @@ struct meson_gx_msr {
 #define CLK_MSR_ID(__id, __name) \
 	[__id] = {.id = __id, .name = __name,}
 
+static struct meson_gx_msr_id clk_msr_m8[CLK_MSR_MAX] = {
+	CLK_MSR_ID(0, "ring_osc_out_ee0"),
+	CLK_MSR_ID(1, "ring_osc_out_ee1"),
+	CLK_MSR_ID(2, "ring_osc_out_ee2"),
+	CLK_MSR_ID(3, "a9_ring_osck"),
+	CLK_MSR_ID(6, "vid_pll"),
+	CLK_MSR_ID(7, "clk81"),
+	CLK_MSR_ID(8, "encp"),
+	CLK_MSR_ID(9, "encl"),
+	CLK_MSR_ID(11, "eth_rmii"),
+	CLK_MSR_ID(13, "amclk"),
+	CLK_MSR_ID(14, "fec_clk_0"),
+	CLK_MSR_ID(15, "fec_clk_1"),
+	CLK_MSR_ID(16, "fec_clk_2"),
+	CLK_MSR_ID(18, "a9_clk_div16"),
+	CLK_MSR_ID(19, "hdmi_sys"),
+	CLK_MSR_ID(20, "rtc_osc_clk_out"),
+	CLK_MSR_ID(21, "i2s_clk_in_src0"),
+	CLK_MSR_ID(22, "clk_rmii_from_pad"),
+	CLK_MSR_ID(23, "hdmi_ch0_tmds"),
+	CLK_MSR_ID(24, "lvds_fifo"),
+	CLK_MSR_ID(26, "sc_clk_int"),
+	CLK_MSR_ID(28, "sar_adc"),
+	CLK_MSR_ID(30, "mpll_clk_test_out"),
+	CLK_MSR_ID(31, "audac_clkpi"),
+	CLK_MSR_ID(32, "vdac"),
+	CLK_MSR_ID(33, "sdhc_rx"),
+	CLK_MSR_ID(34, "sdhc_sd"),
+	CLK_MSR_ID(35, "mali"),
+	CLK_MSR_ID(36, "hdmi_tx_pixel"),
+	CLK_MSR_ID(38, "vdin_meas"),
+	CLK_MSR_ID(39, "pcm_sclk"),
+	CLK_MSR_ID(40, "pcm_mclk"),
+	CLK_MSR_ID(41, "eth_rx_tx"),
+	CLK_MSR_ID(42, "pwm_d"),
+	CLK_MSR_ID(43, "pwm_c"),
+	CLK_MSR_ID(44, "pwm_b"),
+	CLK_MSR_ID(45, "pwm_a"),
+	CLK_MSR_ID(46, "pcm2_sclk"),
+	CLK_MSR_ID(47, "ddr_dpll_pt"),
+	CLK_MSR_ID(48, "pwm_f"),
+	CLK_MSR_ID(49, "pwm_e"),
+	CLK_MSR_ID(59, "hcodec"),
+	CLK_MSR_ID(60, "usb_32k_alt"),
+	CLK_MSR_ID(61, "gpio"),
+	CLK_MSR_ID(62, "vid2_pll"),
+	CLK_MSR_ID(63, "mipi_csi_cfg"),
+};
+
 static struct meson_gx_msr_id clk_msr_gx[CLK_MSR_MAX] = {
 	CLK_MSR_ID(0, "ring_osc_out_ee_0"),
 	CLK_MSR_ID(1, "ring_osc_out_ee_1"),
@@ -279,6 +328,14 @@ static const struct of_device_id meson_gx_msr_match_table[] = {
 	{
 		.compatible = "amlogic,meson-gx-clk-measure",
 		.data = (void *)clk_msr_gx,
+	},
+	{
+		.compatible = "amlogic,meson8-clk-measure",
+		.data = (void *)clk_msr_m8,
+	},
+	{
+		.compatible = "amlogic,meson8b-clk-measure",
+		.data = (void *)clk_msr_m8,
 	},
 	{ /* sentinel */ }
 };
