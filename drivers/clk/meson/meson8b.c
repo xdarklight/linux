@@ -1084,11 +1084,19 @@ static struct clk_regmap meson8b_vid_pll_in_en = {
 	},
 };
 
+static const struct clk_div_table vid_pll_pre_div_table[] = {
+	{ .val = 0, .div = 1 },
+	{ .val = 4, .div = 5 },
+	{ .val = 5, .div = 6 },
+	{ /* sentinel */ }
+};
+
 static struct clk_regmap meson8b_vid_pll_pre_div = {
 	.data = &(struct clk_regmap_div_data){
 		.offset =  HHI_VID_DIVIDER_CNTL,
 		.shift = 4,
 		.width = 3,
+		.table = vid_pll_pre_div_table,
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "vid_pll_pre_div",
@@ -1101,11 +1109,18 @@ static struct clk_regmap meson8b_vid_pll_pre_div = {
 	},
 };
 
+static const struct clk_div_table vid_pll_post_div_table[] = {
+	{ .val = 0, .div = 1 },
+	{ .val = 1, .div = 2 },
+	{ /* sentinel */ }
+};
+
 static struct clk_regmap meson8b_vid_pll_post_div = {
 	.data = &(struct clk_regmap_div_data){
 		.offset =  HHI_VID_DIVIDER_CNTL,
 		.shift = 12,
 		.width = 3,
+		.table = vid_pll_post_div_table,
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "vid_pll_post_div",
@@ -1137,11 +1152,19 @@ static struct clk_regmap meson8b_vid_pll = {
 	},
 };
 
+static const struct clk_div_table meson8b_vid_pll_final_div_table[] = {
+	{ .val = 0, .div = 1 },
+	{ .val = 1, .div = 2 },
+	{ .val = 3, .div = 4 },
+	{ /* sentinel */ }
+};
+
 static struct clk_regmap meson8b_vid_pll_final_div = {
 	.data = &(struct clk_regmap_div_data){
 		.offset =  HHI_VID_CLK_DIV,
 		.shift = 0,
 		.width = 8,
+		.table = meson8b_vid_pll_final_div_table,
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "vid_pll_final_div",
