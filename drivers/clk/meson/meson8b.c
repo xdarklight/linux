@@ -127,6 +127,36 @@ static struct clk_regmap meson8b_fixed_pll = {
 	},
 };
 
+static const struct reg_sequence meson8b_hdmi_pll_init_regs[] = {
+	{ .reg = HHI_VID_PLL_CNTL2,	.def = 0x69c88000 },
+	{ .reg = HHI_VID_PLL_CNTL3,	.def = 0xca563823 },
+	{ .reg = HHI_VID_PLL_CNTL4,	.def = 0x40238100 },
+	{ .reg = HHI_VID_PLL_CNTL5,	.def = 0x00012286 },
+	{ .reg = HHI_VID2_PLL_CNTL2,	.def = 0x0430a800 },
+};
+
+static const struct pll_params_table hdmi_pll_params_table[] = {
+	PLL_PARAMS(34, 1),
+	PLL_PARAMS(40, 1),
+	PLL_PARAMS(42, 1),
+	PLL_PARAMS(44, 1),
+	PLL_PARAMS(45, 1),
+	PLL_PARAMS(49, 1),
+	PLL_PARAMS(52, 1),
+	PLL_PARAMS(54, 1),
+	PLL_PARAMS(56, 1),
+	PLL_PARAMS(59, 1),
+	PLL_PARAMS(60, 1),
+	PLL_PARAMS(61, 1),
+	PLL_PARAMS(62, 1),
+	PLL_PARAMS(64, 1),
+	PLL_PARAMS(66, 1),
+	PLL_PARAMS(68, 1),
+	PLL_PARAMS(71, 1),
+	PLL_PARAMS(82, 1),
+	{ /* sentinel */ }
+};
+
 static struct clk_regmap meson8b_hdmi_pll_dco = {
 	.data = &(struct meson_clk_pll_data){
 		.en = {
@@ -159,6 +189,9 @@ static struct clk_regmap meson8b_hdmi_pll_dco = {
 			.shift   = 29,
 			.width   = 1,
 		},
+		.table = hdmi_pll_params_table,
+		.init_regs = meson8b_hdmi_pll_init_regs,
+		.init_count = ARRAY_SIZE(meson8b_hdmi_pll_init_regs),
 	},
 	.hw.init = &(struct clk_init_data){
 		/* sometimes also called "HPLL" or "HPLL PLL" */
@@ -1100,11 +1133,19 @@ static struct clk_regmap meson8b_vid_pll_in_en = {
 	},
 };
 
+static const struct clk_div_table vid_pll_pre_div_table[] = {
+	{ .val = 0, .div = 1 },
+	{ .val = 4, .div = 5 },
+	{ .val = 5, .div = 6 },
+	{ /* sentinel */ }
+};
+
 static struct clk_regmap meson8b_vid_pll_pre_div = {
 	.data = &(struct clk_regmap_div_data){
 		.offset =  HHI_VID_DIVIDER_CNTL,
 		.shift = 4,
 		.width = 3,
+		.table = vid_pll_pre_div_table,
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "vid_pll_pre_div",
@@ -1117,11 +1158,18 @@ static struct clk_regmap meson8b_vid_pll_pre_div = {
 	},
 };
 
+static const struct clk_div_table vid_pll_post_div_table[] = {
+	{ .val = 0, .div = 1 },
+	{ .val = 1, .div = 2 },
+	{ /* sentinel */ }
+};
+
 static struct clk_regmap meson8b_vid_pll_post_div = {
 	.data = &(struct clk_regmap_div_data){
 		.offset =  HHI_VID_DIVIDER_CNTL,
 		.shift = 12,
 		.width = 3,
+		.table = vid_pll_post_div_table,
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "vid_pll_post_div",
@@ -1153,11 +1201,19 @@ static struct clk_regmap meson8b_vid_pll = {
 	},
 };
 
+static const struct clk_div_table meson8b_vid_pll_final_div_table[] = {
+	{ .val = 0, .div = 1 },
+	{ .val = 1, .div = 2 },
+	{ .val = 3, .div = 4 },
+	{ /* sentinel */ }
+};
+
 static struct clk_regmap meson8b_vid_pll_final_div = {
 	.data = &(struct clk_regmap_div_data){
 		.offset =  HHI_VID_CLK_DIV,
 		.shift = 0,
 		.width = 8,
+		.table = meson8b_vid_pll_final_div_table,
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "vid_pll_final_div",
