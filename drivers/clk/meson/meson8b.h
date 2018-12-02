@@ -51,6 +51,16 @@
 #define HHI_SYS_PLL_CNTL		0x300 /* 0xc0 offset in data sheet */
 #define HHI_VID_PLL_CNTL		0x320 /* 0xc8 offset in data sheet */
 #define HHI_VID_PLL_CNTL2		0x324 /* 0xc9 offset in data sheet */
+#define HHI_VID_PLL_CNTL3		0x328 /* 0xca offset in data sheet */
+#define HHI_VID_PLL_CNTL4		0x32c /* 0xcb offset in data sheet */
+#define HHI_VID_PLL_CNTL5		0x330 /* 0xcc offset in data sheet */
+#define HHI_VID_PLL_CNTL6		0x334 /* 0xcd offset in data sheet */
+#define HHI_VID2_PLL_CNTL		0x380 /* 0xe0 offset in data sheet */
+#define HHI_VID2_PLL_CNTL2		0x384 /* 0xe1 offset in data sheet */
+#define HHI_VID2_PLL_CNTL3		0x388 /* 0xe2 offset in data sheet */
+#define HHI_VID2_PLL_CNTL4		0x38c /* 0xe3 offset in data sheet */
+#define HHI_VID2_PLL_CNTL5		0x390 /* 0xe4 offset in data sheet */
+#define HHI_VID2_PLL_CNTL6		0x394 /* 0xe5 offset in data sheet */
 
 /*
  * MPLL register offeset taken from the S905 datasheet. Vendor kernel source
