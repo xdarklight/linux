@@ -126,6 +126,25 @@ static struct clk_regmap meson8b_fixed_pll = {
 	},
 };
 
+static const struct pll_params_table hdmi_pll_params_table[] = {
+	PLL_PARAMS(40, 1),
+	PLL_PARAMS(42, 1),
+	PLL_PARAMS(44, 1),
+	PLL_PARAMS(45, 1),
+	PLL_PARAMS(49, 1),
+	PLL_PARAMS(52, 1), // Meson8b only for VMODE_640X480P_75HZ
+	PLL_PARAMS(54, 1),
+	PLL_PARAMS(56, 1), // Meson8b only for VMODE_1280X1024P_75HZ
+	PLL_PARAMS(59, 1),
+	PLL_PARAMS(60, 1),
+	PLL_PARAMS(61, 1),
+	PLL_PARAMS(66, 1),
+	PLL_PARAMS(68, 1), // Meson8b only for VMODE_1024X768P_75HZ
+	PLL_PARAMS(71, 1),
+	PLL_PARAMS(82, 1), // Meson8b only for VMODE_800X600P_75HZ
+	{ /* sentinel */ },
+};
+
 static struct clk_regmap meson8b_hdmi_pll_dco = {
 	.data = &(struct meson_clk_pll_data){
 		.en = {
@@ -158,6 +177,7 @@ static struct clk_regmap meson8b_hdmi_pll_dco = {
 			.shift   = 29,
 			.width   = 1,
 		},
+		.table = hdmi_pll_params_table,
 	},
 	.hw.init = &(struct clk_init_data){
 		/* sometimes also called "HPLL" or "HPLL PLL" */
