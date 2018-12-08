@@ -96,6 +96,10 @@
 	compatible = "amlogic,meson8m2-usb2-phy", "amlogic,meson-mx-usb2-phy";
 };
 
+&vpu {
+	compatible = "amlogic,meson8m2-vpu";
+};
+
 &wdt {
 	compatible = "amlogic,meson8m2-wdt", "amlogic,meson8b-wdt";
 };
