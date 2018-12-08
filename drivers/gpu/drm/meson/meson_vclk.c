@@ -1020,6 +1020,14 @@ void meson_vclk_setup(struct meson_drm *priv, unsigned int target,
 	unsigned int hdmi_tx_div;
 	unsigned int venc_div;
 
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8B) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8M2)) {
+		/* HACK */
+		dev_err(priv->dev, "%s(%u, %u, %u, %u, %u)\n", __func__, target, vclk_freq, venc_freq, dac_freq, hdmi_use_enci);
+		return;
+	}
+
 	if (target == MESON_VCLK_TARGET_CVBS) {
 		meson_venci_cvbs_clock_config(priv);
 		return;
