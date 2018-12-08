@@ -80,6 +80,22 @@ void meson_vpp_setup_interlace_vscaler_osd1(struct meson_drm *priv,
 
 	writel_relaxed(0, priv->io_base + _REG(VPP_OSD_HSC_CTRL0));
 
+#if 1
+	// HACK: set canvas ID of OSD2
+	writel_bits_relaxed(0xff << 16, priv->canvas_id_osd1 << 16, priv->io_base + _REG(VIU_OSD2_BLK0_CFG_W0));
+
+	writel_relaxed(BIT(3) /* Enable scaler */ |
+		       BIT(0), /* Select OSD2 - FIXME */
+			priv->io_base + _REG(VPP_OSD_SC_CTRL0));
+
+	writel_relaxed(0x04ff02cf, priv->io_base + _REG(VPP_OSD_SCI_WH_M1));
+	writel_relaxed(0x000002cf, priv->io_base + _REG(VPP_OSD_SCO_H_START_END));
+	writel_relaxed(0x0000011f, priv->io_base + _REG(VPP_OSD_SCO_V_START_END));
+	writel_relaxed(0x40000000, priv->io_base + _REG(VPP_OSD_VSC_INI_PHASE));
+	writel_relaxed(0x02800000, priv->io_base + _REG(VPP_OSD_VSC_PHASE_STEP));
+	writel_relaxed(0x00400124, priv->io_base + _REG(VPP_OSD_HSC_CTRL0));
+#endif
+
 	writel_relaxed((4 << 0) /* osd_vsc_bank_length */ |
 		       (4 << 3) /* osd_vsc_top_ini_rcv_num0 */ |
 		       (1 << 8) /* osd_vsc_top_rpt_p0_num0 */ |
