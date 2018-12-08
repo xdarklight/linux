@@ -314,6 +314,71 @@
 			operating-points-v2 = <&gpu_opp_table>;
 			#cooling-cells = <2>; /* min followed by max */
 		};
+
+		vpu: vpu@100000 {
+			compatible = "amlogic,meson8-vpu";
+
+			reg = <0x100000 0x10000>;
+			reg-names = "vpu";
+
+			interrupts = <GIC_SPI 3 IRQ_TYPE_EDGE_RISING>;
+
+			amlogic,canvas = <&canvas>;
+
+			/*
+			 * The VCLK{,2}_IN path always needs to derived from
+			 * the CLKID_VID_PLL_FINAL_DIV so other clocks like
+			 * MPLL1 are not used (MPLL1 is reserved for audio
+			 * purposes).
+			 */
+			assigned-clocks = <&clkc CLKID_VCLK_IN_SEL>,
+					  <&clkc CLKID_VCLK2_IN_SEL>;
+			assigned-clock-parents = <&clkc CLKID_VID_PLL_FINAL_DIV>,
+						 <&clkc CLKID_VID_PLL_FINAL_DIV>;
+
+			clocks = <&clkc CLKID_VPU_INTR>,
+				 <&clkc CLKID_HDMI_INTR_SYNC>,
+				 <&clkc CLKID_GCLK_VENCI_INT>,
+				 <&clkc CLKID_HDMI_PLL_HDMI_OUT>,
+				 <&clkc CLKID_HDMI_TX_PIXEL>,
+				 <&clkc CLKID_CTS_ENCP>,
+				 <&clkc CLKID_CTS_ENCI>,
+				 <&clkc CLKID_CTS_ENCT>,
+				 <&clkc CLKID_CTS_ENCL>,
+				 <&clkc CLKID_CTS_VDAC0>;
+			clock-names = "vpu_intr",
+				      "hdmi_intr_sync",
+				      "venci_int",
+				      "tmds",
+				      "hdmi_tx_pixel",
+				      "cts_encp",
+				      "cts_enci",
+				      "cts_enct",
+				      "cts_encl",
+				      "cts_vdac0";
+
+			resets = <&clkc CLKC_RESET_VID_DIVIDER_CNTL_RESET_N_PRE>,
+				 <&clkc CLKC_RESET_VID_DIVIDER_CNTL_RESET_N_POST>,
+				 <&clkc CLKC_RESET_VID_DIVIDER_CNTL_SOFT_RESET_PRE>,
+				 <&clkc CLKC_RESET_VID_DIVIDER_CNTL_SOFT_RESET_POST>;
+			reset-names = "vid_pll_pre",
+				      "vid_pll_post",
+				      "vid_pll_soft_pre",
+				      "vid_pll_soft_post";
+
+			phys = <&cvbs_dac>;
+			phy-names = "cvbs-dac";
+
+			power-domains = <&pwrc PWRC_MESON8_VPU_ID>;
+
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			/* CVBS VDAC output port */
+			cvbs_vdac_port: port@0 {
+				reg = <0>;
+			};
+		};
 	};
 }; /* end of / */
 
@@ -637,6 +702,17 @@
 	};
 };
 
+&cvbs_dac {
+	compatible = "amlogic,meson8-cvbs-dac", "amlogic,meson-cvbs-dac";
+
+	clocks = <&clkc CLKID_CTS_VDAC0>;
+
+	nvmem-cells = <&cvbs_trimming>;
+	nvmem-cell-names = "cvbs_trimming";
+
+	status = "okay";
+};
+
 &efuse {
 	compatible = "amlogic,meson8-efuse";
 	clocks = <&clkc CLKID_EFUSE>;
@@ -645,6 +721,10 @@
 	temperature_calib: calib@1f4 {
 		/* only the upper two bytes are relevant */
 		reg = <0x1f4 0x4>;
+	};
+
+	cvbs_trimming: calib@1f8 {
+		reg = <0x1f8 0x2>;
 	};
 };
 
