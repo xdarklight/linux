@@ -301,6 +301,92 @@
 			operating-points-v2 = <&gpu_opp_table>;
 			#cooling-cells = <2>; /* min followed by max */
 		};
+
+		vpu: vpu@100000 {
+			compatible = "amlogic,meson8b-vpu";
+
+			reg = <0x100000 0x10000>;
+			reg-names = "vpu";
+
+			interrupts = <GIC_SPI 3 IRQ_TYPE_EDGE_RISING>;
+
+			amlogic,canvas = <&canvas>;
+			amlogic,hhi-sysctrl = <&hhi>;
+
+			clocks = <&clkc CLKID_VPU_INTR>,
+				 <&clkc CLKID_HDMI_INTR_SYNC>,
+				 <&clkc CLKID_GCLK_VENCI_INT>,
+				 <&clkc CLKID_HDMI_PLL_DCO>,
+				 <&clkc CLKID_HDMI_PLL_LVDS_OUT>,
+				 <&clkc CLKID_HDMI_PLL_HDMI_OUT>,
+				 <&clkc CLKID_PLL_VID>,
+				 <&clkc CLKID_VID_PLL_FINAL_DIV>,
+				 <&clkc CLKID_HDMI_TX_PIXEL>,
+				 <&clkc CLKID_CTS_ENCP>,
+				 <&clkc CLKID_CTS_ENCI>,
+				 <&clkc CLKID_CTS_ENCT>,
+				 <&clkc CLKID_CTS_ENCL>,
+				 <&clkc CLKID_CTS_VDAC0>;
+			clock-names = "vpu_intr",
+				      "hdmi_intr_sync",
+				      "venci_int",
+				      "hdmi_pll_dco",
+				      "hdmi_pll_lvds_od",
+				      "hdmi_pll_hdmi_od",
+				      "vid_pll",
+				      "vid_pll_final_div",
+				      "hdmi_tx_pixel",
+				      "cts_encp",
+				      "cts_enci",
+				      "cts_enct",
+				      "cts_encl",
+				      "vdac";
+
+			resets = <&clkc CLKC_RESET_VID_DIVIDER_CNTL_RESET_N_PRE>,
+				 <&clkc CLKC_RESET_VID_DIVIDER_CNTL_RESET_N_POST>,
+				 <&clkc CLKC_RESET_VID_DIVIDER_CNTL_SOFT_RESET_PRE>,
+				 <&clkc CLKC_RESET_VID_DIVIDER_CNTL_SOFT_RESET_POST>;
+			reset-names = "vid_pll_pre",
+				      "vid_pll_post",
+				      "vid_pll_soft_pre",
+				      "vid_pll_soft_post";
+
+			power-domains = <&pwrc PWRC_MESON8_VPU_ID>;
+
+			nvmem-cells = <&cvbs_trimming>;
+			nvmem-cell-names = "cvbs_trimming";
+
+			assigned-clocks = <&clkc CLKID_HDMI_PLL_DCO>,
+					  <&clkc CLKID_HDMI_PLL_LVDS_OUT>,
+					  <&clkc CLKID_HDMI_PLL_HDMI_OUT>,
+					  <&clkc CLKID_PLL_VID>,
+					  <&clkc CLKID_VID_PLL_FINAL_DIV>,
+					  <&clkc CLKID_HDMI_TX_PIXEL>,
+					  <&clkc CLKID_CTS_ENCP>,
+					  <&clkc CLKID_CTS_ENCI>,
+					  <&clkc CLKID_CTS_ENCT>,
+					  <&clkc CLKID_CTS_ENCL>,
+					  <&clkc CLKID_CTS_VDAC0>;
+			assigned-clock-rates = <1296000000>, /* CLKID_HDMI_PLL_DCO */
+					       <1296000000>, /* CLKID_HDMI_PLL_LVDS_OUT */
+						<324000000>, /* CLKID_HDMI_PLL_HDMI_OUT */
+						<216000000>, /* CLKID_PLL_VID */
+						 <54000000>, /* CLKID_VID_PLL_FINAL_DIV */
+						 <27000000>, /* CLKID_HDMI_TX_PIXEL */
+						 <54000000>, /* CLKID_CTS_ENCP */
+						 <27000000>, /* CLKID_CTS_ENCI */
+						 <54000000>, /* CLKID_CTS_ENCT */
+						 <54000000>, /* CLKID_CTS_ENCL */
+						 <27000000>; /* CLKID_CTS_VDAC0 */
+
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			/* CVBS VDAC output port */
+			cvbs_vdac_port: port@0 {
+				reg = <0>;
+			};
+		};
 	};
 }; /* end of / */
 
@@ -504,6 +590,10 @@
 	temperature_calib: calib@1f4 {
 		/* only the upper two bytes are relevant */
 		reg = <0x1f4 0x4>;
+	};
+
+	cvbs_trimming: calib@1f8 {
+		reg = <0x1f8 0x2>;
 	};
 };
 
