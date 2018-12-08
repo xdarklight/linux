@@ -257,6 +257,24 @@
 			clock-names = "bus", "core";
 			operating-points-v2 = <&gpu_opp_table>;
 		};
+
+		vpu: vpu@100000 {
+			status = "disabled";
+			compatible = "amlogic,meson8-vpu";
+			reg = <0x100000 0x10000>;
+			reg-names = "vpu";
+			interrupts = <GIC_SPI 3 IRQ_TYPE_EDGE_RISING>;
+			amlogic,canvas = <&canvas>;
+			amlogic,hhi-sysctrl = <&hhi>;
+			power-domains = <&pwrc PWRC_MESON8_VPU_ID>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			/* CVBS VDAC output port */
+			cvbs_vdac_port: port@0 {
+				reg = <0>;
+			};
+		};
 	};
 }; /* end of / */
 
