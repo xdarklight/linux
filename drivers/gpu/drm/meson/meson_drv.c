@@ -21,6 +21,7 @@
  */
 
 #include <linux/kernel.h>
+#include <linux/mfd/syscon.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/platform_device.h>
@@ -196,24 +197,32 @@ static int meson_drv_bind_master(struct device *dev, bool has_components)
 
 	priv->io_base = regs;
 
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "hhi");
-	if (!res) {
-		ret = -EINVAL;
-		goto free_drm;
-	}
-	/* Simply ioremap since it may be a shared register zone */
-	regs = devm_ioremap(dev, res->start, resource_size(res));
-	if (!regs) {
-		ret = -EADDRNOTAVAIL;
-		goto free_drm;
-	}
-
-	priv->hhi = devm_regmap_init_mmio(dev, regs,
-					  &meson_regmap_config);
+	priv->hhi = syscon_regmap_lookup_by_phandle(pdev->dev.of_node,
+						    "amlogic,hhi-sysctrl");
 	if (IS_ERR(priv->hhi)) {
-		dev_err(&pdev->dev, "Couldn't create the HHI regmap\n");
-		ret = PTR_ERR(priv->hhi);
-		goto free_drm;
+		dev_warn(dev, "Falling back to parsing the 'hhi' registers\n");
+
+		res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
+						   "hhi");
+		if (!res) {
+			ret = -EINVAL;
+			goto free_drm;
+		}
+		/* Simply ioremap since it may be a shared register zone */
+		regs = devm_ioremap(dev, res->start, resource_size(res));
+		if (!regs) {
+			ret = -EADDRNOTAVAIL;
+			goto free_drm;
+		}
+
+		priv->hhi = devm_regmap_init_mmio(dev, regs,
+						  &meson_regmap_config);
+		if (IS_ERR(priv->hhi)) {
+			dev_err(&pdev->dev,
+				"Couldn't create the HHI regmap\n");
+			ret = PTR_ERR(priv->hhi);
+			goto free_drm;
+		}
 	}
 
 	priv->canvas = meson_canvas_get(dev);
@@ -418,6 +427,9 @@ static int meson_drv_probe(struct platform_device *pdev)
 };
 
 static const struct of_device_id dt_match[] = {
+	{ .compatible = "amlogic,meson8-vpu" },
+	{ .compatible = "amlogic,meson8b-vpu" },
+	{ .compatible = "amlogic,meson8m2-vpu" },
 	{ .compatible = "amlogic,meson-gxbb-vpu" },
 	{ .compatible = "amlogic,meson-gxl-vpu" },
 	{ .compatible = "amlogic,meson-gxm-vpu" },
