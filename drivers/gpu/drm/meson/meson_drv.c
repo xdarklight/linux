@@ -21,6 +21,7 @@
  */
 
 #include <linux/kernel.h>
+#include <linux/mfd/syscon.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/platform_device.h>
@@ -150,10 +151,18 @@ static struct regmap_config meson_regmap_config = {
 
 static void meson_vpu_init(struct meson_drm *priv)
 {
-	writel_relaxed(0x210000, priv->io_base + _REG(VPU_RDARB_MODE_L1C1));
-	writel_relaxed(0x10000, priv->io_base + _REG(VPU_RDARB_MODE_L1C2));
-	writel_relaxed(0x900000, priv->io_base + _REG(VPU_RDARB_MODE_L2C1));
-	writel_relaxed(0x20000, priv->io_base + _REG(VPU_WRARB_MODE_L2C1));
+	if (meson_vpu_is_compatible(priv, "amlogic,meson-gxbb-vpu") ||
+	    meson_vpu_is_compatible(priv, "amlogic,meson-gxl-vpu") ||
+	    meson_vpu_is_compatible(priv, "amlogic,meson-gxm-vpu")) {
+		writel_relaxed(0x210000,
+			       priv->io_base + _REG(VPU_RDARB_MODE_L1C1));
+		writel_relaxed(0x10000,
+			       priv->io_base + _REG(VPU_RDARB_MODE_L1C2));
+		writel_relaxed(0x900000,
+			       priv->io_base + _REG(VPU_RDARB_MODE_L2C1));
+		writel_relaxed(0x20000,
+			       priv->io_base + _REG(VPU_WRARB_MODE_L2C1));
+	}
 }
 
 static void meson_remove_framebuffers(void)
@@ -210,25 +219,36 @@ static int meson_drv_bind_master(struct device *dev, bool has_components)
 
 	priv->io_base = regs;
 
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "hhi");
-	if (!res) {
-		ret = -EINVAL;
-		goto free_drm;
-	}
-	/* Simply ioremap since it may be a shared register zone */
-	regs = devm_ioremap(dev, res->start, resource_size(res));
-	if (!regs) {
-		ret = -EADDRNOTAVAIL;
-		goto free_drm;
+	priv->hhi = syscon_regmap_lookup_by_phandle(pdev->dev.of_node,
+						    "amlogic,hhi-sysctrl");
+	if (IS_ERR(priv->hhi)) {
+		dev_warn(dev, "Falling back to parsing the 'hhi' registers\n");
+
+		res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
+						   "hhi");
+		if (!res) {
+			ret = -EINVAL;
+			goto free_drm;
+		}
+		/* Simply ioremap since it may be a shared register zone */
+		regs = devm_ioremap(dev, res->start, resource_size(res));
+		if (!regs) {
+			ret = -EADDRNOTAVAIL;
+			goto free_drm;
+		}
+
+		priv->hhi = devm_regmap_init_mmio(dev, regs,
+						  &meson_regmap_config);
+		if (IS_ERR(priv->hhi)) {
+			dev_err(&pdev->dev,
+				"Couldn't create the HHI regmap\n");
+			ret = PTR_ERR(priv->hhi);
+			goto free_drm;
+		}
 	}
 
-	priv->hhi = devm_regmap_init_mmio(dev, regs,
-					  &meson_regmap_config);
-	if (IS_ERR(priv->hhi)) {
-		dev_err(&pdev->dev, "Couldn't create the HHI regmap\n");
-		ret = PTR_ERR(priv->hhi);
-		goto free_drm;
-	}
+	/* HACK for missing power domain driver */
+	regmap_write(priv->hhi, 0x100 /* HHI_VPU_MEM_PD_REG0 */, 0x0);
 
 	priv->canvas = meson_canvas_get(dev);
 	if (!IS_ERR(priv->canvas)) {
@@ -464,6 +484,9 @@ static int meson_drv_probe(struct platform_device *pdev)
 };
 
 static const struct of_device_id dt_match[] = {
+	{ .compatible = "amlogic,meson8-vpu" },
+	{ .compatible = "amlogic,meson8b-vpu" },
+	{ .compatible = "amlogic,meson8m2-vpu" },
 	{ .compatible = "amlogic,meson-gxbb-vpu" },
 	{ .compatible = "amlogic,meson-gxl-vpu" },
 	{ .compatible = "amlogic,meson-gxm-vpu" },
