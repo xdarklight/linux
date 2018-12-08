@@ -179,7 +179,10 @@ static void meson_venc_cvbs_encoder_enable(struct drm_encoder *encoder)
 	/* VDAC0 source is not from ATV */
 	writel_bits_relaxed(BIT(5), 0, priv->io_base + _REG(VENC_VDAC_DACSEL0));
 
-	if (meson_vpu_is_compatible(priv, "amlogic,meson-gxbb-vpu"))
+	if (meson_vpu_is_compatible(priv, "amlogic,meson8-vpu") ||
+	    meson_vpu_is_compatible(priv, "amlogic,meson8b-vpu") ||
+	    meson_vpu_is_compatible(priv, "amlogic,meson8m2-vpu") ||
+	    meson_vpu_is_compatible(priv, "amlogic,meson-gxbb-vpu"))
 		regmap_write(priv->hhi, HHI_VDAC_CNTL0, 1);
 	else if (meson_vpu_is_compatible(priv, "amlogic,meson-gxm-vpu") ||
 		 meson_vpu_is_compatible(priv, "amlogic,meson-gxl-vpu"))
