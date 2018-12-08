@@ -18,10 +18,13 @@ struct drm_plane;
 struct meson_drm;
 
 enum vpu_compatible {
-	VPU_COMPATIBLE_GXBB = 0,
-	VPU_COMPATIBLE_GXL  = 1,
-	VPU_COMPATIBLE_GXM  = 2,
-	VPU_COMPATIBLE_G12A = 3,
+	VPU_COMPATIBLE_M8 = 0,
+	VPU_COMPATIBLE_M8B = 1,
+	VPU_COMPATIBLE_M8M2 = 2,
+	VPU_COMPATIBLE_GXBB = 3,
+	VPU_COMPATIBLE_GXL  = 4,
+	VPU_COMPATIBLE_GXM  = 5,
+	VPU_COMPATIBLE_G12A = 6,
 };
 
 struct meson_drm {
@@ -122,6 +125,10 @@ struct meson_drm {
 		bool venc_repeat;
 		bool hdmi_use_enci;
 	} venc;
+
+	struct {
+		uint32_t cntl1;
+	} cvbs;
 };
 
 static inline int meson_vpu_is_compatible(struct meson_drm *priv,

@@ -224,7 +224,6 @@
 		};
 
 		vpu: vpu@100000 {
-			status = "disabled";
 			compatible = "amlogic,meson8b-vpu";
 			reg = <0x100000 0x10000>;
 			reg-names = "vpu";
@@ -232,6 +231,8 @@
 			amlogic,canvas = <&canvas>;
 			amlogic,hhi-sysctrl = <&hhi>;
 			power-domains = <&pwrc PWRC_MESON8_VPU_ID>;
+			nvmem-cells = <&cvbs_trimming>;
+			nvmem-cell-names = "cvbs_trimming";
 			#address-cells = <1>;
 			#size-cells = <0>;
 
@@ -443,6 +444,10 @@
 	temperature_calib: calib@1f4 {
 		/* only the upper two bytes are relevant */
 		reg = <0x1f4 0x4>;
+	};
+
+	cvbs_trimming: calib@1f8 {
+		reg = <0x1f8 0x2>;
 	};
 };
 
