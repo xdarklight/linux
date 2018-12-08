@@ -1918,7 +1918,7 @@ static struct clk_regmap meson8b_vpu = {
 		.ops = &clk_regmap_mux_ops,
 		.parent_names = (const char *[]){ "vpu_0", "vpu_1" },
 		.num_parents = 2,
-		.flags = CLK_SET_RATE_NO_REPARENT,
+		.flags = CLK_SET_RATE_NO_REPARENT | CLK_IS_CRITICAL, /* VPU hack */
 	},
 };
 

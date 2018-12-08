@@ -142,7 +142,10 @@ static void meson_plane_atomic_update(struct drm_plane *plane,
 				      OSD_ENDIANNESS_LE);
 
 	/* On GXBB, Use the old non-HDR RGB2YUV converter */
-	if (meson_vpu_is_compatible(priv, "amlogic,meson-gxbb-vpu"))
+	if (meson_vpu_is_compatible(priv, "amlogic,meson8-vpu") ||
+	    meson_vpu_is_compatible(priv, "amlogic,meson8b-vpu") ||
+	    meson_vpu_is_compatible(priv, "amlogic,meson8m2-vpu") ||
+	    meson_vpu_is_compatible(priv, "amlogic,meson-gxbb-vpu"))
 		priv->viu.osd1_blk0_cfg[0] |= OSD_OUTPUT_COLOR_RGB;
 
 	switch (fb->format->format) {
