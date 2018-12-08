@@ -5,9 +5,25 @@
 
 #include "meson8.dtsi"
 
+/* the canvas was relocated in the Meson8m2 SoC */
+/delete-node/ &canvas;
+
 / {
 	model = "Amlogic Meson8m2 SoC";
 	compatible = "amlogic,meson8m2";
+
+	dmcbus: bus@c8006000 {
+		compatible = "simple-bus";
+		reg = <0xc8006000 0x2000>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges = <0x0 0xc8006000 0x2000>;
+
+		canvas: video-lut@48 {
+			compatible = "amlogic,canvas";
+			reg = <0x48 0x14>;
+		};
+	};
 }; /* end of / */
 
 &clkc {
