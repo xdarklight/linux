@@ -871,6 +871,13 @@ void meson_vclk_setup(struct meson_drm *priv, unsigned int target,
 	unsigned int hdmi_tx_div;
 	unsigned int venc_div;
 
+	if (meson_vpu_is_compatible(priv, "amlogic,meson8-vpu") ||
+	    meson_vpu_is_compatible(priv, "amlogic,meson8b-vpu") ||
+	    meson_vpu_is_compatible(priv, "amlogic,meson8m2-vpu")) {
+		/* HACK */
+		return;
+	}
+
 	if (target == MESON_VCLK_TARGET_CVBS) {
 		meson_venci_cvbs_clock_config(priv);
 		return;
