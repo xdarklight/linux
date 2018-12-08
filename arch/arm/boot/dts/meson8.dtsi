@@ -300,7 +300,6 @@
 		};
 
 		vpu: vpu@100000 {
-			status = "disabled";
 			compatible = "amlogic,meson8-vpu";
 			reg = <0x100000 0x10000>;
 			reg-names = "vpu";
