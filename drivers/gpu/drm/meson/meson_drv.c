@@ -11,6 +11,7 @@
 #include <linux/component.h>
 #include <linux/mfd/syscon.h>
 #include <linux/module.h>
+#include <linux/nvmem-consumer.h>
 #include <linux/of_graph.h>
 #include <linux/platform_device.h>
 #include <linux/soc/amlogic/meson-canvas.h>
@@ -143,28 +144,72 @@ static struct regmap_config meson_regmap_config = {
 
 static void meson_vpu_init(struct meson_drm *priv)
 {
-	u32 value;
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8B) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8M2)) {
+		writel(0x0, priv->io_base + _REG(VPU_MEM_PD_REG0));
+		writel(0x0, priv->io_base + _REG(VPU_MEM_PD_REG1));
+	} else {
+		u32 value;
 
-	/*
-	 * Slave dc0 and dc5 connected to master port 1.
-	 * By default other slaves are connected to master port 0.
-	 */
-	value = VPU_RDARB_SLAVE_TO_MASTER_PORT(0, 1) |
-		VPU_RDARB_SLAVE_TO_MASTER_PORT(5, 1);
-	writel_relaxed(value, priv->io_base + _REG(VPU_RDARB_MODE_L1C1));
+		/*
+		* Slave dc0 and dc5 connected to master port 1.
+		* By default other slaves are connected to master port 0.
+		*/
+		value = VPU_RDARB_SLAVE_TO_MASTER_PORT(0, 1) |
+			VPU_RDARB_SLAVE_TO_MASTER_PORT(5, 1);
+		writel_relaxed(value,
+			       priv->io_base + _REG(VPU_RDARB_MODE_L1C1));
 
-	/* Slave dc0 connected to master port 1 */
-	value = VPU_RDARB_SLAVE_TO_MASTER_PORT(0, 1);
-	writel_relaxed(value, priv->io_base + _REG(VPU_RDARB_MODE_L1C2));
+		/* Slave dc0 connected to master port 1 */
+		value = VPU_RDARB_SLAVE_TO_MASTER_PORT(0, 1);
+		writel_relaxed(value,
+			       priv->io_base + _REG(VPU_RDARB_MODE_L1C2));
 
-	/* Slave dc4 and dc7 connected to master port 1 */
-	value = VPU_RDARB_SLAVE_TO_MASTER_PORT(4, 1) |
-		VPU_RDARB_SLAVE_TO_MASTER_PORT(7, 1);
-	writel_relaxed(value, priv->io_base + _REG(VPU_RDARB_MODE_L2C1));
+		/* Slave dc4 and dc7 connected to master port 1 */
+		value = VPU_RDARB_SLAVE_TO_MASTER_PORT(4, 1) |
+			VPU_RDARB_SLAVE_TO_MASTER_PORT(7, 1);
+		writel_relaxed(value,
+			       priv->io_base + _REG(VPU_RDARB_MODE_L2C1));
 
-	/* Slave dc1 connected to master port 1 */
-	value = VPU_RDARB_SLAVE_TO_MASTER_PORT(1, 1);
-	writel_relaxed(value, priv->io_base + _REG(VPU_WRARB_MODE_L2C1));
+		/* Slave dc1 connected to master port 1 */
+		value = VPU_RDARB_SLAVE_TO_MASTER_PORT(1, 1);
+		writel_relaxed(value,
+			       priv->io_base + _REG(VPU_WRARB_MODE_L2C1));
+	}
+}
+
+static int meson_cvbs_trimming_init(struct meson_drm *priv)
+{
+	struct nvmem_cell *cell;
+	u8 *trimming;
+	size_t len;
+
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8B) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8M2)) {
+		cell = devm_nvmem_cell_get(priv->dev, "cvbs_trimming");
+		if (IS_ERR(cell))
+			return PTR_ERR(cell);
+
+		trimming = nvmem_cell_read(cell, &len);
+		if (IS_ERR(trimming))
+			return PTR_ERR(trimming);
+
+		if (len != 2)
+			return -EINVAL;
+
+		if ((trimming[1] & 0xf0) == 0xa0 ||
+		    (trimming[1] & 0xf0) == 0x40 ||
+		    (trimming[1] & 0xc0) == 0x80)
+			priv->cvbs.cntl1 = trimming[0] & 0x7;
+		else
+			priv->cvbs.cntl1 = 0x0;
+	} else {
+		priv->cvbs.cntl1 = 0x0;
+	}
+
+	return 0;
 }
 
 static void meson_remove_framebuffers(void)
@@ -283,6 +328,10 @@ static int meson_drv_bind_master(struct device *dev, bool has_components)
 		meson_canvas_free(priv->canvas, priv->canvas_id_vd1_1);
 		goto free_drm;
 	}
+
+	ret = meson_cvbs_trimming_init(priv);
+	if (ret)
+		goto free_drm;
 
 	priv->vsync_irq = platform_get_irq(pdev, 0);
 
@@ -508,6 +557,18 @@ static int meson_drv_probe(struct platform_device *pdev)
 	return 0;
 };
 
+static struct meson_drm_match_data meson_drm_m8_data = {
+	.compat = VPU_COMPATIBLE_M8,
+};
+
+static struct meson_drm_match_data meson_drm_m8b_data = {
+	.compat = VPU_COMPATIBLE_M8B,
+};
+
+static struct meson_drm_match_data meson_drm_m8m2_data = {
+	.compat = VPU_COMPATIBLE_M8M2,
+};
+
 static struct meson_drm_match_data meson_drm_gxbb_data = {
 	.compat = VPU_COMPATIBLE_GXBB,
 };
@@ -527,6 +588,12 @@ static struct meson_drm_match_data meson_drm_g12a_data = {
 };
 
 static const struct of_device_id dt_match[] = {
+	{ .compatible = "amlogic,meson8-vpu",
+	  .data       = (void *)&meson_drm_m8_data },
+	{ .compatible = "amlogic,meson8b-vpu",
+	  .data       = (void *)&meson_drm_m8b_data },
+	{ .compatible = "amlogic,meson8m2-vpu",
+	  .data       = (void *)&meson_drm_m8m2_data },
 	{ .compatible = "amlogic,meson-gxbb-vpu",
 	  .data       = (void *)&meson_drm_gxbb_data },
 	{ .compatible = "amlogic,meson-gxl-vpu",
