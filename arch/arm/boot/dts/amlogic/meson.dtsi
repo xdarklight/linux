@@ -38,6 +38,16 @@
 				#address-cells = <1>;
 				#size-cells = <1>;
 				ranges = <0x0 0x4000 0x400>;
+
+
+				cvbs_dac: video-dac@2f4 {
+					compatible = "amlogic,meson-cvbs-dac";
+					reg = <0x2f4 0x8>;
+
+					#phy-cells = <0>;
+
+					status = "disabled";
+				};
 			};
 
 			aiu: audio-controller@5400 {
