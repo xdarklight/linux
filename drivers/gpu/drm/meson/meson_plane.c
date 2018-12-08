@@ -194,8 +194,11 @@ static void meson_plane_atomic_update(struct drm_plane *plane,
 			priv->viu.osd1_ctrl_stat2 &= ~OSD_DPATH_MALI_AFBCD;
 	}
 
-	/* On GXBB, Use the old non-HDR RGB2YUV converter */
-	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_GXBB)) {
+	/* On GXBB and earlier, Use the old non-HDR RGB2YUV converter */
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8B) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8M2) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_GXBB)) {
 		switch (fb->format->format) {
 		case DRM_FORMAT_YUV444:
 		case DRM_FORMAT_YUV422:
