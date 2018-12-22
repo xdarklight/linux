@@ -40,11 +40,34 @@
 		};
 	};
 
+	sdio_pwrseq: sdio-pwrseq {
+		compatible = "mmc-pwrseq-simple";
+
+		pinctrl-0 = <&xtal_32k_out_pins>;
+		pinctrl-names = "default";
+
+		reset-gpios = <&gpio GPIOX_11 GPIO_ACTIVE_LOW>,
+			      <&gpio_ao GPIOAO_6 GPIO_ACTIVE_LOW>,
+			      <&gpio_ao GPIO_TEST_N GPIO_ACTIVE_LOW>;
+
+		clocks = <&xtal_32k_out>;
+		clock-names = "ext_clock";
+
+		post-power-on-delay-ms = <300>;
+	};
+
 	vcc_3v3: regulator-vcc3v3 {
 		compatible = "regulator-fixed";
 		regulator-name = "VCC3V3";
 		regulator-min-microvolt = <3300000>;
 		regulator-max-microvolt = <3300000>;
+	};
+
+	xtal_32k_out: xtal-32k-out-clk {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <32768>;
+		clock-output-names = "xtal_32k_out";
 	};
 };
 
