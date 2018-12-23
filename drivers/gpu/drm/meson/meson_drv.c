@@ -20,11 +20,15 @@
  *     Jasper St. Pierre <jstpierre@mecheye.net>
  */
 
+#include <linux/clk.h>
 #include <linux/kernel.h>
 #include <linux/mfd/syscon.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/platform_device.h>
+#include <linux/pm_domain.h>
+#include <linux/pm_runtime.h>
+#include <linux/reset.h>
 #include <linux/component.h>
 #include <linux/of_graph.h>
 
@@ -168,6 +172,99 @@ static void meson_vpu_init(struct meson_drm *priv)
 	}
 }
 
+static int meson_vpu_genpd_dev_init(struct device *dev, struct meson_drm *priv)
+{
+	static char *pd_names[] = { "vpu_hdmi",
+				    "hdmi_memory",
+				    "viu_osd1_memory",
+				    "viu_osd2_memory",
+				    "viu_vd1_memory",
+				    "viu_vd2_memory",
+				    "viu_chroma",
+				    "viu_output_fifo",
+				    "viu_scaler_memory",
+				    "viu_osd_scaler_memory",
+				    "viu_vdin0_memory",
+				    "viu_vdin1_memory",
+				    "pic_rot1",
+				    "pic_rot2",
+				    "pic_rot3",
+				    "deinterlacer_pre",
+				    "deinterlacer_post",
+				    "sharp",
+				    "viu2_osd1",
+				    "viu2_osd2",
+				    "viu2_vd1",
+				    "viu2_chroma",
+				    "viu2_output_fifo",
+				    "viu2_scaler_memory",
+				    "viu2_osd_scaler_memory",
+				    "arb",
+				    "afbc_dec",
+				    "vpuarb2_am_async",
+				    "vencp",
+				    "vencl",
+				    "venci",
+				    "isp",
+				    "ldim_stts",
+				    "xvycc_lut",
+				    "viu1_wm" };
+	struct device *genpd_dev;
+	int ret, i;
+
+	priv->num_vpu_genpd_devs = ARRAY_SIZE(pd_names);
+
+	priv->vpu_genpd_devs = devm_kcalloc(dev, priv->num_vpu_genpd_devs,
+					    sizeof(*priv->vpu_genpd_devs),
+					    GFP_KERNEL);
+	if (!priv->vpu_genpd_devs)
+		return -ENOMEM;
+
+	for (i = 0; i < priv->num_vpu_genpd_devs; i++) {
+		genpd_dev = genpd_dev_pm_attach_by_name(dev, pd_names[i]);
+		if (IS_ERR_OR_NULL(genpd_dev)) {
+			dev_err(dev, "Failed to attach %s power-domain\n",
+				pd_names[i]);
+			ret = PTR_ERR(genpd_dev);
+			goto err;
+		}
+
+		priv->vpu_genpd_devs[i] = genpd_dev;
+	}
+
+	genpd_dev = genpd_dev_pm_attach_by_name(dev, "vpu_hdmi_iso");
+	if (IS_ERR_OR_NULL(genpd_dev)) {
+		dev_err(dev, "Failed to attach vpu_hdmi_iso power-domain\n");
+		ret = PTR_ERR(genpd_dev);
+		goto err;
+	}
+
+	priv->vpu_hdmi_iso_genpd_dev = genpd_dev;
+
+	return 0;
+
+err:
+	while (--i >= 0)
+		dev_pm_domain_detach(priv->vpu_genpd_devs[i], false);
+
+	return ret;
+}
+
+static int meson_vpu_genpd_add_links(struct device *dev,
+				     struct meson_drm *priv)
+{
+	int i;
+
+	// TODO: error checking
+	for (i = 0; i < priv->num_vpu_genpd_devs; i++)
+		device_link_add(dev, priv->vpu_genpd_devs[i],
+				DL_FLAG_STATELESS | DL_FLAG_PM_RUNTIME | DL_FLAG_RPM_ACTIVE);
+
+	udelay(20);
+
+	return 0;
+}
+
 static int meson_drv_bind_master(struct device *dev, bool has_components)
 {
 	struct platform_device *pdev = to_platform_device(dev);
@@ -195,6 +292,45 @@ static int meson_drv_bind_master(struct device *dev, bool has_components)
 	drm->dev_private = priv;
 	priv->drm = drm;
 	priv->dev = dev;
+
+	priv->resets = devm_reset_control_array_get(&pdev->dev, false, false);
+	if (IS_ERR(priv->resets)) {
+		dev_err(&pdev->dev, "Failed to get the reset lines\n");
+		return PTR_ERR(priv->resets);
+	}
+
+	priv->vpu_clk = devm_clk_get(&pdev->dev, "vpu");
+	if (IS_ERR(priv->vpu_clk)) {
+		dev_err(&pdev->dev, "vpu clock request failed\n");
+		return PTR_ERR(priv->vpu_clk);
+	}
+
+	priv->vapb_clk = devm_clk_get(&pdev->dev, "vapb");
+	if (IS_ERR(priv->vapb_clk)) {
+		dev_err(&pdev->dev, "vapb clock request failed\n");
+		return PTR_ERR(priv->vapb_clk);
+	}
+
+	ret = meson_vpu_genpd_dev_init(&pdev->dev, priv);
+	if (ret)
+		return ret;
+
+	// TODO: error check
+	meson_vpu_genpd_add_links(&pdev->dev, priv);
+
+	// TODO: error check
+	reset_control_assert(priv->resets);
+
+	// TODO: error check
+	device_link_add(dev, priv->vpu_hdmi_iso_genpd_dev,
+			DL_FLAG_STATELESS | DL_FLAG_PM_RUNTIME | DL_FLAG_RPM_ACTIVE);
+
+	// TODO: error check
+	reset_control_deassert(priv->resets);
+
+	// TODO:
+	clk_prepare_enable(priv->vpu_clk);
+	clk_prepare_enable(priv->vapb_clk);
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "vpu");
 	regs = devm_ioremap_resource(dev, res);
@@ -350,6 +486,12 @@ static void meson_drv_unbind(struct device *dev)
 	drm_mode_config_cleanup(drm);
 	drm_dev_put(drm);
 
+	// TODO: disable PDs, HDMI_ISO first
+
+	reset_control_assert(priv->resets);
+
+	clk_disable_unprepare(priv->vpu_clk);
+	clk_disable_unprepare(priv->vapb_clk);
 }
 
 static const struct component_master_ops meson_drv_master_ops = {

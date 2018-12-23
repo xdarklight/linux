@@ -135,7 +135,7 @@ static int scpi_pm_domain_probe(struct platform_device *pdev)
 		pm_genpd_init(&scpi_pd->genpd, NULL, true);
 	}
 
-	scpi_pd_data->domains = domains;
+	//scpi_pd_data->domains = domains;
 	scpi_pd_data->num_domains = num_domains;
 
 	of_genpd_add_provider_onecell(np, scpi_pd_data);

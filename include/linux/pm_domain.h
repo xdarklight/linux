@@ -241,9 +241,9 @@ typedef struct generic_pm_domain *(*genpd_xlate_t)(struct of_phandle_args *args,
 						   void *data);
 
 struct genpd_onecell_data {
-	struct generic_pm_domain **domains;
 	unsigned int num_domains;
 	genpd_xlate_t xlate;
+	struct generic_pm_domain *domains[];
 };
 
 #ifdef CONFIG_PM_GENERIC_DOMAINS_OF
