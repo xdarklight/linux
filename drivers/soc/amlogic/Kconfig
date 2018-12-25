@@ -73,4 +73,15 @@ config MESON_MX_SOCINFO
 	  Meson8b and Meson8m2 SoC family information about the type
 	  and version.
 
+config MESON_VPU_PWRC
+	bool "Amlogic Meson VPU Power Domains"
+	depends on ARCH_MESON || COMPILE_TEST
+	depends on PM && OF
+	default ARCH_MESON
+	select MESON_REGMAP_PWRC
+	select MFD_SYSCON
+	help
+	  Say yes to expose the VPU Power Domains as Generic
+	  Power Domains on Amlogic Meson SoCs.
+
 endmenu
