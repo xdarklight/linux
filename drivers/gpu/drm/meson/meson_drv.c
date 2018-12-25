@@ -50,6 +50,7 @@
 #include "meson_viu.h"
 #include "meson_venc.h"
 #include "meson_canvas.h"
+#include "meson_vpu_power.h"
 #include "meson_registers.h"
 
 #define DRIVER_NAME "meson"
@@ -193,11 +194,15 @@ static int meson_drv_bind_master(struct device *dev, bool has_components)
 	priv->drm = drm;
 	priv->dev = dev;
 
+	ret = meson_vpu_power_init(priv);
+	if (ret)
+		goto free_drm;
+
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "vpu");
 	regs = devm_ioremap_resource(dev, res);
 	if (IS_ERR(regs)) {
 		ret = PTR_ERR(regs);
-		goto free_drm;
+		goto power_exit;
 	}
 
 	priv->io_base = regs;
@@ -211,13 +216,13 @@ static int meson_drv_bind_master(struct device *dev, bool has_components)
 						   "hhi");
 		if (!res) {
 			ret = -EINVAL;
-			goto free_drm;
+			goto power_exit;
 		}
 		/* Simply ioremap since it may be a shared register zone */
 		regs = devm_ioremap(dev, res->start, resource_size(res));
 		if (!regs) {
 			ret = -EADDRNOTAVAIL;
-			goto free_drm;
+			goto power_exit;
 		}
 
 		priv->hhi = devm_regmap_init_mmio(dev, regs,
@@ -226,7 +231,7 @@ static int meson_drv_bind_master(struct device *dev, bool has_components)
 			dev_err(&pdev->dev,
 				"Couldn't create the HHI regmap\n");
 			ret = PTR_ERR(priv->hhi);
-			goto free_drm;
+			goto power_exit;
 		}
 	}
 
@@ -234,24 +239,24 @@ static int meson_drv_bind_master(struct device *dev, bool has_components)
 	if (!IS_ERR(priv->canvas)) {
 		ret = meson_canvas_alloc(priv->canvas, &priv->canvas_id_osd1);
 		if (ret)
-			goto free_drm;
+			goto power_exit;
 		ret = meson_canvas_alloc(priv->canvas, &priv->canvas_id_vd1_0);
 		if (ret) {
 			meson_canvas_free(priv->canvas, priv->canvas_id_osd1);
-			goto free_drm;
+			goto power_exit;
 		}
 		ret = meson_canvas_alloc(priv->canvas, &priv->canvas_id_vd1_1);
 		if (ret) {
 			meson_canvas_free(priv->canvas, priv->canvas_id_osd1);
 			meson_canvas_free(priv->canvas, priv->canvas_id_vd1_0);
-			goto free_drm;
+			goto power_exit;
 		}
 		ret = meson_canvas_alloc(priv->canvas, &priv->canvas_id_vd1_2);
 		if (ret) {
 			meson_canvas_free(priv->canvas, priv->canvas_id_osd1);
 			meson_canvas_free(priv->canvas, priv->canvas_id_vd1_0);
 			meson_canvas_free(priv->canvas, priv->canvas_id_vd1_1);
-			goto free_drm;
+			goto power_exit;
 		}
 	} else {
 		priv->canvas = NULL;
@@ -259,13 +264,13 @@ static int meson_drv_bind_master(struct device *dev, bool has_components)
 		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "dmc");
 		if (!res) {
 			ret = -EINVAL;
-			goto free_drm;
+			goto power_exit;
 		}
 		/* Simply ioremap since it may be a shared register zone */
 		regs = devm_ioremap(dev, res->start, resource_size(res));
 		if (!regs) {
 			ret = -EADDRNOTAVAIL;
-			goto free_drm;
+			goto power_exit;
 		}
 
 		priv->dmc = devm_regmap_init_mmio(dev, regs,
@@ -273,7 +278,7 @@ static int meson_drv_bind_master(struct device *dev, bool has_components)
 		if (IS_ERR(priv->dmc)) {
 			dev_err(&pdev->dev, "Couldn't create the DMC regmap\n");
 			ret = PTR_ERR(priv->dmc);
-			goto free_drm;
+			goto power_exit;
 		}
 	}
 
@@ -281,7 +286,7 @@ static int meson_drv_bind_master(struct device *dev, bool has_components)
 
 	ret = drm_vblank_init(drm, 1);
 	if (ret)
-		goto free_drm;
+		goto power_exit;
 
 	drm_mode_config_init(drm);
 	drm->mode_config.max_width = 3840;
@@ -300,19 +305,19 @@ static int meson_drv_bind_master(struct device *dev, bool has_components)
 
 	ret = meson_venc_cvbs_create(priv);
 	if (ret)
-		goto free_drm;
+		goto power_exit;
 
 	if (has_components) {
 		ret = component_bind_all(drm->dev, drm);
 		if (ret) {
 			dev_err(drm->dev, "Couldn't bind all components\n");
-			goto free_drm;
+			goto power_exit;
 		}
 	}
 
 	ret = meson_plane_create(priv);
 	if (ret)
-		goto free_drm;
+		goto power_exit;
 
 	ret = meson_overlay_create(priv);
 	if (ret)
@@ -320,11 +325,11 @@ static int meson_drv_bind_master(struct device *dev, bool has_components)
 
 	ret = meson_crtc_create(priv);
 	if (ret)
-		goto free_drm;
+		goto power_exit;
 
 	ret = drm_irq_install(drm, priv->vsync_irq);
 	if (ret)
-		goto free_drm;
+		goto power_exit;
 
 	drm_mode_config_reset(drm);
 
@@ -334,12 +339,14 @@ static int meson_drv_bind_master(struct device *dev, bool has_components)
 
 	ret = drm_dev_register(drm, 0);
 	if (ret)
-		goto free_drm;
+		goto power_exit;
 
 	drm_fbdev_generic_setup(drm, 32);
 
 	return 0;
 
+power_exit:
+	meson_vpu_power_exit(priv);
 free_drm:
 	drm_dev_put(drm);
 
@@ -368,6 +375,7 @@ static void meson_drv_unbind(struct device *dev)
 	drm_mode_config_cleanup(drm);
 	drm_dev_put(drm);
 
+	meson_vpu_power_exit(priv);
 }
 
 static const struct component_master_ops meson_drv_master_ops = {
