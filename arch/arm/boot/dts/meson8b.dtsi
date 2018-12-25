@@ -276,6 +276,7 @@
 	pmu: pmu@e0 {
 		compatible = "amlogic,meson8b-pmu", "syscon";
 		reg = <0xe0 0x18>;
+		#power-domain-cells = <1>;
 	};
 
 	pinctrl_aobus: pinctrl@84 {
@@ -498,6 +499,16 @@
 		compatible = "amlogic,meson8-clkc";
 		#clock-cells = <1>;
 		#reset-cells = <1>;
+	};
+
+	hhi_mem_pwrc: power-controller-memory {
+		compatible = "amlogic,meson8b-hhi-mem-pwrc";
+		#power-domain-cells = <1>;
+	};
+
+	vpu_pwrc: power-controller-vpu {
+		compatible = "amlogic,meson8b-vpu-pwrc";
+		#power-domain-cells = <1>;
 	};
 };
 
