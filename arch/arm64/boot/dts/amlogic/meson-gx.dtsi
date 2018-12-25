@@ -12,6 +12,9 @@
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/interrupt-controller/irq.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
+#include <dt-bindings/power/meson-ao-pwrc.h>
+#include <dt-bindings/power/meson-hhi-mem-pwrc.h>
+#include <dt-bindings/power/meson-vpu-pwrc.h>
 
 / {
 	interrupt-parent = <&gic>;
@@ -352,16 +355,15 @@
 				compatible = "amlogic,meson-gx-ao-sysctrl", "simple-mfd", "syscon";
 				reg =  <0x0 0x0 0x0 0x100>;
 
-				pwrc_vpu: power-controller-vpu {
-					compatible = "amlogic,meson-gx-pwrc-vpu";
-					#power-domain-cells = <0>;
-					amlogic,hhi-sysctrl = <&sysctrl>;
-				};
-
 				clkc_AO: clock-controller {
 					compatible = "amlogic,meson-gx-aoclkc";
 					#clock-cells = <1>;
 					#reset-cells = <1>;
+				};
+
+				ao_pwrc: power-controller {
+					compatible = "amlogic,meson-gx-ao-pwrc";
+					#power-domain-cells = <1>;
 				};
 			};
 
@@ -451,6 +453,16 @@
 			sysctrl: system-controller@0 {
 				compatible = "amlogic,meson-gx-hhi-sysctrl", "simple-mfd", "syscon";
 				reg = <0 0 0 0x400>;
+
+				hhi_mem_pwrc: power-controller-memory {
+					compatible = "amlogic,meson-gx-hhi-mem-pwrc";
+					#power-domain-cells = <1>;
+				};
+
+				vpu_pwrc: power-controller-vpu {
+					compatible = "amlogic,meson-gx-vpu-pwrc";
+					#power-domain-cells = <1>;
+				};
 			};
 
 			mailbox: mailbox@404 {
@@ -469,6 +481,7 @@
 			       0x0 0xc8834540 0x0 0x4>;
 			interrupts = <GIC_SPI 8 IRQ_TYPE_LEVEL_HIGH>;
 			interrupt-names = "macirq";
+			power-domains = <&hhi_mem_pwrc HHI_ETHERNET_MEMORY_PD>;
 			status = "disabled";
 		};
 
@@ -503,10 +516,80 @@
 
 		vpu: vpu@d0100000 {
 			compatible = "amlogic,meson-gx-vpu";
-			reg = <0x0 0xd0100000 0x0 0x100000>,
-			      <0x0 0xc883c000 0x0 0x1000>,
-			      <0x0 0xc8838000 0x0 0x1000>;
-			reg-names = "vpu", "hhi", "dmc";
+			reg = <0x0 0xd0100000 0x0 0x100000>;
+			reg-names = "vpu";
+			amlogic,hhi-sysctrl = <&sysctrl>;
+			amlogic,canvas = <&canvas>;
+			power-domains = <&ao_pwrc AO_VPU_HDMI_PD>,
+					<&ao_pwrc AO_VPU_HDMI_ISO_PD>,
+					<&vpu_pwrc HHI_VPU_VIU_OSD1_MEMORY_PD>,
+					<&vpu_pwrc HHI_VPU_VIU_OSD2_MEMORY_PD>,
+					<&vpu_pwrc HHI_VPU_VIU_VD1_MEMORY_PD>,
+					<&vpu_pwrc HHI_VPU_VIU_VD2_MEMORY_PD>,
+					<&vpu_pwrc HHI_VPU_VIU_CHROMA_PD>,
+					<&vpu_pwrc HHI_VPU_VIU_OUTPUT_FIFO_PD>,
+					<&vpu_pwrc HHI_VPU_VIU_SCALER_MEMORY_PD>,
+					<&vpu_pwrc HHI_VPU_VIU_OSD_SCALER_MEMORY_PD>,
+					<&vpu_pwrc HHI_VPU_VIU_VDIN0_MEMORY_PD>,
+					<&vpu_pwrc HHI_VPU_VIU_VDIN1_MEMORY_PD>,
+					<&vpu_pwrc HHI_VPU_PIC_ROT1_PD>,
+					<&vpu_pwrc HHI_VPU_PIC_ROT2_PD>,
+					<&vpu_pwrc HHI_VPU_PIC_ROT3_PD>,
+					<&vpu_pwrc HHI_VPU_DEINTERLACER_PRE_PD>,
+					<&vpu_pwrc HHI_VPU_DEINTERLACER_POST_PD>,
+					<&vpu_pwrc HHI_VPU_SHARP_PD>,
+					<&vpu_pwrc HHI_VPU_VIU2_OSD1_PD>,
+					<&vpu_pwrc HHI_VPU_VIU2_OSD2_PD>,
+					<&vpu_pwrc HHI_VPU_VIU2_VD1_PD>,
+					<&vpu_pwrc HHI_VPU_VIU2_CHROMA_PD>,
+					<&vpu_pwrc HHI_VPU_VIU2_OUTPUT_FIFO_PD>,
+					<&vpu_pwrc HHI_VPU_VIU2_SCALER_MEMORY_PD>,
+					<&vpu_pwrc HHI_VPU_VIU2_OSD_SCALER_MEMORY_PD>,
+					<&vpu_pwrc HHI_VPU_ARB_PD>,
+					<&vpu_pwrc HHI_AFBC_DEC_PD>,
+					<&vpu_pwrc HHI_VPU_VPUARB2_AM_ASYNC>,
+					<&vpu_pwrc HHI_VPU_VENCP>,
+					<&vpu_pwrc HHI_VPU_VENCL>,
+					<&vpu_pwrc HHI_VPU_VENCI>,
+					<&vpu_pwrc HHI_VPU_ISP_PD>,
+					<&vpu_pwrc HHI_VPU_LDIM_STTS_PD>,
+					<&vpu_pwrc HHI_VPU_XVYCC_LUT_PD>,
+					<&vpu_pwrc HHI_VPU_VIU1_WM_PD>;
+			power-domain-names = "vpu_hdmi",
+					     "vpu_hdmi_iso",
+					     "viu_osd1_memory",
+					     "viu_osd2_memory",
+					     "viu_vd1_memory",
+					     "viu_vd2_memory",
+					     "viu_chroma",
+					     "viu_output_fifo",
+					     "viu_scaler_memory",
+					     "viu_osd_scaler_memory",
+					     "viu_vdin0_memory",
+					     "viu_vdin1_memory",
+					     "pic_rot1",
+					     "pic_rot2",
+					     "pic_rot3",
+					     "deinterlacer_pre",
+					     "deinterlacer_post",
+					     "sharp",
+					     "viu2_osd1",
+					     "viu2_osd2",
+					     "viu2_vd1",
+					     "viu2_chroma",
+					     "viu2_output_fifo",
+					     "viu2_scaler_memory",
+					     "viu2_osd_scaler_memory",
+					     "arb",
+					     "afbc_dec",
+					     "vpuarb2_am_async",
+					     "vencp",
+					     "vencl",
+					     "venci",
+					     "isp",
+					     "ldim_stts",
+					     "xvycc_lut",
+					     "viu1_wm";
 			interrupts = <GIC_SPI 3 IRQ_TYPE_EDGE_RISING>;
 			#address-cells = <1>;
 			#size-cells = <0>;
@@ -530,6 +613,7 @@
 			compatible = "amlogic,meson-gx-dw-hdmi";
 			reg = <0x0 0xc883a000 0x0 0x1c>;
 			interrupts = <GIC_SPI 57 IRQ_TYPE_EDGE_RISING>;
+			power-domains = <&hhi_mem_pwrc HHI_HDMI_MEMORY_PD>;
 			#address-cells = <1>;
 			#size-cells = <0>;
 			status = "disabled";
