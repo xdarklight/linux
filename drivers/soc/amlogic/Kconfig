@@ -52,6 +52,17 @@ config MESON_GX_PM_DOMAINS
 	  Say yes to expose Amlogic Meson GX Power Domains as
 	  Generic Power Domains.
 
+config MESON_HHI_MEM_PWRC
+	bool "Amlogic Meson HHI Memory Power Domains"
+	depends on ARCH_MESON || COMPILE_TEST
+	depends on PM && OF
+	default ARCH_MESON
+	select MESON_REGMAP_PWRC
+	select MFD_SYSCON
+	help
+	  Say yes to expose the HHI Memory Power Domains as Generic
+	  Power Domains on Amlogic Meson SoCs.
+
 config MESON_MX_SOCINFO
 	bool "Amlogic Meson MX SoC Information driver"
 	depends on ARCH_MESON || COMPILE_TEST
