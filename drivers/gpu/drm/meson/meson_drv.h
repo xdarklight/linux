@@ -25,12 +25,28 @@
 #include <linux/soc/amlogic/meson-canvas.h>
 #include <drm/drmP.h>
 
+struct clk;
+struct device_link;
+struct reset_control;
+
+struct meson_drm_pd {
+	struct device *genpd_dev;
+	struct device_link *pd_link;
+};
+
 struct meson_drm {
 	struct device *dev;
 	void __iomem *io_base;
 	struct regmap *hhi;
 	struct regmap *dmc;
 	int vsync_irq;
+
+	struct reset_control *resets;
+	struct clk *vpu_clk;
+	struct clk *vapb_clk;
+	unsigned int num_vpu_pds;
+	struct meson_drm_pd *vpu_pds;
+	struct meson_drm_pd vpu_hdmi_iso_pd;
 
 	struct meson_canvas *canvas;
 	u8 canvas_id_osd1;
