@@ -5,6 +5,17 @@ config MESON_REGMAP_PWRC
 	select REGMAP
 	select PM_GENERIC_DOMAINS
 
+config MESON_AO_PWRC
+	bool "Amlogic Meson Always-On Power Domains"
+	depends on ARCH_MESON || COMPILE_TEST
+	depends on PM && OF
+	default ARCH_MESON
+	select MESON_REGMAP_PWRC
+	select MFD_SYSCON
+	help
+	  Say yes to expose the Always-On Power Domains as Generic
+	  Power Domains on Amlogic Meson SoCs.
+
 config MESON_CANVAS
 	tristate "Amlogic Meson Canvas driver"
 	depends on ARCH_MESON || COMPILE_TEST
