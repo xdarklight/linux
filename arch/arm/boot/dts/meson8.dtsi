@@ -45,6 +45,9 @@
 
 #include <dt-bindings/clock/meson8b-clkc.h>
 #include <dt-bindings/gpio/meson8-gpio.h>
+#include <dt-bindings/power/meson-ao-pwrc.h>
+#include <dt-bindings/power/meson-hhi-mem-pwrc.h>
+#include <dt-bindings/power/meson-vpu-pwrc.h>
 #include <dt-bindings/reset/amlogic,meson8b-clkc-reset.h>
 #include <dt-bindings/reset/amlogic,meson8b-reset.h>
 #include "meson.dtsi"
@@ -298,6 +301,86 @@
 			interrupts = <GIC_SPI 3 IRQ_TYPE_EDGE_RISING>;
 			amlogic,canvas = <&canvas>;
 			amlogic,hhi-sysctrl = <&hhi>;
+			resets = <&reset RESET_VIU>,
+				 <&reset RESET_VENC>,
+				 <&reset RESET_BT656>,
+				 <&reset RESET_DVIN>,
+				 <&reset RESET_RDMA>,
+				 <&reset RESET_VENCI>,
+				 <&reset RESET_VENCP>,
+				 <&reset RESET_VDAC_4>,
+				 <&reset RESET_VDI6>,
+				 <&reset RESET_VENCL>;
+			clocks = <&clkc CLKID_VPU>;
+			clock-names = "vpu";
+			power-domains = <&ao_pwrc AO_VPU_HDMI_PD>,
+					<&ao_pwrc AO_VPU_HDMI_ISO_PD>,
+					<&vpu_pwrc HHI_VPU_VIU_OSD1_MEMORY_PD>,
+					<&vpu_pwrc HHI_VPU_VIU_OSD2_MEMORY_PD>,
+					<&vpu_pwrc HHI_VPU_VIU_VD1_MEMORY_PD>,
+					<&vpu_pwrc HHI_VPU_VIU_VD2_MEMORY_PD>,
+					<&vpu_pwrc HHI_VPU_VIU_CHROMA_PD>,
+					<&vpu_pwrc HHI_VPU_VIU_OUTPUT_FIFO_PD>,
+					<&vpu_pwrc HHI_VPU_VIU_SCALER_MEMORY_PD>,
+					<&vpu_pwrc HHI_VPU_VIU_OSD_SCALER_MEMORY_PD>,
+					<&vpu_pwrc HHI_VPU_VIU_VDIN0_MEMORY_PD>,
+					<&vpu_pwrc HHI_VPU_VIU_VDIN1_MEMORY_PD>,
+					<&vpu_pwrc HHI_VPU_PIC_ROT1_PD>,
+					<&vpu_pwrc HHI_VPU_PIC_ROT2_PD>,
+					<&vpu_pwrc HHI_VPU_PIC_ROT3_PD>,
+					<&vpu_pwrc HHI_VPU_DEINTERLACER_PRE_PD>,
+					<&vpu_pwrc HHI_VPU_DEINTERLACER_POST_PD>,
+					<&vpu_pwrc HHI_VPU_SHARP_PD>,
+					<&vpu_pwrc HHI_VPU_VIU2_OSD1_PD>,
+					<&vpu_pwrc HHI_VPU_VIU2_OSD2_PD>,
+					<&vpu_pwrc HHI_VPU_VIU2_VD1_PD>,
+					<&vpu_pwrc HHI_VPU_VIU2_CHROMA_PD>,
+					<&vpu_pwrc HHI_VPU_VIU2_OUTPUT_FIFO_PD>,
+					<&vpu_pwrc HHI_VPU_VIU2_SCALER_MEMORY_PD>,
+					<&vpu_pwrc HHI_VPU_VIU2_OSD_SCALER_MEMORY_PD>,
+					<&vpu_pwrc HHI_VPU_ARB_PD>,
+					<&vpu_pwrc HHI_AFBC_DEC_PD>,
+					<&vpu_pwrc HHI_VPU_VPUARB2_AM_ASYNC>,
+					<&vpu_pwrc HHI_VPU_VENCP>,
+					<&vpu_pwrc HHI_VPU_VENCL>,
+					<&vpu_pwrc HHI_VPU_VENCI>,
+					<&vpu_pwrc HHI_VPU_ISP_PD>,
+					<&vpu_pwrc HHI_VPU_LDIM_STTS_PD>,
+					<&vpu_pwrc HHI_VPU_XVYCC_LUT_PD>;
+			power-domain-names = "vpu_hdmi",
+					     "vpu_hdmi_iso",
+					     "viu_osd1_memory",
+					     "viu_osd2_memory",
+					     "viu_vd1_memory",
+					     "viu_vd2_memory",
+					     "viu_chroma",
+					     "viu_output_fifo",
+					     "viu_scaler_memory",
+					     "viu_osd_scaler_memory",
+					     "viu_vdin0_memory",
+					     "viu_vdin1_memory",
+					     "pic_rot1",
+					     "pic_rot2",
+					     "pic_rot3",
+					     "deinterlacer_pre",
+					     "deinterlacer_post",
+					     "sharp",
+					     "viu2_osd1",
+					     "viu2_osd2",
+					     "viu2_vd1",
+					     "viu2_chroma",
+					     "viu2_output_fifo",
+					     "viu2_scaler_memory",
+					     "viu2_osd_scaler_memory",
+					     "arb",
+					     "afbc_dec",
+					     "vpuarb2_am_async",
+					     "vencp",
+					     "vencl",
+					     "venci",
+					     "isp",
+					     "ldim_stts",
+					     "xvycc_lut";
 			#address-cells = <1>;
 			#size-cells = <0>;
 
@@ -310,7 +393,7 @@
 }; /* end of / */
 
 &aobus {
-	pmu: pmu@e0 {
+	ao_pwrc: pmu@e0 {
 		compatible = "amlogic,meson8-pmu", "syscon";
 		reg = <0xe0 0x8>;
 		#power-domain-cells = <1>;
