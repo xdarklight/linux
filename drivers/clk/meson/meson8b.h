@@ -34,6 +34,7 @@
 #define HHI_VID_DIVIDER_CNTL		0x198 /* 0x66 offset in data sheet */
 #define HHI_SYS_CPU_CLK_CNTL0		0x19c /* 0x67 offset in data sheet */
 #define HHI_MALI_CLK_CNTL		0x1b0 /* 0x6c offset in data sheet */
+#define HHI_VPU_CLK_CNTL		0x1bc /* 0x6f offset in data sheet */
 #define HHI_HDMI_CLK_CNTL		0x1cc /* 0x73 offset in data sheet */
 #define HHI_NAND_CLK_CNTL		0x25c /* 0x97 offset in data sheet */
 #define HHI_MPLL_CNTL			0x280 /* 0xa0 offset in data sheet */
@@ -146,8 +147,14 @@
 #define CLKID_MALI_1_SEL	178
 #define CLKID_MALI_1_DIV	179
 #define CLKID_MALI_1		180
+#define CLKID_VPU_0_SEL		181
+#define CLKID_VPU_0_DIV		182
+#define CLKID_VPU_0		183
+#define CLKID_VPU_1_SEL		184
+#define CLKID_VPU_1_DIV		185
+#define CLKID_VPU_1		186
 
-#define CLK_NR_CLKS		181
+#define CLK_NR_CLKS		188
 
 /*
  * include the CLKID and RESETID that have
