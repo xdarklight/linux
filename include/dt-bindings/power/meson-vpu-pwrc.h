@@ -1,0 +1,45 @@
+/* SPDX-License-Identifier: (GPL-2.0-or-later OR MIT) */
+/*
+ * Amlogic Meson VPU Power Domains
+ *
+ * Copyright (c) 2018 Martin Blumenstingl <martin.blumenstingl@googlemail.com>
+ */
+
+#ifndef DT_BINDINGS_MESON_VPU_PWRC
+#define DT_BINDINGS_MESON_VPU_PWRC
+
+#define HHI_VPU_VIU_OSD1_MEMORY_PD		0
+#define HHI_VPU_VIU_OSD2_MEMORY_PD		1
+#define HHI_VPU_VIU_VD1_MEMORY_PD		2
+#define HHI_VPU_VIU_VD2_MEMORY_PD		3
+#define HHI_VPU_VIU_CHROMA_PD			4
+#define HHI_VPU_VIU_OUTPUT_FIFO_PD		5
+#define HHI_VPU_VIU_SCALER_MEMORY_PD		6
+#define HHI_VPU_VIU_OSD_SCALER_MEMORY_PD	7
+#define HHI_VPU_VIU_VDIN0_MEMORY_PD		8
+#define HHI_VPU_VIU_VDIN1_MEMORY_PD		9
+#define HHI_VPU_PIC_ROT1_PD			10
+#define HHI_VPU_PIC_ROT2_PD			11
+#define HHI_VPU_PIC_ROT3_PD			12
+#define HHI_VPU_DEINTERLACER_PRE_PD		13
+#define HHI_VPU_DEINTERLACER_POST_PD		14
+#define HHI_VPU_SHARP_PD			15
+#define HHI_VPU_VIU2_OSD1_PD			16
+#define HHI_VPU_VIU2_OSD2_PD			17
+#define HHI_VPU_VIU2_VD1_PD			18
+#define HHI_VPU_VIU2_CHROMA_PD			19
+#define HHI_VPU_VIU2_OUTPUT_FIFO_PD		20
+#define HHI_VPU_VIU2_SCALER_MEMORY_PD		21
+#define HHI_VPU_VIU2_OSD_SCALER_MEMORY_PD	22
+#define HHI_VPU_ARB_PD				23
+#define HHI_AFBC_DEC_PD				24
+#define HHI_VPU_VPUARB2_AM_ASYNC		25
+#define HHI_VPU_VENCP				26
+#define HHI_VPU_VENCL				27
+#define HHI_VPU_VENCI				28
+#define HHI_VPU_ISP_PD				29
+#define HHI_VPU_LDIM_STTS_PD			30
+#define HHI_VPU_XVYCC_LUT_PD			31
+#define HHI_VPU_VIU1_WM_PD			32
+
+#endif /* DT_BINDINGS_MESON_VPU_PWRC */
