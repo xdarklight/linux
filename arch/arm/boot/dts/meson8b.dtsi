@@ -393,6 +393,21 @@
 			};
 		};
 
+		sdxc_c_pins: sdxc-c {
+			mux {
+				groups = "sdxc_d0_c", "sdxc_d13_c",
+					 "sdxc_d47_c", "sdxc_clk_c";
+				function = "sdxc_c";
+				bias-pull-up;
+			};
+
+			mux-1 {
+				groups = "sdxc_cmd_c";
+				function = "sdxc_c";
+				bias-disable;
+			};
+		};
+
 		pwm_c1_pins: pwm-c1 {
 			mux {
 				groups = "pwm_c1";
@@ -544,6 +559,16 @@
 	amlogic,hhi-sysctrl = <&hhi>;
 	nvmem-cells = <&temperature_calib>;
 	nvmem-cell-names = "temperature_calib";
+};
+
+&sdhc {
+	compatible = "amlogic,meson8-sdhc", "amlogic,meson-mx-sdhc";
+	clocks = <&clkc CLKID_SDHC>,
+		 <&clkc CLKID_XTAL>,
+		 <&clkc CLKID_FCLK_DIV4>,
+		 <&clkc CLKID_FCLK_DIV3>,
+		 <&clkc CLKID_FCLK_DIV5>;
+	clock-names = "pclk", "clkin0", "clkin1", "clkin2", "clkin3";
 };
 
 &sdio {
