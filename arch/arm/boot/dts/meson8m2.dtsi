@@ -70,6 +70,10 @@
 	compatible = "amlogic,meson8m2-saradc", "amlogic,meson-saradc";
 };
 
+&sdhc {
+	compatible = "amlogic,meson8m2-sdhc", "amlogic,meson-mx-sdhc";
+};
+
 &vpu {
 	compatible = "amlogic,meson8m2-vpu";
 };
