@@ -6,6 +6,7 @@
 
 #include <dt-bindings/clock/meson8-ddr-clkc.h>
 #include <dt-bindings/clock/meson8b-clkc.h>
+#include <dt-bindings/clock/meson-mx-sdhc-clkc.h>
 #include <dt-bindings/gpio/meson8b-gpio.h>
 #include <dt-bindings/reset/amlogic,meson8b-reset.h>
 #include <dt-bindings/reset/amlogic,meson8b-clkc-reset.h>
@@ -441,6 +442,16 @@
 			};
 		};
 
+		sdxc_c_pins: sdxc-c {
+			mux {
+				groups = "sdxc_d0_c", "sdxc_d13_c",
+					 "sdxc_d47_c", "sdxc_clk_c",
+					 "sdxc_cmd_c";
+				function = "sdxc_c";
+				bias-pull-up;
+			};
+		};
+
 		pwm_c1_pins: pwm-c1 {
 			mux {
 				groups = "pwm_c1";
@@ -603,6 +614,21 @@
 	amlogic,hhi-sysctrl = <&hhi>;
 	nvmem-cells = <&temperature_calib>;
 	nvmem-cell-names = "temperature_calib";
+};
+
+&sdhc {
+	compatible = "amlogic,meson8-sdhc", "amlogic,meson-mx-sdhc";
+	clocks = <&xtal>,
+		 <&clkc CLKID_FCLK_DIV4>,
+		 <&clkc CLKID_FCLK_DIV3>,
+		 <&clkc CLKID_FCLK_DIV5>,
+		 <&clkc CLKID_SDHC>,
+		 <&sdhc SDHC_CLKID_MOD_CLK>,
+		 <&sdhc SDHC_CLKID_SD_CLK>,
+		 <&sdhc SDHC_CLKID_TX_CLK>,
+		 <&sdhc SDHC_CLKID_RX_CLK>;
+	clock-names = "clkin0", "clkin1", "clkin2", "clkin3", "pclk",
+		      "mod_clk", "sd_clk", "tx_clk", "rx_clk";
 };
 
 &sdio {
