@@ -146,6 +146,7 @@ struct meson_nand_ecc {
 
 struct meson_nfc_data {
 	const struct nand_ecc_caps *ecc_caps;
+	bool has_emmc_clk_reg;
 };
 
 struct meson_nfc_param {
@@ -230,7 +231,7 @@ static int meson_nand_calc_ecc_bytes(int step_size, int strength)
 	return ecc_bytes;
 }
 
-NAND_ECC_CAPS_SINGLE(meson_gxl_ecc_caps,
+NAND_ECC_CAPS_SINGLE(meson8_ecc_caps,
 		     meson_nand_calc_ecc_bytes, 1024, 8, 24, 30, 40, 50, 60);
 
 static const int axg_stepinfo_strengths[] = { 8 };
@@ -1138,31 +1139,38 @@ static int meson_nfc_clk_init(struct meson_nfc *nfc)
 		return PTR_ERR(nfc->core_clk);
 	}
 
-	init.name = devm_kasprintf(nfc->dev,
-				   GFP_KERNEL, "%s#div",
-				   dev_name(nfc->dev));
-	if (!init.name)
-		return -ENOMEM;
+	if (nfc->data->has_emmc_clk_reg) {
+		init.name = devm_kasprintf(nfc->dev,
+					GFP_KERNEL, "%s#div",
+					dev_name(nfc->dev));
+		if (!init.name)
+			return -ENOMEM;
 
-	init.ops = &clk_divider_ops;
-	nfc_divider_parent_data[0].fw_name = "device";
-	init.parent_data = nfc_divider_parent_data;
-	init.num_parents = 1;
-	nfc->nand_divider.reg = nfc->reg_clk;
-	nfc->nand_divider.shift = CLK_DIV_SHIFT;
-	nfc->nand_divider.width = CLK_DIV_WIDTH;
-	nfc->nand_divider.hw.init = &init;
-	nfc->nand_divider.flags = CLK_DIVIDER_ONE_BASED |
-				  CLK_DIVIDER_ROUND_CLOSEST |
-				  CLK_DIVIDER_ALLOW_ZERO;
+		init.ops = &clk_divider_ops;
+		nfc_divider_parent_data[0].fw_name = "device";
+		init.parent_data = nfc_divider_parent_data;
+		init.num_parents = 1;
+		nfc->nand_divider.reg = nfc->reg_clk;
+		nfc->nand_divider.shift = CLK_DIV_SHIFT;
+		nfc->nand_divider.width = CLK_DIV_WIDTH;
+		nfc->nand_divider.hw.init = &init;
+		nfc->nand_divider.flags = CLK_DIVIDER_ONE_BASED |
+					  CLK_DIVIDER_ROUND_CLOSEST |
+					  CLK_DIVIDER_ALLOW_ZERO;
 
-	nfc->nand_clk = devm_clk_register(nfc->dev, &nfc->nand_divider.hw);
-	if (IS_ERR(nfc->nand_clk))
-		return PTR_ERR(nfc->nand_clk);
+		nfc->nand_clk = devm_clk_register(nfc->dev, &nfc->nand_divider.hw);
+		if (IS_ERR(nfc->nand_clk))
+			return PTR_ERR(nfc->nand_clk);
 
-	/* init SD_EMMC_CLOCK to sane defaults w/min clock rate */
-	writel(CLK_ALWAYS_ON_NAND | CLK_SELECT_NAND | CLK_SELECT_FIX_PLL2,
-	       nfc->reg_clk);
+		/* init SD_EMMC_CLOCK to sane defaults w/min clock rate */
+		writel(CLK_ALWAYS_ON_NAND | CLK_SELECT_NAND | CLK_SELECT_FIX_PLL2,
+		       nfc->reg_clk);
+	} else {
+		nfc->nand_clk = devm_clk_get(nfc->dev, "nand");
+		if (IS_ERR(nfc->nand_clk))
+			return dev_err_probe(nfc->dev, PTR_ERR(nfc->nand_clk),
+					     "failed to get the NAND clock\n");
+	}
 
 	ret = clk_prepare_enable(nfc->core_clk);
 	if (ret) {
@@ -1508,16 +1516,32 @@ static irqreturn_t meson_nfc_irq(int irq, void *id)
 	return IRQ_HANDLED;
 }
 
+static const struct meson_nfc_data meson8_data = {
+	.ecc_caps = &meson8_ecc_caps,
+	.has_emmc_clk_reg = false,
+};
+
 static const struct meson_nfc_data meson_gxl_data = {
-	.ecc_caps = &meson_gxl_ecc_caps,
+	.ecc_caps = &meson8_ecc_caps,
+	.has_emmc_clk_reg = true,
 };
 
 static const struct meson_nfc_data meson_axg_data = {
 	.ecc_caps = &meson_axg_ecc_caps,
+	.has_emmc_clk_reg = true,
 };
 
 static const struct of_device_id meson_nfc_id_table[] = {
 	{
+		.compatible = "amlogic,meson8-nfc",
+		.data = &meson8_data,
+	}, {
+		.compatible = "amlogic,meson8b-nfc",
+		.data = &meson8_data,
+	}, {
+		.compatible = "amlogic,meson-gxbb-nfc",
+		.data = &meson8_data,
+	}, {
 		.compatible = "amlogic,meson-gxl-nfc",
 		.data = &meson_gxl_data,
 	}, {
@@ -1552,9 +1576,11 @@ static int meson_nfc_probe(struct platform_device *pdev)
 	if (IS_ERR(nfc->reg_base))
 		return PTR_ERR(nfc->reg_base);
 
-	nfc->reg_clk = devm_platform_ioremap_resource(pdev, 1);
-	if (IS_ERR(nfc->reg_clk))
-		return PTR_ERR(nfc->reg_clk);
+	if (nfc->data->has_emmc_clk_reg) {
+		nfc->reg_clk = devm_platform_ioremap_resource(pdev, 1);
+		if (IS_ERR(nfc->reg_clk))
+			return PTR_ERR(nfc->reg_clk);
+	}
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0)
