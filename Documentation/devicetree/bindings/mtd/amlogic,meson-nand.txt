@@ -5,6 +5,9 @@ the MTD NAND bindings.
 
 Required properties:
 - compatible : contains one of:
+  - "amlogic,meson8-nfc"
+  - "amlogic,meson8b-nfc"
+  - "amlogic,meson-gxbb-nfc"
   - "amlogic,meson-gxl-nfc"
   - "amlogic,meson-axg-nfc"
 - clocks     :
@@ -13,12 +16,13 @@ Required properties:
 
 - clock-names: Should contain the following:
 	"core" - NFC module gate clock
-	"device" - device clock from eMMC sub clock controller
-	"rx" - rx clock phase
-	"tx" - tx clock phase
+	"device" - NAND device clock
+	"rx" - rx clock phase, only used on the GXL, GXM and AXG SoCs.
+	"tx" - tx clock phase, only used on the GXL, GXM and AXG SoCs.
 
-- amlogic,mmc-syscon	: Required for NAND clocks, it's shared with SD/eMMC
-				controller port C
+- amlogic,mmc-syscon	: Only used on the GXL, GXM and AXG SoCs.
+			  Required for NAND clocks, it's shared with SD/eMMC
+			  controller port C
 
 Optional children nodes:
 Children nodes represent the available nand chips.
