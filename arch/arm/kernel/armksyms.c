@@ -84,14 +84,17 @@ EXPORT_SYMBOL(__raw_writesl);
 #endif
 
 	/* string / mem functions */
+#ifndef CONFIG_KASAN
 EXPORT_SYMBOL(strchr);
 EXPORT_SYMBOL(strrchr);
+EXPORT_SYMBOL(memchr);
+#endif
+
 EXPORT_SYMBOL(memset);
 EXPORT_SYMBOL(__memset32);
 EXPORT_SYMBOL(__memset64);
 EXPORT_SYMBOL(memcpy);
 EXPORT_SYMBOL(memmove);
-EXPORT_SYMBOL(memchr);
 
 EXPORT_SYMBOL(mmioset);
 EXPORT_SYMBOL(mmiocpy);

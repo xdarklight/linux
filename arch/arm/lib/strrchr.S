@@ -14,7 +14,7 @@
 
 		.text
 		.align	5
-ENTRY(strrchr)
+WEAK(strrchr)
 		mov	r3, #0
 1:		ldrb	r2, [r0], #1
 		teq	r2, r1
