@@ -10,7 +10,6 @@
  *
  */
 
-#include <linux/bootmem.h>
 #include <linux/kasan.h>
 #include <linux/kernel.h>
 #include <linux/memblock.h>
@@ -36,8 +35,15 @@ pmd_t tmp_pmd_table[PTRS_PER_PMD] __page_aligned_bss;
 
 static __init void *kasan_alloc_block(size_t size, int node)
 {
-	return memblock_virt_alloc_try_nid(size, size, __pa(MAX_DMA_ADDRESS),
-					BOOTMEM_ALLOC_ACCESSIBLE, node);
+	void *p = memblock_alloc_try_nid(PAGE_SIZE, PAGE_SIZE,
+					 __pa(MAX_DMA_ADDRESS),
+					 MEMBLOCK_ALLOC_KASAN, node);
+	if (!p)
+		panic("%s: Failed to allocate %lu bytes align=0x%lx nid=%d from=%ux\n",
+		      __func__, PAGE_SIZE, PAGE_SIZE, node,
+		      __pa(MAX_DMA_ADDRESS));
+
+	return p;
 }
 
 static void __init kasan_early_pmd_populate(unsigned long start,
@@ -49,7 +55,7 @@ static void __init kasan_early_pmd_populate(unsigned long start,
 
 	pmd = pmd_offset(pud, start);
 	for (addr = start; addr < end;) {
-		pmd_populate_kernel(&init_mm, pmd, kasan_zero_pte);
+		pmd_populate_kernel(&init_mm, pmd, kasan_early_shadow_pte);
 		next = pmd_addr_end(addr, end);
 		addr = next;
 		flush_pmd_entry(pmd);
@@ -84,8 +90,8 @@ void __init kasan_map_early_shadow(pgd_t *pgdp)
 
 	for (i = 0; i < PTRS_PER_PTE; i++)
 		set_pte_at(&init_mm, KASAN_SHADOW_START + i*PAGE_SIZE,
-			&kasan_zero_pte[i], pfn_pte(
-				virt_to_pfn(kasan_zero_page),
+			&kasan_early_shadow_pte[i], pfn_pte(
+				virt_to_pfn(kasan_early_shadow_page),
 				__pgprot(_L_PTE_DEFAULT | L_PTE_DIRTY
 					| L_PTE_XN)));
 
@@ -135,8 +141,6 @@ pte_t * __init kasan_pte_populate(pmd_t *pmd, unsigned long addr, int node)
 		pte_t entry;
 		void *p = kasan_alloc_block(PAGE_SIZE, node);
 
-		if (!p)
-			return NULL;
 		entry = pfn_pte(virt_to_pfn(p),
 			__pgprot(pgprot_val(PAGE_KERNEL)));
 		set_pte_at(&init_mm, addr, pte, entry);
@@ -151,8 +155,6 @@ pmd_t * __init kasan_pmd_populate(pud_t *pud, unsigned long addr, int node)
 	if (pmd_none(*pmd)) {
 		void *p = kasan_alloc_block(PAGE_SIZE, node);
 
-		if (!p)
-			return NULL;
 		pmd_populate_kernel(&init_mm, pmd, p);
 	}
 	return pmd;
@@ -165,8 +167,6 @@ pud_t * __init kasan_pud_populate(pgd_t *pgd, unsigned long addr, int node)
 	if (pud_none(*pud)) {
 		void *p = kasan_alloc_block(PAGE_SIZE, node);
 
-		if (!p)
-			return NULL;
 		pr_err("populating pud addr %lx\n", addr);
 		pud_populate(&init_mm, pud, p);
 	}
@@ -180,8 +180,6 @@ pgd_t * __init kasan_pgd_populate(unsigned long addr, int node)
 	if (pgd_none(*pgd)) {
 		void *p = kasan_alloc_block(PAGE_SIZE, node);
 
-		if (!p)
-			return NULL;
 		pgd_populate(&init_mm, pgd, p);
 	}
 	return pgd;
@@ -252,8 +250,8 @@ void __init kasan_init(void)
 
 	clear_pgds(KASAN_SHADOW_START, KASAN_SHADOW_END);
 
-	kasan_populate_zero_shadow(kasan_mem_to_shadow((void *)VMALLOC_START),
-				kasan_mem_to_shadow((void *)-1UL) + 1);
+	kasan_populate_early_shadow(kasan_mem_to_shadow((void *)VMALLOC_START),
+				    kasan_mem_to_shadow((void *)-1UL) + 1);
 
 	for_each_memblock(memory, reg) {
 		void *start = __va(reg->base);
@@ -273,7 +271,7 @@ void __init kasan_init(void)
 	 *  so we need mapping.
 	 *2.PKMAP_BASE ~ PKMAP_BASE+PMD_SIZE's shadow and MODULES_VADDR
 	 *  ~ MODULES_END's shadow is in the same PMD_SIZE, so we cant
-	 *  use kasan_populate_zero_shadow.
+	 *  use kasan_populate_early_shadow.
 	 */
 	create_mapping(
 		(unsigned long)kasan_mem_to_shadow((void *)MODULES_VADDR),
@@ -283,16 +281,16 @@ void __init kasan_init(void)
 		NUMA_NO_NODE);
 
 	/*
-	 * KAsan may reuse the contents of kasan_zero_pte directly, so we
-	 * should make sure that it maps the zero page read-only.
+	 * KAsan may reuse the contents of kasan_early_shadow_pte directly,
+	 * so we should make sure that it maps the zero page read-only.
 	 */
 	for (i = 0; i < PTRS_PER_PTE; i++)
 		set_pte_at(&init_mm, KASAN_SHADOW_START + i*PAGE_SIZE,
-			&kasan_zero_pte[i],
-			pfn_pte(virt_to_pfn(kasan_zero_page),
+			&kasan_early_shadow_pte[i],
+			pfn_pte(virt_to_pfn(kasan_early_shadow_page),
 				__pgprot(pgprot_val(PAGE_KERNEL)
 					| L_PTE_RDONLY)));
-	memset(kasan_zero_page, 0, PAGE_SIZE);
+	memset(kasan_early_shadow_page, 0, PAGE_SIZE);
 	set_ttbr0(orig_ttbr0);
 	flush_cache_all();
 	local_flush_bp_all();
