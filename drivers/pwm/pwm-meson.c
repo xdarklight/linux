@@ -310,12 +310,12 @@ static int meson_pwm_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 	if (!state->enabled) {
 		meson_pwm_disable(meson, pwm);
 	} else {
-		if (pwm->state.enabled)
-			meson_pwm_disable(meson, pwm);
-
 		err = meson_pwm_calc(meson, pwm, state);
 		if (err < 0)
 			return err;
+
+		if (pwm->state.enabled)
+			meson_pwm_disable(meson, pwm);
 
 		meson_pwm_enable(meson, pwm);
 	}
