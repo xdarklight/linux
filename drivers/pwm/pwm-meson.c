@@ -94,8 +94,6 @@ struct meson_pwm_channel {
 	unsigned int lo;
 	u8 pre_div;
 
-	struct pwm_state state;
-
 	struct clk *clk_parent;
 	struct clk_mux mux;
 	struct clk *clk;
@@ -144,8 +142,6 @@ static int meson_pwm_request(struct pwm_chip *chip, struct pwm_device *pwm)
 		return err;
 	}
 
-	chip->ops->get_state(chip, pwm, &channel->state);
-
 	return 0;
 }
 
@@ -171,8 +167,8 @@ static int meson_pwm_calc(struct meson_pwm *meson, struct pwm_device *pwm,
 	if (state->polarity == PWM_POLARITY_INVERSED)
 		duty = period - duty;
 
-	if (period == channel->state.period &&
-	    duty == channel->state.duty_cycle)
+	if (period == pwm->state.period &&
+	    duty == pwm->state.duty_cycle)
 		return 0;
 
 	fin_freq = clk_get_rate(channel->clk);
@@ -305,7 +301,6 @@ static void meson_pwm_disable(struct meson_pwm *meson, struct pwm_device *pwm)
 static int meson_pwm_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 			   struct pwm_state *state)
 {
-	struct meson_pwm_channel *channel = pwm_get_chip_data(pwm);
 	struct meson_pwm *meson = to_meson_pwm(chip);
 	int err = 0;
 
@@ -314,32 +309,23 @@ static int meson_pwm_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 
 	if (!state->enabled) {
 		meson_pwm_disable(meson, pwm);
-		channel->state.enabled = false;
 
 		return 0;
 	}
 
-	if (state->period != channel->state.period ||
-	    state->duty_cycle != channel->state.duty_cycle ||
-	    state->polarity != channel->state.polarity) {
-		if (channel->state.enabled) {
+	if (state->period != pwm->state.period ||
+	    state->duty_cycle != pwm->state.duty_cycle ||
+	    state->polarity != pwm->state.polarity) {
+		if (pwm->state.enabled)
 			meson_pwm_disable(meson, pwm);
-			channel->state.enabled = false;
-		}
 
 		err = meson_pwm_calc(meson, pwm, state);
 		if (err < 0)
 			return err;
-
-		channel->state.polarity = state->polarity;
-		channel->state.period = state->period;
-		channel->state.duty_cycle = state->duty_cycle;
 	}
 
-	if (state->enabled && !channel->state.enabled) {
+	if (state->enabled && !pwm->state.enabled)
 		meson_pwm_enable(meson, pwm);
-		channel->state.enabled = true;
-	}
 
 	return 0;
 }
