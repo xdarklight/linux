@@ -523,16 +523,18 @@ static void meson_nfc_dma_buffer_release(struct nand_chip *nand,
 static int meson_nfc_read_buf(struct nand_chip *nand, u8 *buf, int len)
 {
 	struct meson_nfc *nfc = nand_get_controller_data(nand);
-	int ret = 0;
+	int info_len, ret = 0;
 	u32 cmd;
 	u8 *info;
 
-	info = kzalloc(PER_INFO_BYTE, GFP_KERNEL);
+	info_len = nand->ecc.steps * PER_INFO_BYTE;
+
+	info = kzalloc(info_len, GFP_KERNEL);
 	if (!info)
 		return -ENOMEM;
 
-	ret = meson_nfc_dma_buffer_setup(nand, buf, len, info,
-					 PER_INFO_BYTE, DMA_FROM_DEVICE);
+	ret = meson_nfc_dma_buffer_setup(nand, buf, len, info, info_len,
+					 DMA_FROM_DEVICE);
 	if (ret)
 		goto out;
 
@@ -541,7 +543,7 @@ static int meson_nfc_read_buf(struct nand_chip *nand, u8 *buf, int len)
 
 	meson_nfc_drain_cmd(nfc);
 	meson_nfc_wait_cmd_finish(nfc, 1000);
-	meson_nfc_dma_buffer_release(nand, len, PER_INFO_BYTE, DMA_FROM_DEVICE);
+	meson_nfc_dma_buffer_release(nand, len, info_len, DMA_FROM_DEVICE);
 
 out:
 	kfree(info);
