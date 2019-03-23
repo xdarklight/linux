@@ -313,20 +313,13 @@ static int meson_pwm_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 
 	if (!state->enabled) {
 		meson_pwm_disable(meson, pwm);
-
-		return 0;
-	}
-
-	if (state->period != pwm->state.period ||
-	    state->duty_cycle != pwm->state.duty_cycle ||
-	    state->polarity != pwm->state.polarity) {
+	} else {
 		err = meson_pwm_calc(meson, pwm, state);
 		if (err < 0)
 			return err;
-	}
 
-	if (state->enabled && !pwm->state.enabled)
 		meson_pwm_enable(meson, pwm);
+	}
 
 	return 0;
 }
