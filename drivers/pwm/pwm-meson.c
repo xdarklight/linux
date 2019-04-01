@@ -227,6 +227,11 @@ static int meson_pwm_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 		return -EINVAL;
 
 	if (!state->enabled) {
+		/*
+		 * TODO: This has to consider the polarity:
+		 * disabled with polarity normal: output constant LOW
+		 * disabled with polarity inversed: output constant HIGH
+		 */
 		meson_pwm_disable(meson, pwm);
 	} else {
 		err = meson_pwm_calc(meson, pwm, state);
