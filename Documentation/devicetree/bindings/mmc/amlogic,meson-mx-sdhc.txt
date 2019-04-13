@@ -1,0 +1,34 @@
+* Amlogic Meson6, Meson8, Meson8b and Meson8m2 SDHC controller
+
+The SDHC MMC host controller on Amlogic SoCs provides an eMMC and MMC
+card interface with 1/4/8-bit bus width.
+It supports eMMC spec 4.4x/4.5x including HS200 (up to 100MHz clock).
+
+This file documents the properties in addition to those available in
+the MMC core bindings, documented by mmc.txt.
+
+Required properties:
+ - compatible : must be one of
+	- "amlogic,meson8-sdhc"
+	- "amlogic,meson8b-sdhc"
+	- "amlogic,meson8m2-sdhc"
+	preceded by the generic "amlogic,meson-mx-sdhc"
+ - reg : register base address and size
+ - interrupts : SDHC controller interrupt
+ - clocks : phandle to clock providers
+ - clock-names : "pclk", "clkin0", "clkin1", "clkin2" and "clkin3"
+		 ("pclk" is the module gate clock, and clkin are
+		  the inputs to the internal clock mux)
+
+Examples:
+	mmc@8e00 {
+		compatible = "amlogic,meson8-sdhc", "amlogic,meson-mx-sdhc";
+		reg = <0x8e00 0x42>;
+		interrupts = <GIC_SPI 78 IRQ_TYPE_EDGE_RISING>;
+		clocks = <&clkc CLKID_SDHC>,
+			<&clkc CLKID_XTAL>,
+			<&clkc CLKID_FCLK_DIV4>,
+			<&clkc CLKID_FCLK_DIV3>,
+			<&clkc CLKID_FCLK_DIV5>;
+		clock-names = "pclk", "clkin0", "clkin1", "clkin2", "clkin3";
+	};
