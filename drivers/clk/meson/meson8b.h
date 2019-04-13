@@ -177,8 +177,11 @@
 #define CLKID_CTS_AMCLK_DIV	208
 #define CLKID_CTS_MCLK_I958_SEL	210
 #define CLKID_CTS_MCLK_I958_DIV	211
+#define CLKID_AUDIO_DAC_SEL	214
+#define CLKID_AUDIO_DAC_DIV	215
+#define CLKID_AUDIO_DAC		216
 
-#define CLK_NR_CLKS		214
+#define CLK_NR_CLKS		217
 
 /*
  * include the CLKID and RESETID that have

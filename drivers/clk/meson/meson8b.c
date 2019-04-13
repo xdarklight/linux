@@ -2298,6 +2298,59 @@ static struct clk_regmap meson8b_cts_i958 = {
 	},
 };
 
+/* the clock at index 0 is described as "none" */
+static const char * const meson8b_cts_audio_dac_parent_names[] = {
+	"mpll0", "mpll1", "mpll2"
+};
+
+static u32 meson8b_audio_dac_mux_table[] = { 1, 2, 3 };
+
+static struct clk_regmap meson8b_audio_dac_sel = {
+	.data = &(struct clk_regmap_mux_data){
+		.offset = HHI_AUD_CLK_CNTL,
+		.mask = 0x3,
+		.shift = 24,
+		.table = meson8b_audio_dac_mux_table,
+		.flags = CLK_MUX_ROUND_CLOSEST,
+	},
+	.hw.init = &(struct clk_init_data){
+		.name = "audio_dac_sel",
+		.ops = &clk_regmap_mux_ops,
+		.parent_names = meson8b_cts_audio_dac_parent_names,
+		.num_parents = ARRAY_SIZE(meson8b_cts_audio_dac_parent_names),
+	},
+};
+
+static struct clk_regmap meson8b_audio_dac_div = {
+	.data = &(struct clk_regmap_div_data) {
+		.offset = HHI_AUD_CLK_CNTL,
+		.shift = 16,
+		.width = 7,
+		.flags = CLK_DIVIDER_ROUND_CLOSEST,
+	},
+	.hw.init = &(struct clk_init_data){
+		.name = "audio_dac_div",
+		.ops = &clk_regmap_divider_ops,
+		.parent_names = (const char *[]){ "audio_dac_sel" },
+		.num_parents = 1,
+		.flags = CLK_SET_RATE_PARENT,
+	},
+};
+
+static struct clk_regmap meson8b_audio_dac = {
+	.data = &(struct clk_regmap_gate_data){
+		.offset = HHI_AUD_CLK_CNTL,
+		.bit_idx = 23,
+	},
+	.hw.init = &(struct clk_init_data){
+		.name = "audio_dac",
+		.ops = &clk_regmap_gate_ops,
+		.parent_names = (const char *[]){ "audio_dac_div" },
+		.num_parents = 1,
+		.flags = CLK_SET_RATE_PARENT,
+	},
+};
+
 /* Everything Else (EE) domain gates */
 
 static MESON_GATE(meson8b_ddr, HHI_GCLK_MPEG0, 0);
@@ -2584,6 +2637,9 @@ static struct clk_hw_onecell_data meson8_hw_onecell_data = {
 		[CLKID_CTS_MCLK_I958_DIV]   = &meson8b_cts_mclk_i958_div.hw,
 		[CLKID_CTS_MCLK_I958]	    = &meson8b_cts_mclk_i958.hw,
 		[CLKID_CTS_I958]	    = &meson8b_cts_i958.hw,
+		[CLKID_AUDIO_DAC_SEL]	    = &meson8b_audio_dac_sel.hw,
+		[CLKID_AUDIO_DAC_DIV]	    = &meson8b_audio_dac_div.hw,
+		[CLKID_AUDIO_DAC]	    = &meson8b_audio_dac.hw,
 		[CLK_NR_CLKS]		    = NULL,
 	},
 	.num = CLK_NR_CLKS,
@@ -2800,6 +2856,9 @@ static struct clk_hw_onecell_data meson8b_hw_onecell_data = {
 		[CLKID_CTS_MCLK_I958_DIV]   = &meson8b_cts_mclk_i958_div.hw,
 		[CLKID_CTS_MCLK_I958]	    = &meson8b_cts_mclk_i958.hw,
 		[CLKID_CTS_I958]	    = &meson8b_cts_i958.hw,
+		[CLKID_AUDIO_DAC_SEL]	    = &meson8b_audio_dac_sel.hw,
+		[CLKID_AUDIO_DAC_DIV]	    = &meson8b_audio_dac_div.hw,
+		[CLKID_AUDIO_DAC]	    = &meson8b_audio_dac.hw,
 		[CLK_NR_CLKS]		    = NULL,
 	},
 	.num = CLK_NR_CLKS,
@@ -3018,6 +3077,9 @@ static struct clk_hw_onecell_data meson8m2_hw_onecell_data = {
 		[CLKID_CTS_MCLK_I958_DIV]   = &meson8b_cts_mclk_i958_div.hw,
 		[CLKID_CTS_MCLK_I958]	    = &meson8b_cts_mclk_i958.hw,
 		[CLKID_CTS_I958]	    = &meson8b_cts_i958.hw,
+		[CLKID_AUDIO_DAC_SEL]	    = &meson8b_audio_dac_sel.hw,
+		[CLKID_AUDIO_DAC_DIV]	    = &meson8b_audio_dac_div.hw,
+		[CLKID_AUDIO_DAC]	    = &meson8b_audio_dac.hw,
 		[CLK_NR_CLKS]		    = NULL,
 	},
 	.num = CLK_NR_CLKS,
@@ -3214,6 +3276,9 @@ static struct clk_regmap *const meson8b_clk_regmaps[] = {
 	&meson8b_cts_mclk_i958_div,
 	&meson8b_cts_mclk_i958,
 	&meson8b_cts_i958,
+	&meson8b_audio_dac_sel,
+	&meson8b_audio_dac_div,
+	&meson8b_audio_dac,
 };
 
 static const struct meson8b_clk_reset_line {
