@@ -114,8 +114,8 @@
 				regulator-always-on;
 			};
 
-			DCDC2 {
-				regulator-name = "VDDAO";
+			vddee: DCDC2 {
+				regulator-name = "VDD_EE";
 				regulator-min-microvolt = <950000>;
 				regulator-max-microvolt = <1150000>;
 				regulator-boot-on;
