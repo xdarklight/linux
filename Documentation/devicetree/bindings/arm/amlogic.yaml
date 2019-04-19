@@ -33,6 +33,7 @@ properties:
       - description: Boards with the Amlogic Meson8m2 SoC
         items:
           - enum:
+              - tronsmart,mxiii
               - tronsmart,mxiii-plus
               - wetek,core
           - const: amlogic,meson8m2
