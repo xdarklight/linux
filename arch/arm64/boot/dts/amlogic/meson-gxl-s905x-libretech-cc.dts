@@ -269,14 +269,12 @@
 	pinctrl-names = "default";
 };
 
-&usb0 {
+&usb {
 	status = "okay";
-};
 
-&usb2_phy0 {
 	/*
 	 * even though the schematics don't show it:
 	 * HDMI_5V is also used as supply for the USB VBUS.
 	 */
-	phy-supply = <&hdmi_5v>;
+	vbus-supply = <&hdmi_5v>;
 };
