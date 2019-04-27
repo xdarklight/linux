@@ -290,6 +290,12 @@ static int dwc2_lowlevel_hw_init(struct dwc2_hsotg *hsotg)
 		dev_dbg(hsotg->dev, "cannot get otg clock\n");
 	}
 
+	{
+		struct clk *ddr_clk = devm_clk_get(hsotg->dev, "ddr");
+		if (!IS_ERR(hsotg->clk))
+			clk_prepare_enable(ddr_clk);
+	}
+
 	/* Regulators */
 	for (i = 0; i < ARRAY_SIZE(hsotg->supplies); i++)
 		hsotg->supplies[i].supply = dwc2_hsotg_supply_names[i];
