@@ -313,6 +313,38 @@
 			gpio-ranges = <&pinctrl_aobus 0 0 16>;
 		};
 
+		i2s_am_clk_pins: i2s-am-clk-out {
+			mux {
+				groups = "i2s_am_clk_out_ao";
+				function = "i2s_ao";
+				bias-disable;
+			};
+		};
+
+		i2s_out_ao_clk_pins: i2s-ao-clk-out {
+			mux {
+				groups = "i2s_ao_clk_out_ao";
+				function = "i2s_ao";
+				bias-disable;
+			};
+		};
+
+		i2s_out_lr_clk_pins: i2s-lr-clk-out {
+			mux {
+				groups = "i2s_lr_clk_out_ao";
+				function = "i2s_ao";
+				bias-disable;
+			};
+		};
+
+		i2s_out_ch01_ao_pins: i2s-out-ch01 {
+			mux {
+				groups = "i2s_out_ch01_ao";
+				function = "i2s_ao";
+				bias-disable;
+			};
+		};
+
 		uart_ao_a_pins: uart_ao_a {
 			mux {
 				groups = "uart_tx_ao_a", "uart_rx_ao_a";
@@ -345,6 +377,33 @@
 			};
 		};
 	};
+};
+
+&audio {
+	clocks = <&clkc CLKID_AIU>,
+		 <&clkc CLKID_AIU_GLUE>,
+		 <&clkc CLKID_I2S_SPDIF>;
+	clock-names = "aiu_top", "aiu_glue", "audin";
+	resets = <&reset RESET_AIU>,
+		 <&reset RESET_AUDIN>;
+	reset-names = "aiu", "audin";
+};
+
+&aiu_i2s {
+	clocks = <&clkc CLKID_I2S_OUT>,
+		 <&clkc CLKID_MIXER_IFACE>,
+		 <&clkc CLKID_AOCLK_GATE>,
+		 <&clkc CLKID_CTS_AMCLK>;
+	clock-names = "fast", "iface", "bclks", "mclk";
+};
+
+&aiu_spdif {
+	clocks = <&clkc CLKID_IEC958>,
+		 <&clkc CLKID_IEC958_GATE>,
+		 <&clkc CLKID_CTS_MCLK_I958>,
+		 <&clkc CLKID_CTS_AMCLK>,
+		 <&clkc CLKID_CTS_I958>;
+	clock-names = "fast", "iface", "mclk_i958", "mclk_i2s", "mclk";
 };
 
 &cbus {
@@ -427,6 +486,14 @@
 			mux-1 {
 				groups = "sdxc_cmd_b";
 				function = "sdxc_b";
+				bias-disable;
+			};
+		};
+
+		spdif_out_pins: spdif-out {
+			mux {
+				groups = "spdif_out";
+				function = "spdif";
 				bias-disable;
 			};
 		};
