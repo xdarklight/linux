@@ -209,17 +209,6 @@ static void meson_mx_sdhc_mask_bits(struct mmc_host *mmc, u8 reg, u32 mask,
 	writel(regval, host->base + reg);
 }
 
-static struct mmc_command *meson_mx_sdhc_get_next_cmd(struct mmc_command *cmd)
-{
-	if (cmd->opcode == MMC_SET_BLOCK_COUNT && !cmd->error)
-		return cmd->mrq->cmd;
-	else if (mmc_op_multi(cmd->opcode) &&
-		 (!cmd->mrq->sbc || cmd->error || cmd->data->error))
-		return cmd->mrq->stop;
-	else
-		return NULL;
-}
-
 static bool meson_mx_sdhc_cmd_needs_manual_stop(struct mmc_command *cmd)
 {
 	if (cmd->opcode != SD_IO_RW_DIRECT && cmd->opcode != SD_IO_RW_EXTENDED)
@@ -568,10 +557,7 @@ static void meson_mx_sdhc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 
 	host->mrq = mrq;
 
-	if (mrq->sbc)
-		meson_mx_sdhc_start_cmd(mmc, mrq->sbc);
-	else
-		meson_mx_sdhc_start_cmd(mmc, mrq->cmd);
+	meson_mx_sdhc_start_cmd(mmc, mrq->cmd);
 }
 
 static int meson_mx_sdhc_card_busy(struct mmc_host *mmc)
@@ -743,7 +729,7 @@ static irqreturn_t meson_mx_sdhc_irq(int irq, void *data)
 static irqreturn_t meson_mx_sdhc_irq_thread(int irq, void *irq_data)
 {
 	struct meson_mx_sdhc_host *host = irq_data;
-	struct mmc_command *cmd, *next_cmd;
+	struct mmc_command *cmd;
 	u32 pdma;
 
 	cmd = host->cmd;
@@ -779,11 +765,7 @@ static irqreturn_t meson_mx_sdhc_irq_thread(int irq, void *irq_data)
 	if (cmd->error == -EIO || cmd->error == -ETIMEDOUT)
 		meson_mx_sdhc_hw_reset(host->mmc);
 
-	next_cmd = meson_mx_sdhc_get_next_cmd(cmd);
-	if (next_cmd)
-		meson_mx_sdhc_start_cmd(host->mmc, next_cmd);
-	else
-		meson_mx_sdhc_request_done(host);
+	meson_mx_sdhc_request_done(host);
 
 	return IRQ_HANDLED;
 }
@@ -1129,7 +1111,7 @@ static int meson_mx_sdhc_probe(struct platform_device *pdev)
 	mmc->f_max = clk_round_rate(host->sd_clk, ~0UL);
 	mmc->max_current_180 = 300;
 	mmc->max_current_330 = 300;
-	mmc->caps |= MMC_CAP_ERASE | MMC_CAP_CMD23 | MMC_CAP_HW_RESET;
+	mmc->caps |= MMC_CAP_ERASE | MMC_CAP_HW_RESET;
 	mmc->ops = &meson_mx_sdhc_ops;
 
 	ret = mmc_of_parse(mmc);
