@@ -78,6 +78,56 @@
 		clock-names = "ext_clock";
 	};
 
+	sound {
+		compatible = "amlogic,gx-sound-card";
+		model = "M8M2-M8S";
+		audio-routing = "I2S Encoder Playback", "I2S FIFO Playback",
+				"SPDIF Encoder Playback", "I2S FIFO Playback",
+				"SPDIF Encoder Playback", "SPDIF FIFO Playback";
+
+		assigned-clocks = <&clkc CLKID_MPLL0>,
+				  <&clkc CLKID_MPLL1>;
+		assigned-clock-rates = <270950400>,
+				       <294912000>;
+
+		dai-link-0 {
+			sound-dai = <&aiu AIU_CPU CPU_I2S_FIFO>;
+		};
+
+		dai-link-1 {
+			sound-dai = <&aiu AIU_CPU CPU_SPDIF_FIFO>;
+		};
+
+		dai-link-2 {
+			sound-dai = <&aiu AIU_CPU CPU_I2S_ENCODER>;
+			dai-format = "i2s";
+			mclk-fs = <256>;
+
+			codec-0 {
+				sound-dai = <&stereo_i2s_codec>;
+			};
+		};
+
+		dai-link-3 {
+			sound-dai = <&aiu AIU_CPU CPU_SPDIF_ENCODER>;
+
+			codec-0 {
+				sound-dai = <&spdif_dit>;
+			};
+		};
+	};
+
+	stereo_i2s_codec: i2s-audio-codec {
+		compatible = "everest,es7134";
+		#sound-dai-cells = <0>;
+	};
+
+	spdif_dit: spdif-audio-codec {
+		#sound-dai-cells = <0>;
+		compatible = "linux,spdif-dit";
+		sound-name-prefix = "DIT";
+	};
+
 	tv-connector {
 		compatible = "composite-video-connector";
 
@@ -133,6 +183,15 @@
 		clock-frequency = <32768>;
 		clock-output-names = "xtal_32k_out";
 	};
+};
+
+&aiu {
+	status = "okay";
+
+	pinctrl-0 = <&i2s_am_clk_pins>, <&i2s_out_ao_clk_pins>,
+		    <&i2s_out_lr_clk_pins>, <&i2s_out_ch01_ao_pins>,
+		    <&spdif_out_pins>;
+	pinctrl-names = "default";
 };
 
 &cec_AO {
