@@ -88,6 +88,8 @@
 				  <&clkc CLKID_MPLL2>;
 		assigned-clock-rates = <270950400>,
 				       <294912000>,
+		assigned-clock-rates = <294912000>,
+				       <270950400>,
 				       <393216000>;
 
 		dai-link-0 {
@@ -106,6 +108,10 @@
 			codec-0 {
 				sound-dai = <&aiu AIU_HDMI CTRL_I2S>;
 			};
+
+			codec-1 {
+				sound-dai = <&stereo_i2s_codec>;
+			};
 		};
 
 		dai-link-3 {
@@ -113,6 +119,10 @@
 
 			codec-0 {
 				sound-dai = <&hdmi_tx 1>;
+			};
+
+			codec-1 {
+				sound-dai = <&spdif_dit>;
 			};
 		};
 
@@ -123,6 +133,17 @@
 				sound-dai = <&hdmi_tx 0>;
 			};
 		};
+	};
+
+	stereo_i2s_codec: i2s-audio-codec {
+		compatible = "everest,es7134";
+		#sound-dai-cells = <0>;
+	};
+
+	spdif_dit: spdif-audio-codec {
+		#sound-dai-cells = <0>;
+		compatible = "linux,spdif-dit";
+		sound-name-prefix = "DIT";
 	};
 
 	tv-connector {
@@ -184,6 +205,14 @@
 
 &aiu {
 	status = "okay";
+<<<<<<< HEAD
+=======
+
+	pinctrl-0 = <&i2s_am_clk_pins>, <&i2s_out_ao_clk_pins>,
+		    <&i2s_out_lr_clk_pins>, <&i2s_out_ch01_ao_pins>,
+		    <&spdif_out_pins>;
+	pinctrl-names = "default";
+>>>>>>> 7e69df433bae (ARM: dts: meson8m2: m8s: enable the audio outputs - WiP)
 };
 
 &cec_AO {
