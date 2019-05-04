@@ -191,8 +191,6 @@ struct meson_mx_sdhc_host {
 	struct clk			*mod_clk;
 	bool				clocks_enabled;
 
-	bool				vqmmc_enabled;
-
 	const struct meson_mx_sdhc_data	*platform;
 };
 
@@ -461,11 +459,6 @@ static void meson_mx_sdhc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 
 	switch (ios->power_mode) {
 	case MMC_POWER_OFF:
-		if (!IS_ERR(mmc->supply.vqmmc) && host->vqmmc_enabled) {
-			regulator_disable(mmc->supply.vqmmc);
-			host->vqmmc_enabled = false;
-		}
-
 		vdd = 0;
 		/* fall through */
 
@@ -481,17 +474,6 @@ static void meson_mx_sdhc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		break;
 
 	case MMC_POWER_ON:
-		if (!IS_ERR(mmc->supply.vqmmc) && !host->vqmmc_enabled) {
-			host->error = regulator_enable(mmc->supply.vqmmc);
-			if (host->error) {
-				dev_err(mmc_dev(mmc),
-					"Failed to enable vqmmc regulator\n");
-				return;
-			}
-
-			host->vqmmc_enabled = true;
-		}
-
 		break;
 	}
 
@@ -657,7 +639,6 @@ static const struct mmc_host_ops meson_mx_sdhc_ops = {
 	.set_ios			= meson_mx_sdhc_set_ios,
 	.card_busy			= meson_mx_sdhc_card_busy,
 	.execute_tuning			= meson_mx_sdhc_execute_tuning,
-	.start_signal_voltage_switch	= mmc_regulator_set_vqmmc,
 	.get_cd				= mmc_gpio_get_cd,
 	.get_ro				= mmc_gpio_get_ro,
 };
