@@ -50,6 +50,11 @@
 		io-channels = <&saradc 8>;
 	};
 
+	i2s_codec: audio-codec {
+		compatible = "everest,es7134";
+		#sound-dai-cells = <0>;
+	};
+
 	pwmleds {
 		compatible = "pwm-leds";
 
@@ -70,6 +75,57 @@
 		clock-names = "ext_clock";
 		pinctrl-0 = <&xtal_32k_out_pins>;
 		pinctrl-names = "default";
+	};
+
+	sound {
+		compatible = "simple-audio-card";
+		simple-audio-card,name = "meson8-preview";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		assigned-clocks = <&clkc CLKID_MPLL2>,
+				  <&clkc CLKID_MPLL0>,
+				  <&clkc CLKID_MPLL1>;
+		assigned-clock-parents = <0>, <0>, <0>;
+		assigned-clock-rates = <294912000>,
+				       <270950400>,
+				       <393216000>;
+
+		simple-audio-card,dai-link@0 {
+			/* I2S stereo codec out */
+			reg = <0>;
+
+			format = "i2s";
+			mclk-fs = <256>;
+			bitclock-master =  <&aiu_i2s>;
+			frame-master = <&aiu_i2s>;
+
+			cpu {
+				sound-dai = <&aiu_i2s>;
+			};
+
+			codec {
+				sound-dai = <&i2s_codec>;
+			};
+		};
+
+		simple-audio-card,dai-link@1 {
+			/* SPDIF out */
+			reg = <1>;
+
+			cpu {
+				sound-dai = <&aiu_spdif>;
+			};
+
+			codec {
+				sound-dai = <&spdif_out>;
+			};
+		};
+	};
+
+	spdif_out: spdif-out {
+		compatible = "linux,spdif-dit";
+		#sound-dai-cells = <0>;
 	};
 
 	tv-connector {
@@ -127,6 +183,25 @@
 		clock-frequency = <32768>;
 		clock-output-names = "xtal_32k_out";
 	};
+};
+
+&aiu_i2s {
+	status = "okay";
+
+	pinctrl-0 = <&i2s_am_clk_pins>, <&i2s_out_ao_clk_pins>,
+		    <&i2s_out_lr_clk_pins>, <&i2s_out_ch01_ao_pins>;
+	pinctrl-names = "default";
+};
+
+&aiu_spdif {
+	status = "okay";
+
+	pinctrl-0 = <&spdif_out_pins>;
+	pinctrl-names = "default";
+};
+
+&audio {
+	status = "okay";
 };
 
 &cpu0 {
