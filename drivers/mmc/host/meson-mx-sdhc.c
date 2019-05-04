@@ -784,22 +784,11 @@ static struct clk *meson_mx_sdhc_register_clk(struct device *dev,
 static int meson_mx_sdhc_register_clks(struct meson_mx_sdhc_host *host)
 {
 	struct clk *mux_parents[MESON_SDHC_PARENT_CLKS];
-	struct clk_div_table *div_table;
 	struct clk *mux_clk, *div_clk;
-	int num_dividers, i;
+	int i;
 
 	for (i = 0; i < MESON_SDHC_PARENT_CLKS; i++)
 		mux_parents[i] = host->parent_clks[i].clk;
-
-	num_dividers = FIELD_GET(MESON_SDHC_CLKC_CLK_DIV, ~0);
-
-	/* only dividers >= 2 (register value >= 1) are supported */
-	div_table = devm_kcalloc(mmc_dev(host->mmc), num_dividers,
-				 sizeof(*div_table), GFP_KERNEL);
-	for (i = 0; i < num_dividers; i++) {
-		div_table[i].val = i + 1;
-		div_table[i].div = i + 2;
-	}
 
 	host->clkc_clk_src_sel.reg = host->base + MESON_SDHC_CLKC;
 	host->clkc_clk_src_sel.shift = __ffs(MESON_SDHC_CLKC_CLK_SRC_SEL);
@@ -819,7 +808,6 @@ static int meson_mx_sdhc_register_clks(struct meson_mx_sdhc_host *host)
 	host->clkc_clk_div.shift = __ffs(MESON_SDHC_CLKC_CLK_DIV);
 	host->clkc_clk_div.width = fls(MESON_SDHC_CLKC_CLK_DIV) -
 				   host->clkc_clk_div.shift;
-	host->clkc_clk_div.table = div_table;
 	div_clk = meson_mx_sdhc_register_clk(mmc_dev(host->mmc),
 					     &host->clkc_clk_div.hw,
 					     "clk_div", 1, &mux_clk,
