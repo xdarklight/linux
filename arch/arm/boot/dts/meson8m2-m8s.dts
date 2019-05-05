@@ -215,6 +215,15 @@
 	status = "okay";
 };
 
+&cec_AO {
+	// TODO: is this correct?
+	clocks = <&xtal_32k_out>;
+	clock-names = "core";
+
+	pinctrl-0 = <&hdmi_cec_ao_pins>;
+	pinctrl-names = "default";
+};
+
 &cpu0 {
 	cpu-supply = <&vcck>;
 };
