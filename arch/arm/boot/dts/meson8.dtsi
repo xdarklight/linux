@@ -338,6 +338,34 @@
 			#cooling-cells = <2>; /* min followed by max */
 		};
 
+		hdmi_tx: hdmi-tx@42000 {
+			compatible = "amlogic,meson8-hdmi-tx";
+			reg = <0x42000 0xc>;
+			interrupts = <GIC_SPI 57 IRQ_TYPE_EDGE_RISING>;
+			clocks = <&clkc CLKID_HDMI_PCLK>,
+				 <&clkc CLKID_HDMI_SYS>;
+			clock-names = "pclk", "sys";
+			phys = <&hdmi_tx_phy>;
+			phy-names = "hdmi";
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "disabled";
+
+			/* VPU VENC Input */
+			hdmi_tx_venc_port: port@0 {
+				reg = <0>;
+
+				hdmi_tx_in: endpoint {
+					remote-endpoint = <&hdmi_tx_out>;
+				};
+			};
+
+			/* TMDS Output */
+			hdmi_tx_tmds_port: port@1 {
+				reg = <1>;
+			};
+		};
+
 		vpu: vpu@100000 {
 			compatible = "amlogic,meson8-vpu";
 
@@ -421,6 +449,15 @@
 			/* CVBS VDAC output port */
 			cvbs_vdac_port: port@0 {
 				reg = <0>;
+			};
+
+			/* HDMI-TX output port */
+			hdmi_tx_port: port@1 {
+				reg = <1>;
+
+				hdmi_tx_out: endpoint {
+					remote-endpoint = <&hdmi_tx_in>;
+				};
 			};
 		};
 	};
@@ -523,6 +560,22 @@
 			gpio-controller;
 			#gpio-cells = <2>;
 			gpio-ranges = <&pinctrl_cbus 0 0 120>;
+		};
+
+		hdmi_hpd_pins: hdmi-hpd {
+			mux {
+				groups = "hdmi_hpd";
+				function = "hdmi";
+				bias-disable;
+			};
+		};
+
+		hdmi_i2c_pins: hdmi-i2c {
+			mux {
+				groups = "hdmi_sda", "hdmi_scl";
+				function = "hdmi";
+				bias-disable;
+			};
 		};
 
 		sd_a_pins: sd-a {
@@ -658,6 +711,12 @@
 		clock-names = "xtal", "ddr_pll";
 		#clock-cells = <1>;
 		#reset-cells = <1>;
+	};
+
+	hdmi_tx_phy: phy {
+		compatible = "amlogic,meson8-hdmi-tx-phy";
+		clocks = <&clkc CLKID_HDMI_PLL_HDMI_OUT>;
+		#phy-cells = <0>;
 	};
 
 	pwrc: power-controller {
