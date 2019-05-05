@@ -28,3 +28,14 @@ config DRM_MESON_DW_MIPI_DSI
 	default y if DRM_MESON
 	select DRM_DW_MIPI_DSI
 	select GENERIC_PHY_MIPI_DPHY
+
+config DRM_MESON_TRANSWITCH_HDMI
+	tristate "Amlogic Meson8/8b/8m2 TranSwitch HDMI 1.4 Controller support"
+	depends on ARM || COMPILE_TEST
+	depends on DRM_MESON
+	default y if DRM_MESON
+	select DRM_DISPLAY_HDMI_HELPER
+	select DRM_DISPLAY_HDMI_STATE_HELPER
+	select DRM_DISPLAY_HELPER
+	select REGMAP_MMIO
+	select SND_SOC_HDMI_CODEC if SND_SOC
