@@ -6,3 +6,4 @@ meson-drm-y += meson_encoder_hdmi.o
 
 obj-$(CONFIG_DRM_MESON) += meson-drm.o
 obj-$(CONFIG_DRM_MESON_DW_HDMI) += meson_dw_hdmi.o
+obj-$(CONFIG_DRM_MESON_TRANSWITCH_HDMI) += meson_transwitch_hdmi.o

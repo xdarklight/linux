@@ -18,3 +18,11 @@ config DRM_MESON_DW_HDMI
 	default y if DRM_MESON
 	select DRM_DW_HDMI
 	imply DRM_DW_HDMI_I2S_AUDIO
+
+config DRM_MESON_TRANSWITCH_HDMI
+	tristate "Amlogic Meson8/8b/8m2 TranSwitch HDMI 1.4 Controller support"
+	depends on ARM || COMPILE_TEST
+	depends on DRM_MESON
+	default y if DRM_MESON
+	select REGMAP_MMIO
+	select SND_SOC_HDMI_CODEC if SND_SOC
