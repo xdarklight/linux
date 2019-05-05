@@ -14,3 +14,10 @@ config DRM_MESON_DW_HDMI
 	depends on DRM_MESON
 	default y if DRM_MESON
 	select DRM_DW_HDMI
+
+config DRM_MESON_MX_HDMI
+	tristate "Amlogic Meson8/Meson8b HDMI Controller support"
+	depends on ARM || COMPILE_TEST
+	depends on DRM_MESON
+	default y if DRM_MESON
+	select CEC_CORE if CEC_NOTIFIER
