@@ -90,8 +90,8 @@ static const unsigned int mux_reg_shifts[] = {
 };
 
 struct meson_pwm_channel {
-	unsigned int hi;
-	unsigned int lo;
+	u16 hi;
+	u16 lo;
 	u8 pre_div;
 
 	struct pwm_state state;
