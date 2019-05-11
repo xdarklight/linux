@@ -84,17 +84,19 @@
 #define MISC_B_EN		BIT(1)
 #define MISC_A_EN		BIT(0)
 
-static const unsigned int mux_reg_shifts[] = {
-	MISC_A_CLK_SEL_SHIFT,
-	MISC_B_CLK_SEL_SHIFT
-};
-
 struct meson_pwm_channel {
 	u16 hi;
 	u16 lo;
 	u8 pre_div;
 
+
 	struct pwm_state state;
+
+	u8 mux_shift;
+	u8 pre_div_shift;
+	u32 clk_enable_mask;
+	u8 enable_mask;
+	u8 reg_offset;
 
 	struct clk *clk_parent;
 	struct clk_mux mux;
@@ -239,42 +241,22 @@ static int meson_pwm_calc(struct meson_pwm *meson, struct pwm_device *pwm,
 static void meson_pwm_enable(struct meson_pwm *meson, struct pwm_device *pwm)
 {
 	struct meson_pwm_channel *channel = pwm_get_chip_data(pwm);
-	u32 value, clk_shift, clk_enable, enable;
-	unsigned int offset;
+	u32 value;
 	unsigned long flags;
-
-	switch (pwm->hwpwm) {
-	case 0:
-		clk_shift = MISC_A_CLK_DIV_SHIFT;
-		clk_enable = MISC_A_CLK_EN;
-		enable = MISC_A_EN;
-		offset = REG_PWM_A;
-		break;
-
-	case 1:
-		clk_shift = MISC_B_CLK_DIV_SHIFT;
-		clk_enable = MISC_B_CLK_EN;
-		enable = MISC_B_EN;
-		offset = REG_PWM_B;
-		break;
-
-	default:
-		return;
-	}
 
 	spin_lock_irqsave(&meson->lock, flags);
 
 	value = readl(meson->base + REG_MISC_AB);
-	value &= ~(MISC_CLK_DIV_MASK << clk_shift);
-	value |= channel->pre_div << clk_shift;
-	value |= clk_enable;
+	value &= ~(MISC_CLK_DIV_MASK << channel->pre_div_shift);
+	value |= channel->pre_div << channel->pre_div_shift;
+	value |= channel->clk_enable_mask;
 	writel(value, meson->base + REG_MISC_AB);
 
 	value = (channel->hi << PWM_HIGH_SHIFT) | channel->lo;
-	writel(value, meson->base + offset);
+	writel(value, meson->base + channel->reg_offset);
 
 	value = readl(meson->base + REG_MISC_AB);
-	value |= enable;
+	value |= channel->enable_mask;
 	writel(value, meson->base + REG_MISC_AB);
 
 	spin_unlock_irqrestore(&meson->lock, flags);
@@ -282,26 +264,14 @@ static void meson_pwm_enable(struct meson_pwm *meson, struct pwm_device *pwm)
 
 static void meson_pwm_disable(struct meson_pwm *meson, struct pwm_device *pwm)
 {
-	u32 value, enable;
+	struct meson_pwm_channel *channel = pwm_get_chip_data(pwm);
+	u32 value;
 	unsigned long flags;
-
-	switch (pwm->hwpwm) {
-	case 0:
-		enable = MISC_A_EN;
-		break;
-
-	case 1:
-		enable = MISC_B_EN;
-		break;
-
-	default:
-		return;
-	}
 
 	spin_lock_irqsave(&meson->lock, flags);
 
 	value = readl(meson->base + REG_MISC_AB);
-	value &= ~enable;
+	value &= ~channel->enable_mask;
 	writel(value, meson->base + REG_MISC_AB);
 
 	spin_unlock_irqrestore(&meson->lock, flags);
@@ -348,26 +318,18 @@ static void meson_pwm_get_state(struct pwm_chip *chip, struct pwm_device *pwm,
 				struct pwm_state *state)
 {
 	struct meson_pwm *meson = to_meson_pwm(chip);
-	u32 value, mask;
+	struct meson_pwm_channel *channel;
+	u32 value;
 
 	if (!state)
 		return;
 
-	switch (pwm->hwpwm) {
-	case 0:
-		mask = MISC_A_EN;
-		break;
-
-	case 1:
-		mask = MISC_B_EN;
-		break;
-
-	default:
-		return;
-	}
+	/* to_meson_pwm() can only be used after .get_state() is called */
+	channel = &meson->channels[pwm->hwpwm];
 
 	value = readl(meson->base + REG_MISC_AB);
-	state->enabled = (value & mask) != 0;
+
+	state->enabled = (value & channel->enable_mask) != 0;
 }
 
 static const struct pwm_ops meson_pwm_ops = {
@@ -493,6 +455,20 @@ static int meson_pwm_init_channels(struct meson_pwm *meson)
 	for (i = 0; i < meson->chip.npwm; i++) {
 		struct meson_pwm_channel *channel = &meson->channels[i];
 
+		if (i == 0) {
+			channel->mux_shift = MISC_A_CLK_SEL_SHIFT;
+			channel->pre_div_shift = MISC_A_CLK_DIV_SHIFT;
+			channel->clk_enable_mask = MISC_A_CLK_EN;
+			channel->enable_mask = MISC_A_EN;
+			channel->reg_offset = REG_PWM_A;
+		} else {
+			channel->mux_shift = MISC_B_CLK_SEL_SHIFT;
+			channel->pre_div_shift = MISC_B_CLK_DIV_SHIFT;
+			channel->clk_enable_mask = MISC_B_CLK_EN;
+			channel->enable_mask = MISC_B_EN;
+			channel->reg_offset = REG_PWM_B;
+		}
+
 		snprintf(name, sizeof(name), "%s#mux%u", dev_name(dev), i);
 
 		init.name = name;
@@ -502,7 +478,7 @@ static int meson_pwm_init_channels(struct meson_pwm *meson)
 		init.num_parents = meson->data->num_parents;
 
 		channel->mux.reg = meson->base + REG_MISC_AB;
-		channel->mux.shift = mux_reg_shifts[i];
+		channel->mux.shift = channel->mux_shift;
 		channel->mux.mask = MISC_CLK_SEL_MASK;
 		channel->mux.flags = 0;
 		channel->mux.lock = &meson->lock;
