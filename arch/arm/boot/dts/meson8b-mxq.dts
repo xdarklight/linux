@@ -116,6 +116,22 @@
 		regulator-boot-on;
 		regulator-always-on;
 	};
+
+	vddee: regulator-vddee {
+		compatible = "pwm-regulator";
+
+		regulator-name = "VDDEE";
+		regulator-min-microvolt = <860000>;
+		regulator-max-microvolt = <1140000>;
+
+		vin-supply = <&vcc_5v>;
+
+		pwms = <&pwm_cd 1 1148 0>;
+		pwm-dutycycle-range = <100 0>;
+
+		regulator-boot-on;
+		regulator-always-on;
+	};
 };
 
 &cpu0 {
@@ -149,6 +165,10 @@
 			interrupts = <17 IRQ_TYPE_LEVEL_LOW>;
 		};
 	};
+};
+
+&mali {
+	mali-supply = <&vddee>;
 };
 
 &saradc {
