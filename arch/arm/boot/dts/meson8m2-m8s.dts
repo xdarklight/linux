@@ -19,8 +19,8 @@
 		ethernet0 = &ethmac;
 		serial0 = &uart_AO;
 		serial1 = &uart_A;
-		mmc0 = &sdhc;
-		mmc1 = &sdio_wireless_slot;
+		mmc0 = &sd_card_slot;
+		//mmc1 = &sdio_wireless_slot;
 	};
 
 	chosen {
@@ -81,7 +81,7 @@
 	sdio_pwrseq: sdio-pwrseq {
 		compatible = "mmc-pwrseq-simple";
 		reset-gpios = <&gpio_ao GPIOAO_6 GPIO_ACTIVE_HIGH>,
-			      <&gpio GPIOX_11 GPIO_ACTIVE_HIGH>;
+				<&gpio GPIOX_11 GPIO_ACTIVE_HIGH>;
 		clocks = <&xtal_32k_out>;
 		clock-names = "ext_clock";
 		pinctrl-0 = <&xtal_32k_out_pins>;
@@ -368,32 +368,17 @@
 	vref-supply = <&vcc_1v8>;
 };
 
-&sdhc {
-	status = "okay";
-
-	pinctrl-0 = <&sdxc_b_pins>;
-	pinctrl-names = "default";
-
-	bus-width = <4>;
-	no-sdio;
-	cap-sd-highspeed;
-	disable-wp;
-
-	cd-gpios = <&gpio CARD_6 GPIO_ACTIVE_LOW>;
-
-	vmmc-supply = <&vcc_3v3>;
-	vqmmc-supply = <&vcc_3v3>;
-};
-
 &sdio {
 	status = "okay";
 
-	pinctrl-0 = <&sd_a_pins>;
+	pinctrl-0 = <&sd_a_pins>, <&sd_b_pins>;
 	pinctrl-names = "default";
 
+	/* Wireless SDIO Module
 	sdio_wireless_slot: slot@0 {
 		compatible = "mmc-slot";
 		reg = <0>;
+		status = "disabled";
 
 		bus-width = <4>;
 		cap-mmc-highspeed;
@@ -402,6 +387,24 @@
 		disable-wp;
 
 		mmc-pwrseq = <&sdio_pwrseq>;
+
+		vmmc-supply = <&vcc_3v3>;
+	};
+	*/
+
+	/* SD card */
+	sd_card_slot: slot@1 {
+		compatible = "mmc-slot";
+		reg = <1>;
+		status = "okay";
+
+		bus-width = <4>;
+		no-sdio;
+		cap-mmc-highspeed;
+		cap-sd-highspeed;
+		disable-wp;
+
+		cd-gpios = <&gpio CARD_6 GPIO_ACTIVE_LOW>;
 
 		vmmc-supply = <&vcc_3v3>;
 	};
