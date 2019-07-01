@@ -814,48 +814,54 @@ static int lantiq_pcie_host_init(struct pcie_port *pp)
 {
 	struct dw_pcie *pci = to_dw_pcie_from_pp(pp);
 	struct lantiq_pcie *ltq_pcie = to_lantiq_pcie(pci);
-	int ret;
+	int ret, i;
 
 	lantiq_pcie_rcu_init(pci);
 
-	ret = lantiq_pcie_hw_init(pci);
-	if (ret)
-		return ret;
+	/*
+	 * XXX: PCIe elastic buffer bug will result in the PCIe link not being
+	 * detected. One more reset of the PCIe PHY will solve this issue.
+	 */
+	for (i = 0; i < 5; i++) {
+		ret = lantiq_pcie_hw_init(pci);
+		if (ret)
+			return ret;
 
-	lantiq_pcie_clear_status_registers(pci);
+		lantiq_pcie_clear_status_registers(pci);
 
-	regmap_write(ltq_pcie->app_regmap, PCIE_APP_RC_CCR, 0);
+		regmap_write(ltq_pcie->app_regmap, PCIE_APP_RC_CCR, 0);
 
-	lantiq_pcie_mem_io_setup(pci);
-	lantiq_pcie_rc_setup(pci);
-	lantiq_pcie_device_setup(pci);
-	lantiq_pcie_link_setup(pci);
-	lantiq_pcie_error_setup(pci);
-	lantiq_pcie_capabilities_setup(pci);
-	lantiq_pcie_port_logic_setup(pci);
-	lantiq_pcie_app_irq_enable(pci);
+		lantiq_pcie_mem_io_setup(pci);
+		lantiq_pcie_rc_setup(pci);
+		lantiq_pcie_device_setup(pci);
+		lantiq_pcie_link_setup(pci);
+		lantiq_pcie_error_setup(pci);
+		lantiq_pcie_capabilities_setup(pci);
+		lantiq_pcie_port_logic_setup(pci);
+		lantiq_pcie_app_irq_enable(pci);
 
-	regmap_write(ltq_pcie->app_regmap, PCIE_APP_AHB_CTRL,
-		     PCIE_APP_AHB_CTRL_BUS_ERROR_SUPPRESS);
+		regmap_write(ltq_pcie->app_regmap, PCIE_APP_AHB_CTRL,
+			PCIE_APP_AHB_CTRL_BUS_ERROR_SUPPRESS);
 
-	dw_pcie_setup_rc(pp);
+		dw_pcie_setup_rc(pp);
 
-	gpiod_set_value_cansleep(ltq_pcie->reset_gpio, 0);
+		gpiod_set_value_cansleep(ltq_pcie->reset_gpio, 0);
 
-	msleep(200);
+		msleep(200);
 
-	/* Start LTSSM training between RC and EP */
-	regmap_write(ltq_pcie->app_regmap, PCIE_APP_RC_CCR,
-		     PCIE_APP_RC_CCR_LTSSM_ENABLE);
+		/* Start LTSSM training between RC and EP */
+		regmap_write(ltq_pcie->app_regmap, PCIE_APP_RC_CCR,
+			PCIE_APP_RC_CCR_LTSSM_ENABLE);
 
-	ret = dw_pcie_wait_for_link(pci);
-	if (ret) {
+		ret = dw_pcie_wait_for_link(pci);
+		if (!ret)
+			return 0;
+
+		/*  */
 		lantiq_pcie_hw_exit(pci);
-
-		return ret;
 	}
 
-	return 0;
+	return ret;
 }
 
 static const struct dw_pcie_host_ops lantiq_dw_pcie_host_ops = {
