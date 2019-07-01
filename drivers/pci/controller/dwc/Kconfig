@@ -230,4 +230,18 @@ config PCIE_UNIPHIER
 	  Say Y here if you want PCIe controller support on UniPhier SoCs.
 	  This driver supports LD20 and PXs3 SoCs.
 
+config PCIE_LANTIQ
+	bool "Lantiq PCIe controller"
+	depends on (SOC_XWAY && PCI_DRIVERS_GENERIC) || COMPILE_TEST
+	depends on OF && HAS_IOMEM
+	depends on PCI_MSI_IRQ_DOMAIN
+	select PCIE_DW_HOST
+	select REGMAP_MMIO
+	help
+	  Say Y here if you want PCIe controller support on Lantiq SoCs.
+	  The PCI controller on Lantiq SoCs is based on DesignWare hardware
+	  and therefore the driver re-uses the DesignWare core functions to
+	  implement the driver.
+	  This driver currently supports the VRX200 and ARX300 SoCs.
+
 endmenu
