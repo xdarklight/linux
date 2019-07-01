@@ -1,0 +1,65 @@
+* Lantiq PCI express root complex
+
+
+Required properties:
+- compatible:	must be "lantiq,<soc-model>-pcie", "snps,dw-pcie"
+		where soc-model is xrx200
+- reg:	the DesignWare PCIe controller's dbi registers, the PCI config space
+	and the PCIe controller application registers, see designware-pcie.txt
+- reg-names:	must contain "dbi", "config" and "app", see designware-pcie.txt
+- ranges:	ranges for the PCI memory and I/O regions
+		see designware-pcie.txt
+- interrupts:	the PCIe application and MSI interrupt lines
+- interrupt-names:	must contain "app" and "msi"
+- lantiq,rcu:	a phandle to the RCU syscon
+- resets:	must contain a phandle to the PCIe reset line which is shared
+		between the PCIe core and the PCIe PHY
+- clocks:	must contain a phandle to the PCIe core and bus clocks
+- clock-names:	must contain "pcie", "pcie_bus" and "ahb"
+		see designware-pcie.txt
+- phys:		must contain a phandle to the PCIe PHY
+- phy-names:	must be "pcie"
+- #address-cells:	set to <3>, see designware-pcie.txt
+- #size-cells:	set to <2>, see designware-pcie.txt
+- device_type:	set to "pci", see designware-pcie.txt
+- #interrupt-cells:	set to <1>, see designware-pcie.txt
+- interrupt-map-mask and interrupt-map:	see designware-pcie.txt
+
+Optional properties:
+- num-lanes:	number of lanes to use, see designware-pcie.txt
+- reset-gpios:	phandle to the reset GPIO, see designware-pcie.txt
+- big-endian:		configure the PCIe AHB slave as big-endian
+- little-endian:	configure the PCIe AHB slave as little-endian
+
+
+Example:
+	pcie: pcie@d900000 {
+		compatible = "lantiq,xrx200-pcie", "snps,dw-pcie";
+
+		reg = <0xd900000 0x1000>,
+		      <0xd000000 0x800000>,
+		      <0xe100900 0x200>;
+		reg-names = "dbi", "config", "app";
+		ranges = <0x02000000 0 0         0xc000000 0 0x1000000
+			  0x01000000 0 0xd800000 0xd800000 0 0x0100000>;
+
+		interrupts = <161>, <144>;
+		interrupt-names = "app", "msi";
+		#interrupt-cells = <1>;
+
+		lantiq,rcu = <&rcu0>;
+		big-endian;
+
+		clocks = <&pmu PCIE_CTL>, <&pmu PCIE_BUS>, <&pmu AHB>;
+		clock-namems = "pcie", "pcie_bus", "ahb";
+		resets = <&reset0 22 22>;
+		phys = <&pcie_phy LANTIQ_PCIE_PHY_MODE_36MHZ>;
+		phy-names = "pcie";
+
+		num-lanes = <1>;
+		reset-gpios = <&gpio 38 GPIO_ACTIVE_LOW>;
+
+		#address-cells = <3>;
+		#size-cells = <2>;
+		device_type = "pci";
+	};
