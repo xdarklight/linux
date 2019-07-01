@@ -1,0 +1,220 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/pci/lantiq,dw-pcie.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Lantiq PCIe Controller Device Tree Bindings
+
+maintainers:
+  - Martin Blumenstingl <martin.blumenstingl@googlemail.com>
+
+properties:
+
+  compatible:
+    items:
+      - enum:
+          - lantiq,arx300-pcie
+          - lantiq,vrx200-pcie
+      - const: lantiq,dw-pcie
+      - const: snps,dw-pcie
+
+  reg:
+    items:
+      - description: The DesignWare PCIe controller's DBI register space
+      - description: The PCI configuration space
+      - description: The Lantiq PCIe Controller application register space
+
+  reg-names:
+    items:
+      - const: dbi
+      - const: config
+      - const: app
+
+  ranges: true
+
+  "#address-cells":
+    enum: [ 3 ]
+
+  "#size-cells":
+    enum: [ 2 ]
+
+  device_type:
+    items:
+      - const: pci
+
+  interrupts:
+    items:
+      - description: The PCIe Controller IR interrupt line
+
+  interrupt-names:
+    items:
+      - const: ir
+
+  lantiq,rcu:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description: phandle to the RCU syscon
+
+  lantiq,rcu-endian-offset:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    description: the offset of the endian registers for this PHY instance in the RCU syscon
+
+  lantiq,rcu-inbound-big-endian-mask:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    description: the mask to control the inbound endianness conversion
+
+  lantiq,rcu-outbound-big-endian-mask:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    description: the mask to control the output endianness conversion
+
+  big-endian:
+    description: TODO registers in big-endian mode
+    type: boolean
+
+  little-endian:
+    description: TODO registers in little-endian mode
+    type: boolean
+
+  resets:
+    maxItems: 1
+    description: phandle to the reset line which is shared between the PCIe core and PHY
+
+  clocks:
+    items:
+      - description: the PCIe controller module clock
+      - description: the PCIe bus clock
+      - description: the AHB clock
+
+  clock-names:
+    items:
+      - const: ctl
+      - const: pcie_bus
+      - const: ahb
+
+  phys:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description: phandle to the PCIe PHY
+
+  phy-names:
+    items:
+      - const: pcie
+
+  num-lanes:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    description: the number of PCIe lanes which are used by this controller
+
+  reset-gpios:
+    maxItems: 1
+    description: phandle to the reset GPIO, see designware-pcie.txt
+
+patternProperties:
+
+  ^interrupt-controller$:
+    description: The nested PCI interrupt controller for the legacy INTX and WAKE interrupts
+    type: object
+    properties:
+
+      interrupts:
+        items:
+          - description: Legacy PCI INT_A
+          - description: Legacy PCI INT_B
+          - description: Legacy PCI INT_C
+          - description: Legacy PCI INT_D
+          - description: PCI WAKE interrupt
+
+      interrupt-names:
+        items:
+          - const: int_a
+          - const: int_b
+          - const: int_c
+          - const: int_d
+          - const: wake
+
+      interrupt-controller:
+        type: boolean
+
+      "#address-cells":
+        enum: [ 0 ]
+
+      "#interrupt-cells":
+        enum: [ 1 ]
+
+required:
+  - compatible
+  - reg
+  - reg-names
+  - ranges
+  - "#address-cells"
+  - "#size-cells"
+  - device_type
+  - interrupts
+  - interrupt-names
+  - "#interrupt-cells"
+  - lantiq,rcu
+  - lantiq,rcu-endian-offset
+  - lantiq,rcu-inbound-big-endian-mask
+  - lantiq,rcu-outbound-big-endian-mask
+  - resets
+  - clocks
+  - clock-names
+  - phys
+  - phy-names
+  - interrupt-controller
+
+additionalProperties: true
+
+examples:
+  - |
+    #include <dt-bindings/gpio/gpio.h>
+
+    pcie: pcie@d900000 {
+        compatible = "lantiq,vrx200-pcie", "lantiq,dw-pcie", "snps,dw-pcie";
+
+        reg = <0xd900000 0x1000>,
+              <0xd000000 0x800000>,
+              <0xe100900 0x200>;
+        reg-names = "dbi", "config", "app";
+
+        ranges = <0x02000000 0 0         0xc000000 0 0x1000000
+                  0x01000000 0 0xd800000 0xd800000 0 0x0100000>;
+
+        #address-cells = <3>;
+        #size-cells = <2>;
+        device_type = "pci";
+
+        interrupts = <161>;
+        interrupt-names = "ir";
+        #interrupt-cells = <1>;
+        interrupt-map-mask = <0 0 0 0x7>;
+        interrupt-map = <0 0 0 1 &pcie_intc 0>, /* int_a */
+                        <0 0 0 2 &pcie_intc 1>, /* int_b */
+                        <0 0 0 3 &pcie_intc 2>, /* int_c */
+                        <0 0 0 4 &pcie_intc 3>; /* int_d */
+
+        lantiq,rcu = <&rcu0>;
+        lantiq,rcu-endian-offset = <0x4c>;
+        lantiq,rcu-inbound-big-endian-mask = <0x2>; /* bit 1 */
+        lantiq,rcu-outbound-big-endian-mask = <0x14>; /* bit 4 */
+        big-endian;
+
+        resets = <&reset0 22 22>;
+
+        clocks = <&pmu 33>, <&pmu 31>, <&pmu 13>;
+        clock-names = "ctl", "pcie_bus", "ahb";
+
+        phys = <&pcie_phy>;
+        phy-names = "pcie";
+
+        num-lanes = <1>;
+
+        reset-gpios = <&gpio 38 GPIO_ACTIVE_LOW>;
+
+        pcie_intc: interrupt-controller {
+            interrupt-parent = <&icu0>;
+            interrupts = <144>, <145>, <146>, <147>, <148>;
+            interrupt-names = "int_a", "int_b", "int_c", "int_d", "wake";
+            interrupt-controller;
+            #address-cells = <0>;
+            #interrupt-cells = <1>;
+        };
+    };
