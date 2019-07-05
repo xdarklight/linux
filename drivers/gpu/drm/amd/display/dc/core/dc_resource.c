@@ -173,6 +173,24 @@ struct resource_pool *dc_create_resource_pool(struct dc  *dc,
 		break;
 	}
 
+	if (res_pool != NULL) {
+		struct dc_firmware_info fw_info = { { 0 } };
+
+		if (dc->ctx->dc_bios->funcs->get_firmware_info(dc->ctx->dc_bios,
+				&fw_info) == BP_RESULT_OK) {
+			/* initialize with firmware data first, no all
+			 * ASIC have DCCG SW component
+			 */
+			res_pool->ref_clocks.xtalin_clock_inKhz =
+					fw_info.pll_info.crystal_frequency;
+			res_pool->ref_clocks.dccg_ref_clock_inKhz =
+					res_pool->ref_clocks.xtalin_clock_inKhz;
+			res_pool->ref_clocks.dchub_ref_clock_inKhz =
+					res_pool->ref_clocks.xtalin_clock_inKhz;
+			} else
+				ASSERT_CRITICAL(false);
+		}
+
 	return res_pool;
 }
 
