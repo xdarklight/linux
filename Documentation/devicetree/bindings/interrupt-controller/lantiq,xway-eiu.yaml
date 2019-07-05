@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: "http://devicetree.org/schemas/interrupt/lantiq,xway-eiu.yaml#"
+$schema: "http://devicetree.org/meta-schemas/core.yaml#"
+
+title: Lantiq XWAY External Interrupt Unit
+
+description: |
+  This interrupt controller is found in the Lantiq XWAY SoCs.
+  It is the GPIO interrupt controller, also called "EIU" (which
+  stands for External Interrupt Unit).
+
+maintainers:
+  - Martin Blumenstingl <martin.blumenstingl@googlemail.com>
+
+properties:
+
+  compatible:
+    items:
+      - enum:
+        - lantiq,ase-eiu
+        - lantiq,danube-eiu
+        - lantiq,arx100-eiu
+        - lantiq,vrx200-eiu
+        - lantiq,arx300-eiu
+      - const: lantiq,xway-eiu
+
+  reg:
+    maxItems: 1
+
+  interrupts:
+    maxItems: 8
+    description: One interrupt specifier for each interrupt line provided by this interrupt controller
+
+  interrupt-controller: true
+
+  '#interrupt-cells':
+    const: 2
+
+required:
+  - compatible
+  - reg
+  - interrupts
+  - interrupt-controller
+  - '#interrupt-cells'
+
+additionalProperties: false
+
+examples:
+  - |
+    compatible = "lantiq,vrx200-eiu", "lantiq,xway-eiu";
+        reg = <0x101000 0x10>;
+        interrupt-parent = <&icu0>;
+        interrupts = <166 135 66 40 41 42>;
+        #interrupt-cells = <2>;
+        interrupt-controller;
