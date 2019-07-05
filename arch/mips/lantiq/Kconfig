@@ -51,5 +51,6 @@ endchoice
 config PCI_LANTIQ
 	bool "PCI Support"
 	depends on SOC_XWAY && PCI
+	depends on PCI_DRIVERS_LEGACY
 
 endif
