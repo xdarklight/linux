@@ -471,6 +471,16 @@ config TI_SCI_INTA_IRQCHIP
 	  If you wish to use interrupt aggregator irq resources managed by the
 	  TI System Controller, say Y here. Otherwise, say N.
 
+config LANTIQ_EIU_IRQCHIP
+	bool "Lantiq XWAY EIU (External Interrupt Unit)"
+#	depends on SOC_XWAY || COMPILE_TEST
+	select IRQ_DOMAIN
+	select GENERIC_IRQ_CHIP
+	help
+	  Lantiq XWAY SoCs can use up to six pads as external interrupt
+	  source. If you wish to use the external interrupts say Y here.
+	  Otherwise say N.
+
 endmenu
 
 config SIFIVE_PLIC
