@@ -87,8 +87,18 @@
 		};
 
 		ebu0: ebu@e105300 {
-			compatible = "lantiq,ebu-xway";
+			compatible = "lantiq,danube-ebu";
 			reg = <0xe105300 0x100>;
+
+			interrupt-parent = <&icu0>;
+			interrupts = <30>;
+			#interrupt-cells = <2>;
+
+			big-endian;
+
+			#address-cells = <1>;
+			#size-cells = <1>;
+			ranges;
 		};
 
 		pci0: pci@e105400 {
