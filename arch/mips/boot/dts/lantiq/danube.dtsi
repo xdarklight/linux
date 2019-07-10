@@ -89,6 +89,9 @@
 		ebu0: ebu@e105300 {
 			compatible = "lantiq,ebu-xway";
 			reg = <0xe105300 0x100>;
+			interrupt-parent = <&icu0>;
+			lantiq,pci-inta = <30>;
+			#interrupt-cells = <2>;
 		};
 
 		pci0: pci@e105400 {
