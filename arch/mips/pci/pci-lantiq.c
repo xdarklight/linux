@@ -190,10 +190,6 @@ static int ltq_pci_startup(struct platform_device *pdev)
 	ltq_pci_w32(ltq_pci_r32(PCI_CR_PCI_MOD) | (1 << 24), PCI_CR_PCI_MOD);
 	wmb();
 
-	/* setup irq line */
-	ltq_ebu_w32(ltq_ebu_r32(LTQ_EBU_PCC_CON) | 0xc, LTQ_EBU_PCC_CON);
-	ltq_ebu_w32(ltq_ebu_r32(LTQ_EBU_PCC_IEN) | 0x10, LTQ_EBU_PCC_IEN);
-
 	/* toggle reset pin */
 	if (gpio_is_valid(reset_gpio)) {
 		__gpio_set_value(reset_gpio, 0);
