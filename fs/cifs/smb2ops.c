@@ -878,7 +878,8 @@ smb2_query_file_info(const unsigned int xid, struct cifs_tcon *tcon,
 static ssize_t
 move_smb2_ea_to_cifs(char *dst, size_t dst_size,
 		     struct smb2_file_full_ea_info *src, size_t src_size,
-		     const unsigned char *ea_name)
+		     const unsigned char *ea_name,
+		     struct cifs_sb_info *cifs_sb)
 {
 	int rc = 0;
 	unsigned int ea_name_len = ea_name ? strlen(ea_name) : 0;
@@ -891,6 +892,18 @@ move_smb2_ea_to_cifs(char *dst, size_t dst_size,
 		name_len = (size_t)src->ea_name_length;
 		value = &src->ea_data[src->ea_name_length + 1];
 		value_len = (size_t)le16_to_cpu(src->ea_value_length);
+
+		if (cifs_sb->mnt_cifs_flags | CIFS_MOUNT_ENCODED_XATTR) {
+			if (name_len & 0x01) {
+				rc = -EINVAL;
+				goto out;
+			}
+			name_len = name_len / 2;
+			if (hex2bin(name, name, name_len)) {
+				rc = -EINVAL;
+				goto out;
+			}
+		}
 
 		if (name_len == 0)
 			break;
@@ -1005,7 +1018,8 @@ smb2_query_eas(const unsigned int xid, struct cifs_tcon *tcon,
 	info = (struct smb2_file_full_ea_info *)(
 			le16_to_cpu(rsp->OutputBufferOffset) + (char *)rsp);
 	rc = move_smb2_ea_to_cifs(ea_data, buf_size, info,
-			le32_to_cpu(rsp->OutputBufferLength), ea_name);
+				  le32_to_cpu(rsp->OutputBufferLength),
+				  ea_name, cifs_sb);
 
  qeas_exit:
 	kfree(utf16_path);
@@ -1016,13 +1030,14 @@ smb2_query_eas(const unsigned int xid, struct cifs_tcon *tcon,
 
 static int
 smb2_set_ea(const unsigned int xid, struct cifs_tcon *tcon,
-	    const char *path, const char *ea_name, const void *ea_value,
+	    const char *path, const char *name, const void *ea_value,
 	    const __u16 ea_value_len, const struct nls_table *nls_codepage,
 	    struct cifs_sb_info *cifs_sb)
 {
 	struct cifs_ses *ses = tcon->ses;
 	__le16 *utf16_path = NULL;
-	int ea_name_len = strlen(ea_name);
+	char *ea_name = (char *)name;
+	int ea_name_len = strlen(name);
 	int flags = 0;
 	int len;
 	struct smb_rqst rqst[3];
@@ -1039,19 +1054,34 @@ smb2_set_ea(const unsigned int xid, struct cifs_tcon *tcon,
 	struct kvec close_iov[1];
 	int rc;
 
-	if (smb3_encryption_required(tcon))
-		flags |= CIFS_TRANSFORM_REQ;
-
-	if (ea_name_len > 255)
-		return -EINVAL;
-
-	utf16_path = cifs_convert_path_to_utf16(path, cifs_sb);
-	if (!utf16_path)
-		return -ENOMEM;
-
 	memset(rqst, 0, sizeof(rqst));
 	resp_buftype[0] = resp_buftype[1] = resp_buftype[2] = CIFS_NO_BUFFER;
 	memset(rsp_iov, 0, sizeof(rsp_iov));
+
+	if (smb3_encryption_required(tcon))
+		flags |= CIFS_TRANSFORM_REQ;
+
+	/* Do we need to encode the name in hex ? */
+	if (cifs_sb->mnt_cifs_flags | CIFS_MOUNT_ENCODED_XATTR) {
+		ea_name = kzalloc(ea_name_len * 2 + 1, GFP_KERNEL);
+		if (ea_name == NULL) {
+			rc = -ENOMEM;
+			goto sea_exit;
+		}
+		bin2hex(ea_name, name, ea_name_len);
+		ea_name_len = 2 * ea_name_len;
+	}
+
+	if (ea_name_len > 255) {
+		rc = -EINVAL;
+		goto sea_exit;
+	}
+
+	utf16_path = cifs_convert_path_to_utf16(path, cifs_sb);
+	if (!utf16_path) {
+		rc = -ENOMEM;
+		goto sea_exit;
+	}
 
 	if (ses->server->ops->query_all_EAs) {
 		if (!ea_value) {
@@ -1124,6 +1154,8 @@ smb2_set_ea(const unsigned int xid, struct cifs_tcon *tcon,
 				resp_buftype, rsp_iov);
 
  sea_exit:
+	if (cifs_sb->mnt_cifs_flags | CIFS_MOUNT_ENCODED_XATTR)
+		kfree(ea_name);
 	kfree(ea);
 	kfree(utf16_path);
 	SMB2_open_free(&rqst[0]);

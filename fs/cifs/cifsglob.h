@@ -586,6 +586,7 @@ struct smb_vol {
 	bool resilient:1; /* noresilient not required since not fored for CA */
 	bool domainauto:1;
 	bool rdma:1;
+	bool encoded_xattr:1;
 	unsigned int bsize;
 	unsigned int rsize;
 	unsigned int wsize;
@@ -620,7 +621,8 @@ struct smb_vol {
 			 CIFS_MOUNT_MULTIUSER | CIFS_MOUNT_STRICT_IO | \
 			 CIFS_MOUNT_CIFS_BACKUPUID | CIFS_MOUNT_CIFS_BACKUPGID | \
 			 CIFS_MOUNT_UID_FROM_ACL | CIFS_MOUNT_NO_HANDLE_CACHE | \
-			 CIFS_MOUNT_NO_DFS | CIFS_MOUNT_MODE_FROM_SID)
+			 CIFS_MOUNT_NO_DFS | CIFS_MOUNT_MODE_FROM_SID | \
+			 CIFS_MOUNT_ENCODED_XATTR)
 
 /**
  * Generic VFS superblock mount flags (s_flags) to consider when

@@ -97,7 +97,7 @@ enum {
 	Opt_persistent, Opt_nopersistent,
 	Opt_resilient, Opt_noresilient,
 	Opt_domainauto, Opt_rdma, Opt_modesid,
-	Opt_compress,
+	Opt_compress, Opt_encodedxattr,
 
 	/* Mount options which take numeric value */
 	Opt_backupuid, Opt_backupgid, Opt_uid,
@@ -196,6 +196,7 @@ static const match_table_t cifs_mount_option_tokens = {
 	{ Opt_noresilient, "noresilienthandles"},
 	{ Opt_domainauto, "domainauto"},
 	{ Opt_rdma, "rdma"},
+	{ Opt_encodedxattr, "encodedxattr" },
 
 	{ Opt_backupuid, "backupuid=%s" },
 	{ Opt_backupgid, "backupgid=%s" },
@@ -1921,6 +1922,9 @@ cifs_parse_mount_options(const char *mountdata, const char *devname,
 			vol->compression = UNKNOWN_TYPE;
 			cifs_dbg(VFS,
 				"SMB3 compression support is experimental\n");
+			break;
+		case Opt_encodedxattr:
+			vol->encoded_xattr = 1;
 			break;
 
 		/* Numeric Values */
@@ -4004,6 +4008,8 @@ int cifs_setup_cifs_sb(struct smb_vol *pvolume_info,
 		cifs_sb->mnt_cifs_flags |= CIFS_MOUNT_OVERR_UID;
 	if (pvolume_info->override_gid)
 		cifs_sb->mnt_cifs_flags |= CIFS_MOUNT_OVERR_GID;
+	if (pvolume_info->encoded_xattr)
+		cifs_sb->mnt_cifs_flags |= CIFS_MOUNT_ENCODED_XATTR;
 	if (pvolume_info->dynperm)
 		cifs_sb->mnt_cifs_flags |= CIFS_MOUNT_DYNPERM;
 	if (pvolume_info->fsc)

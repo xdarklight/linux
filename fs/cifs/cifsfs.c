@@ -471,6 +471,9 @@ cifs_show_options(struct seq_file *s, struct dentry *root)
 	else
 		seq_puts(s, ",noforcegid");
 
+	if (cifs_sb->mnt_cifs_flags & CIFS_MOUNT_ENCODED_XATTR)
+		seq_puts(s, ",endodedxattr");
+
 	cifs_show_address(s, tcon->ses->server);
 
 	if (!tcon->unix_ext)
