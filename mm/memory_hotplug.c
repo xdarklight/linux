@@ -409,8 +409,8 @@ static void shrink_zone_span(struct zone *zone, unsigned long start_pfn,
 		if (page_zone(pfn_to_page(pfn)) != zone)
 			continue;
 
-		 /* If the section is current section, it continues the loop */
-		if (start_pfn == pfn)
+		/* Skip range to be removed */
+		if (pfn >= start_pfn && pfn < end_pfn)
 			continue;
 
 		/* If we find valid section, we have nothing to do */
@@ -474,8 +474,8 @@ static void shrink_pgdat_span(struct pglist_data *pgdat,
 		if (pfn_to_nid(pfn) != nid)
 			continue;
 
-		 /* If the section is current section, it continues the loop */
-		if (start_pfn == pfn)
+		/* Skip range to be removed */
+		if (pfn >= start_pfn && pfn < end_pfn)
 			continue;
 
 		/* If we find valid section, we have nothing to do */
