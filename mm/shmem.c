@@ -37,6 +37,8 @@
 #include <linux/khugepaged.h>
 #include <linux/hugetlb.h>
 #include <linux/frontswap.h>
+#include <linux/fs_context.h>
+#include <linux/fs_parser.h>
 
 #include <asm/tlbflush.h> /* for arch/microblaze update_mmu_cache() */
 
@@ -84,6 +86,17 @@ static struct vfsmount *shm_mnt;
 #include <asm/pgtable.h>
 
 #include "internal.h"
+
+struct shmem_fs_context {
+	unsigned long	changes;
+	unsigned long	max_blocks;	/* How many blocks are allowed */
+	unsigned long	max_inodes;	/* How many inodes are allowed */
+	kuid_t		uid;
+	kgid_t		gid;
+	int		huge;
+	umode_t		mode;
+	struct mempolicy *mpol;		/* default memory policy for mappings */
+};
 
 #define BLOCKS_PER_PAGE  (PAGE_SIZE/512)
 #define VM_ACCT(size)    (PAGE_ALIGN(size) >> PAGE_SHIFT)
@@ -3349,16 +3362,13 @@ static const struct export_operations shmem_export_ops = {
 	.fh_to_dentry	= shmem_fh_to_dentry,
 };
 
-static int shmem_parse_options(char *options, struct shmem_sb_info *sbinfo,
-			       bool remount)
+static int shmem_parse_monolithic(struct fs_context *fc, void *data)
 {
-	char *this_char, *value, *rest;
-	struct mempolicy *mpol = NULL;
-	uid_t uid;
-	gid_t gid;
+	char *options = data, *key;
+	int ret = 0;
 
 	while (options != NULL) {
-		this_char = options;
+		key = options;
 		for (;;) {
 			/*
 			 * NUL-terminate this option: unfortunately,
@@ -3374,139 +3384,220 @@ static int shmem_parse_options(char *options, struct shmem_sb_info *sbinfo,
 				break;
 			}
 		}
-		if (!*this_char)
-			continue;
-		if ((value = strchr(this_char,'=')) != NULL) {
-			*value++ = 0;
-		} else {
-			pr_err("tmpfs: No value for mount option '%s'\n",
-			       this_char);
-			goto error;
-		}
 
-		if (!strcmp(this_char,"size")) {
-			unsigned long long size;
-			size = memparse(value,&rest);
-			if (*rest == '%') {
-				size <<= PAGE_SHIFT;
-				size *= totalram_pages();
-				do_div(size, 100);
-				rest++;
+		if (*key) {
+			size_t v_len = 0;
+			char *value = strchr(key, '=');
+
+			if (value) {
+				if (value == key)
+					continue;
+				*value++ = 0;
+				v_len = strlen(value);
 			}
-			if (*rest)
-				goto bad_val;
-			sbinfo->max_blocks =
-				DIV_ROUND_UP(size, PAGE_SIZE);
-		} else if (!strcmp(this_char,"nr_blocks")) {
-			sbinfo->max_blocks = memparse(value, &rest);
-			if (*rest)
-				goto bad_val;
-		} else if (!strcmp(this_char,"nr_inodes")) {
-			sbinfo->max_inodes = memparse(value, &rest);
-			if (*rest)
-				goto bad_val;
-		} else if (!strcmp(this_char,"mode")) {
-			if (remount)
-				continue;
-			sbinfo->mode = simple_strtoul(value, &rest, 8) & 07777;
-			if (*rest)
-				goto bad_val;
-		} else if (!strcmp(this_char,"uid")) {
-			if (remount)
-				continue;
-			uid = simple_strtoul(value, &rest, 0);
-			if (*rest)
-				goto bad_val;
-			sbinfo->uid = make_kuid(current_user_ns(), uid);
-			if (!uid_valid(sbinfo->uid))
-				goto bad_val;
-		} else if (!strcmp(this_char,"gid")) {
-			if (remount)
-				continue;
-			gid = simple_strtoul(value, &rest, 0);
-			if (*rest)
-				goto bad_val;
-			sbinfo->gid = make_kgid(current_user_ns(), gid);
-			if (!gid_valid(sbinfo->gid))
-				goto bad_val;
-#ifdef CONFIG_TRANSPARENT_HUGE_PAGECACHE
-		} else if (!strcmp(this_char, "huge")) {
-			int huge;
-			huge = shmem_parse_huge(value);
-			if (huge < 0)
-				goto bad_val;
-			if (!has_transparent_hugepage() &&
-					huge != SHMEM_HUGE_NEVER)
-				goto bad_val;
-			sbinfo->huge = huge;
-#endif
-#ifdef CONFIG_NUMA
-		} else if (!strcmp(this_char,"mpol")) {
-			mpol_put(mpol);
-			mpol = NULL;
-			if (mpol_parse_str(value, &mpol))
-				goto bad_val;
-#endif
-		} else {
-			pr_err("tmpfs: Bad mount option %s\n", this_char);
-			goto error;
+			ret = vfs_parse_fs_string(fc, key, value, v_len);
+			if (ret < 0)
+				break;
 		}
 	}
-	sbinfo->mpol = mpol;
-	return 0;
 
-bad_val:
-	pr_err("tmpfs: Bad value '%s' for mount option '%s'\n",
-	       value, this_char);
-error:
-	mpol_put(mpol);
-	return 1;
-
+	return ret;
 }
 
-static int shmem_remount_fs(struct super_block *sb, int *flags, char *data)
-{
-	struct shmem_sb_info *sbinfo = SHMEM_SB(sb);
-	struct shmem_sb_info config = *sbinfo;
-	unsigned long inodes;
-	int error = -EINVAL;
+enum shmem_param {
+	Opt_gid,
+	Opt_huge,
+	Opt_mode,
+	Opt_mpol,
+	Opt_nr_blocks,
+	Opt_nr_inodes,
+	Opt_size,
+	Opt_uid,
+};
 
-	config.mpol = NULL;
-	if (shmem_parse_options(data, &config, true))
-		return error;
+static const struct fs_parameter_spec shmem_param_specs[] = {
+	fsparam_u32   ("gid",		Opt_gid),
+	fsparam_enum  ("huge",		Opt_huge),
+	fsparam_u32oct("mode",		Opt_mode),
+	fsparam_string("mpol",		Opt_mpol),
+	fsparam_string("nr_blocks",	Opt_nr_blocks),
+	fsparam_string("nr_inodes",	Opt_nr_inodes),
+	fsparam_string("size",		Opt_size),
+	fsparam_u32   ("uid",		Opt_uid),
+	{}
+};
+
+static const struct fs_parameter_enum shmem_param_enums[] = {
+	{ Opt_huge,	"never",	SHMEM_HUGE_NEVER },
+	{ Opt_huge,	"always",	SHMEM_HUGE_ALWAYS },
+	{ Opt_huge,	"within_size",	SHMEM_HUGE_WITHIN_SIZE },
+	{ Opt_huge,	"advise",	SHMEM_HUGE_ADVISE },
+	{ Opt_huge,	"deny",		SHMEM_HUGE_DENY },
+	{ Opt_huge,	"force",	SHMEM_HUGE_FORCE },
+	{}
+};
+
+const struct fs_parameter_description shmem_fs_parameters = {
+	.name		= "shmem",
+	.specs		= shmem_param_specs,
+	.enums		= shmem_param_enums,
+};
+
+static void shmem_apply_options(struct shmem_sb_info *sbinfo,
+				struct fs_context *fc,
+				unsigned long inodes_in_use)
+{
+	struct shmem_fs_context *ctx = fc->fs_private;
+	struct mempolicy *old = NULL;
+
+	if (test_bit(Opt_nr_blocks, &ctx->changes))
+		sbinfo->max_blocks = ctx->max_blocks;
+	if (test_bit(Opt_nr_inodes, &ctx->changes)) {
+		sbinfo->max_inodes = ctx->max_inodes;
+		sbinfo->free_inodes = ctx->max_inodes - inodes_in_use;
+	}
+	if (test_bit(Opt_huge, &ctx->changes))
+		sbinfo->huge = ctx->huge;
+	if (test_bit(Opt_mpol, &ctx->changes)) {
+		old = sbinfo->mpol;
+		sbinfo->mpol = ctx->mpol;
+	}
+
+	if (fc->purpose != FS_CONTEXT_FOR_RECONFIGURE) {
+		if (test_bit(Opt_uid, &ctx->changes))
+			sbinfo->uid = ctx->uid;
+		if (test_bit(Opt_gid, &ctx->changes))
+			sbinfo->gid = ctx->gid;
+		if (test_bit(Opt_mode, &ctx->changes))
+			sbinfo->mode = ctx->mode;
+	}
+
+	mpol_put(old);
+}
+
+static int shmem_parse_param(struct fs_context *fc, struct fs_parameter *param)
+{
+	struct shmem_fs_context *ctx = fc->fs_private;
+	struct fs_parse_result result;
+	unsigned long long size;
+	char *rest;
+	int opt;
+
+	opt = fs_parse(fc, &shmem_fs_parameters, param, &result);
+	if (opt < 0)
+		return opt;
+
+	switch (opt) {
+	case Opt_size:
+		rest = param->string;
+		size = memparse(param->string, &rest);
+		if (*rest == '%') {
+			size <<= PAGE_SHIFT;
+			size *= totalram_pages();
+			do_div(size, 100);
+			rest++;
+		}
+		if (*rest)
+			return invalf(fc, "shmem: Invalid size");
+		ctx->max_blocks = DIV_ROUND_UP(size, PAGE_SIZE);
+		break;
+
+	case Opt_nr_blocks:
+		rest = param->string;
+		ctx->max_blocks = memparse(param->string, &rest);
+		if (*rest)
+			return invalf(fc, "shmem: Invalid nr_blocks");
+		break;
+	case Opt_nr_inodes:
+		rest = param->string;
+		ctx->max_inodes = memparse(param->string, &rest);
+		if (*rest)
+			return invalf(fc, "shmem: Invalid nr_inodes");
+		break;
+	case Opt_mode:
+		ctx->mode = result.uint_32 & 07777;
+		break;
+	case Opt_uid:
+		ctx->uid = make_kuid(current_user_ns(), result.uint_32);
+		if (!uid_valid(ctx->uid))
+			return invalf(fc, "shmem: Invalid uid");
+		break;
+
+	case Opt_gid:
+		ctx->gid = make_kgid(current_user_ns(), result.uint_32);
+		if (!gid_valid(ctx->gid))
+			return invalf(fc, "shmem: Invalid gid");
+		break;
+
+	case Opt_huge:
+#ifdef CONFIG_TRANSPARENT_HUGE_PAGECACHE
+		if (!has_transparent_hugepage() &&
+		    result.uint_32 != SHMEM_HUGE_NEVER)
+			return invalf(fc, "shmem: Huge pages disabled");
+
+		ctx->huge = result.uint_32;
+		break;
+#else
+		return invalf(fc, "shmem: huge= option disabled");
+#endif
+
+	case Opt_mpol: {
+#ifdef CONFIG_NUMA
+		struct mempolicy *mpol;
+		if (mpol_parse_str(param->string, &mpol))
+			return invalf(fc, "shmem: Invalid mpol=");
+		mpol_put(ctx->mpol);
+		ctx->mpol = mpol;
+#endif
+		break;
+	}
+	}
+
+	__set_bit(opt, &ctx->changes);
+	return 0;
+}
+
+/*
+ * Reconfigure a shmem filesystem.
+ *
+ * Note that we disallow change from limited->unlimited blocks/inodes while any
+ * are in use; but we must separately disallow unlimited->limited, because in
+ * that case we have no record of how much is already in use.
+ */
+static int shmem_reconfigure(struct fs_context *fc)
+{
+	struct shmem_fs_context *ctx = fc->fs_private;
+	struct super_block *sb = fc->root->d_sb;
+	struct shmem_sb_info *sbinfo = SHMEM_SB(sb);
+	unsigned long inodes_in_use;
 
 	spin_lock(&sbinfo->stat_lock);
-	inodes = sbinfo->max_inodes - sbinfo->free_inodes;
-	if (percpu_counter_compare(&sbinfo->used_blocks, config.max_blocks) > 0)
-		goto out;
-	if (config.max_inodes < inodes)
-		goto out;
-	/*
-	 * Those tests disallow limited->unlimited while any are in use;
-	 * but we must separately disallow unlimited->limited, because
-	 * in that case we have no record of how much is already in use.
-	 */
-	if (config.max_blocks && !sbinfo->max_blocks)
-		goto out;
-	if (config.max_inodes && !sbinfo->max_inodes)
-		goto out;
-
-	error = 0;
-	sbinfo->huge = config.huge;
-	sbinfo->max_blocks  = config.max_blocks;
-	sbinfo->max_inodes  = config.max_inodes;
-	sbinfo->free_inodes = config.max_inodes - inodes;
-
-	/*
-	 * Preserve previous mempolicy unless mpol remount option was specified.
-	 */
-	if (config.mpol) {
-		mpol_put(sbinfo->mpol);
-		sbinfo->mpol = config.mpol;	/* transfers initial ref */
+	if (test_bit(Opt_nr_blocks, &ctx->changes)) {
+		if (ctx->max_blocks && !sbinfo->max_blocks) {
+			spin_unlock(&sbinfo->stat_lock);
+			return invalf(fc, "shmem: Can't retroactively limit nr_blocks");
+		}
+		if (percpu_counter_compare(&sbinfo->used_blocks, ctx->max_blocks) > 0) {
+			spin_unlock(&sbinfo->stat_lock);
+			return invalf(fc, "shmem: Too few blocks for current use");
+		}
 	}
-out:
+
+	inodes_in_use = sbinfo->max_inodes - sbinfo->free_inodes;
+	if (test_bit(Opt_nr_inodes, &ctx->changes)) {
+		if (ctx->max_inodes && !sbinfo->max_inodes) {
+			spin_unlock(&sbinfo->stat_lock);
+			return invalf(fc, "shmem: Can't retroactively limit nr_inodes");
+		}
+		if (ctx->max_inodes < inodes_in_use) {
+			spin_unlock(&sbinfo->stat_lock);
+			return invalf(fc, "shmem: Too few inodes for current use");
+		}
+	}
+
+	shmem_apply_options(sbinfo, fc, inodes_in_use);
 	spin_unlock(&sbinfo->stat_lock);
-	return error;
+	return 0;
 }
 
 static int shmem_show_options(struct seq_file *seq, struct dentry *root)
@@ -3547,7 +3638,7 @@ static void shmem_put_super(struct super_block *sb)
 	sb->s_fs_info = NULL;
 }
 
-int shmem_fill_super(struct super_block *sb, void *data, int silent)
+static int shmem_fill_super(struct super_block *sb, struct fs_context *fc)
 {
 	struct inode *inode;
 	struct shmem_sb_info *sbinfo;
@@ -3573,10 +3664,7 @@ int shmem_fill_super(struct super_block *sb, void *data, int silent)
 	if (!(sb->s_flags & SB_KERNMOUNT)) {
 		sbinfo->max_blocks = shmem_default_max_blocks();
 		sbinfo->max_inodes = shmem_default_max_inodes();
-		if (shmem_parse_options(data, sbinfo, false)) {
-			err = -EINVAL;
-			goto failed;
-		}
+		shmem_apply_options(sbinfo, fc, 0);
 	} else {
 		sb->s_flags |= SB_NOUSER;
 	}
@@ -3621,6 +3709,31 @@ failed:
 	shmem_put_super(sb);
 	return err;
 }
+
+static int shmem_get_tree(struct fs_context *fc)
+{
+	return get_tree_nodev(fc, shmem_fill_super);
+}
+
+static void shmem_free_fc(struct fs_context *fc)
+{
+	struct shmem_fs_context *ctx = fc->fs_private;
+
+	if (ctx) {
+		mpol_put(ctx->mpol);
+		kfree(ctx);
+	}
+}
+
+static const struct fs_context_operations shmem_fs_context_ops = {
+	.free			= shmem_free_fc,
+	.get_tree		= shmem_get_tree,
+#ifdef CONFIG_TMPFS
+	.parse_monolithic	= shmem_parse_monolithic,
+	.parse_param		= shmem_parse_param,
+	.reconfigure		= shmem_reconfigure,
+#endif
+};
 
 static struct kmem_cache *shmem_inode_cachep;
 
@@ -3738,7 +3851,6 @@ static const struct super_operations shmem_ops = {
 	.destroy_inode	= shmem_destroy_inode,
 #ifdef CONFIG_TMPFS
 	.statfs		= shmem_statfs,
-	.remount_fs	= shmem_remount_fs,
 	.show_options	= shmem_show_options,
 #endif
 	.evict_inode	= shmem_evict_inode,
@@ -3759,16 +3871,26 @@ static const struct vm_operations_struct shmem_vm_ops = {
 #endif
 };
 
-static struct dentry *shmem_mount(struct file_system_type *fs_type,
-	int flags, const char *dev_name, void *data)
+int shmem_init_fs_context(struct fs_context *fc)
 {
-	return mount_nodev(fs_type, flags, data, shmem_fill_super);
+	struct shmem_fs_context *ctx;
+
+	ctx = kzalloc(sizeof(struct shmem_fs_context), GFP_KERNEL);
+	if (!ctx)
+		return -ENOMEM;
+
+	fc->fs_private = ctx;
+	fc->ops = &shmem_fs_context_ops;
+	return 0;
 }
 
 static struct file_system_type shmem_fs_type = {
 	.owner		= THIS_MODULE,
 	.name		= "tmpfs",
-	.mount		= shmem_mount,
+	.init_fs_context = shmem_init_fs_context,
+#ifdef CONFIG_TMPFS
+	.parameters	= &shmem_fs_parameters,
+#endif
 	.kill_sb	= kill_litter_super,
 	.fs_flags	= FS_USERNS_MOUNT,
 };
@@ -3776,10 +3898,6 @@ static struct file_system_type shmem_fs_type = {
 int __init shmem_init(void)
 {
 	int error;
-
-	/* If rootfs called this, don't re-init */
-	if (shmem_inode_cachep)
-		return 0;
 
 	shmem_init_inodecache();
 
@@ -3913,7 +4031,8 @@ bool shmem_huge_enabled(struct vm_area_struct *vma)
 
 static struct file_system_type shmem_fs_type = {
 	.name		= "tmpfs",
-	.mount		= ramfs_mount,
+	.init_fs_context = ramfs_init_fs_context,
+	.parameters	= &ramfs_fs_parameters,
 	.kill_sb	= kill_litter_super,
 	.fs_flags	= FS_USERNS_MOUNT,
 };

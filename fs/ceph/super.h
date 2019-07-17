@@ -72,7 +72,6 @@
 
 struct ceph_mount_options {
 	int flags;
-	int sb_flags;
 
 	int wsize;            /* max write size */
 	int rsize;            /* max read size */

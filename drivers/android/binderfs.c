@@ -18,7 +18,8 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/mount.h>
-#include <linux/parser.h>
+#include <linux/fs_context.h>
+#include <linux/fs_parser.h>
 #include <linux/radix-tree.h>
 #include <linux/sched.h>
 #include <linux/seq_file.h>
@@ -48,22 +49,18 @@ static dev_t binderfs_dev;
 static DEFINE_MUTEX(binderfs_minors_mutex);
 static DEFINE_IDA(binderfs_minors);
 
-/**
- * binderfs_mount_opts - mount options for binderfs
- * @max: maximum number of allocatable binderfs binder devices
- */
-struct binderfs_mount_opts {
-	int max;
-};
-
 enum {
 	Opt_max,
-	Opt_err
 };
 
-static const match_table_t tokens = {
-	{ Opt_max, "max=%d" },
-	{ Opt_err, NULL     }
+static const struct fs_parameter_spec binderfs_param_specs[] = {
+	fsparam_s32   ("max",	Opt_max),
+	{}
+};
+
+static const struct fs_parameter_description binderfs_fs_parameters = {
+	.name		= "binderfs",
+	.specs		= binderfs_param_specs,
 };
 
 /**
@@ -75,7 +72,7 @@ static const match_table_t tokens = {
  *                  created.
  * @root_gid:       gid that needs to be used when a new binder device is
  *                  created.
- * @mount_opts:     The mount options in use.
+ * @max:	    Maximum number of allocatable binderfs binder devices.
  * @device_count:   The current number of allocated binder devices.
  */
 struct binderfs_info {
@@ -83,7 +80,7 @@ struct binderfs_info {
 	struct dentry *control_dentry;
 	kuid_t root_uid;
 	kgid_t root_gid;
-	struct binderfs_mount_opts mount_opts;
+	int max;
 	int device_count;
 };
 
@@ -138,7 +135,7 @@ static int binderfs_binder_device_create(struct inode *ref_inode,
 
 	/* Reserve new minor number for the new device. */
 	mutex_lock(&binderfs_minors_mutex);
-	if (++info->device_count <= info->mount_opts.max)
+	if (++info->device_count <= info->max)
 		minor = ida_alloc_max(&binderfs_minors,
 				      use_reserve ? BINDERFS_MAX_MINOR :
 						    BINDERFS_MAX_MINOR_CAPPED,
@@ -285,46 +282,36 @@ static void binderfs_evict_inode(struct inode *inode)
 }
 
 /**
- * binderfs_parse_mount_opts - parse binderfs mount options
- * @data: options to set (can be NULL in which case defaults are used)
+ * binderfs_parse_param - parse a binderfs mount option
+ * @fc: The context to be configured
+ * @param: The parameter to apply
  */
-static int binderfs_parse_mount_opts(char *data,
-				     struct binderfs_mount_opts *opts)
+static int binderfs_parse_param(struct fs_context *fc, struct fs_parameter *param)
 {
-	char *p;
-	opts->max = BINDERFS_MAX_MINOR;
+	struct fs_parse_result result;
+	struct binderfs_info *info = fc->s_fs_info;
+	int opt;
 
-	while ((p = strsep(&data, ",")) != NULL) {
-		substring_t args[MAX_OPT_ARGS];
-		int token;
-		int max_devices;
+	opt = fs_parse(fc, &binderfs_fs_parameters, param, &result);
+	if (opt < 0)
+		return opt;
 
-		if (!*p)
-			continue;
-
-		token = match_token(p, tokens, args);
-		switch (token) {
-		case Opt_max:
-			if (match_int(&args[0], &max_devices) ||
-			    (max_devices < 0 ||
-			     (max_devices > BINDERFS_MAX_MINOR)))
-				return -EINVAL;
-
-			opts->max = max_devices;
-			break;
-		default:
-			pr_err("Invalid mount options\n");
-			return -EINVAL;
-		}
+	switch (opt) {
+	case Opt_max:
+		info->max = result.int_32;
+		break;
 	}
 
 	return 0;
 }
 
-static int binderfs_remount(struct super_block *sb, int *flags, char *data)
+static int binderfs_reconfigure(struct fs_context *fc)
 {
-	struct binderfs_info *info = sb->s_fs_info;
-	return binderfs_parse_mount_opts(data, &info->mount_opts);
+	struct binderfs_info *info = fc->root->d_sb->s_fs_info;
+	struct binderfs_info *cfg = fc->s_fs_info;
+
+	info->max = cfg->max;
+	return 0;
 }
 
 static int binderfs_show_mount_opts(struct seq_file *seq, struct dentry *root)
@@ -332,15 +319,14 @@ static int binderfs_show_mount_opts(struct seq_file *seq, struct dentry *root)
 	struct binderfs_info *info;
 
 	info = root->d_sb->s_fs_info;
-	if (info->mount_opts.max <= BINDERFS_MAX_MINOR)
-		seq_printf(seq, ",max=%d", info->mount_opts.max);
+	if (info->max <= BINDERFS_MAX_MINOR)
+		seq_printf(seq, ",max=%d", info->max);
 
 	return 0;
 }
 
 static const struct super_operations binderfs_super_ops = {
 	.evict_inode    = binderfs_evict_inode,
-	.remount_fs	= binderfs_remount,
 	.show_options	= binderfs_show_mount_opts,
 	.statfs         = simple_statfs,
 };
@@ -462,10 +448,8 @@ static const struct inode_operations binderfs_dir_inode_operations = {
 	.unlink = binderfs_unlink,
 };
 
-static int binderfs_fill_super(struct super_block *sb, void *data, int silent)
+static int binderfs_fill_super(struct super_block *sb, struct fs_context *fc)
 {
-	int ret;
-	struct binderfs_info *info;
 	struct inode *inode = NULL;
 
 	sb->s_blocksize = PAGE_SIZE;
@@ -488,24 +472,6 @@ static int binderfs_fill_super(struct super_block *sb, void *data, int silent)
 	sb->s_op = &binderfs_super_ops;
 	sb->s_time_gran = 1;
 
-	sb->s_fs_info = kzalloc(sizeof(struct binderfs_info), GFP_KERNEL);
-	if (!sb->s_fs_info)
-		return -ENOMEM;
-	info = sb->s_fs_info;
-
-	info->ipc_ns = get_ipc_ns(current->nsproxy->ipc_ns);
-
-	ret = binderfs_parse_mount_opts(data, &info->mount_opts);
-	if (ret)
-		return ret;
-
-	info->root_gid = make_kgid(sb->s_user_ns, 0);
-	if (!gid_valid(info->root_gid))
-		info->root_gid = GLOBAL_ROOT_GID;
-	info->root_uid = make_kuid(sb->s_user_ns, 0);
-	if (!uid_valid(info->root_uid))
-		info->root_uid = GLOBAL_ROOT_UID;
-
 	inode = new_inode(sb);
 	if (!inode)
 		return -ENOMEM;
@@ -524,11 +490,50 @@ static int binderfs_fill_super(struct super_block *sb, void *data, int silent)
 	return binderfs_binder_ctl_create(sb);
 }
 
-static struct dentry *binderfs_mount(struct file_system_type *fs_type,
-				     int flags, const char *dev_name,
-				     void *data)
+static int binderfs_get_tree(struct fs_context *fc)
 {
-	return mount_nodev(fs_type, flags, data, binderfs_fill_super);
+	return get_tree_nodev(fc, binderfs_fill_super);
+}
+
+static void binderfs_free_fc(struct fs_context *fc)
+{
+	struct binderfs_info *info = fc->s_fs_info;
+
+	if (info && info->ipc_ns)
+		put_ipc_ns(info->ipc_ns);
+	kfree(info);
+}
+
+static const struct fs_context_operations binderfs_context_ops = {
+	.free		= binderfs_free_fc,
+	.parse_param	= binderfs_parse_param,
+	.get_tree	= binderfs_get_tree,
+	.reconfigure	= binderfs_reconfigure,
+};
+
+static int binderfs_init_fs_context(struct fs_context *fc)
+{
+	struct binderfs_info *info;
+	struct ipc_namespace *ipc_ns = current->nsproxy->ipc_ns;
+
+	info = kzalloc(sizeof(struct binderfs_info), GFP_KERNEL);
+	if (!info)
+		return -ENOMEM;
+
+	if (!fc->root) {	/* not a remount */
+		info->ipc_ns = get_ipc_ns(ipc_ns);
+
+		info->root_gid = make_kgid(fc->user_ns, 0);
+		if (!gid_valid(info->root_gid))
+			info->root_gid = GLOBAL_ROOT_GID;
+		info->root_uid = make_kuid(fc->user_ns, 0);
+		if (!uid_valid(info->root_uid))
+			info->root_uid = GLOBAL_ROOT_UID;
+	}
+
+	fc->s_fs_info = info;
+	fc->ops = &binderfs_context_ops;
+	return 0;
 }
 
 static void binderfs_kill_super(struct super_block *sb)
@@ -545,7 +550,8 @@ static void binderfs_kill_super(struct super_block *sb)
 
 static struct file_system_type binder_fs_type = {
 	.name		= "binder",
-	.mount		= binderfs_mount,
+	.init_fs_context = binderfs_init_fs_context,
+	.parameters	= &binderfs_fs_parameters,
 	.kill_sb	= binderfs_kill_super,
 	.fs_flags	= FS_USERNS_MOUNT,
 };

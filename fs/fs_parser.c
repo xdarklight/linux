@@ -60,7 +60,7 @@ static const struct fs_parameter_spec *fs_lookup_key(
 
 /*
  * fs_parse - Parse a filesystem configuration parameter
- * @fc: The filesystem context to log errors through.
+ * @fc: The filesystem context to log errors through (or NULL).
  * @desc: The parameter description to use.
  * @param: The parameter.
  * @result: Where to place the result of the parse
@@ -204,9 +204,20 @@ int fs_parse(struct fs_context *fc,
 		goto okay;
 
 	case fs_param_is_fd: {
-		if (param->type != fs_value_is_file)
+		switch (param->type) {
+		case fs_value_is_string:
+			ret = kstrtouint(param->string, 0, &result->uint_32);
+			break;
+		case fs_value_is_file:
+			result->uint_32 = param->dirfd;
+			ret = 0;
+		default:
 			goto bad_value;
-		goto okay;
+		}
+
+		if (result->uint_32 > INT_MAX)
+			goto bad_value;
+		goto maybe_okay;
 	}
 
 	case fs_param_is_blockdev:
@@ -264,6 +275,7 @@ int fs_lookup_param(struct fs_context *fc,
 		return invalf(fc, "%s: not usable as path", param->key);
 	}
 
+	f->refcnt++; /* filename_lookup() drops our ref. */
 	ret = filename_lookup(param->dirfd, f, flags, _path, NULL);
 	if (ret < 0) {
 		errorf(fc, "%s: Lookup failure for '%s'", param->key, f->name);

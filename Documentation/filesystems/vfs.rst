@@ -195,8 +195,8 @@ and provides a fill_super() callback instead.  The generic variants are:
 ``mount_nodev``
 	mount a filesystem that is not backed by a device
 
-``mount_single``
-	mount a filesystem which shares the instance between all mounts
+``vfs_get_super``
+	mount a filesystem with one of a number of superblock sharing options.
 
 A fill_super() callback implementation has the following arguments:
 

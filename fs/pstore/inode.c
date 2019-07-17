@@ -7,6 +7,8 @@
 
 #include <linux/module.h>
 #include <linux/fs.h>
+#include <linux/fs_context.h>
+#include <linux/fs_parser.h>
 #include <linux/fsnotify.h>
 #include <linux/pagemap.h>
 #include <linux/highmem.h>
@@ -14,10 +16,8 @@
 #include <linux/init.h>
 #include <linux/list.h>
 #include <linux/string.h>
-#include <linux/mount.h>
 #include <linux/seq_file.h>
 #include <linux/ramfs.h>
-#include <linux/parser.h>
 #include <linux/sched.h>
 #include <linux/magic.h>
 #include <linux/pstore.h>
@@ -215,38 +215,48 @@ static struct inode *pstore_get_inode(struct super_block *sb)
 	return inode;
 }
 
+struct pstore_fs_context {
+	unsigned int	kmsg_bytes;
+};
+
 enum {
-	Opt_kmsg_bytes, Opt_err
+	Opt_kmsg_bytes,
 };
 
-static const match_table_t tokens = {
-	{Opt_kmsg_bytes, "kmsg_bytes=%u"},
-	{Opt_err, NULL}
+static const struct fs_parameter_spec pstore_param_specs[] = {
+	fsparam_u32	("kmsg_bytes",		Opt_kmsg_bytes),
+	{}
 };
 
-static void parse_options(char *options)
+static const struct fs_parameter_description pstore_fs_parameters = {
+	.name		= "pstore",
+	.specs		= pstore_param_specs,
+};
+
+static int pstore_parse_param(struct fs_context *fc, struct fs_parameter *param)
 {
-	char		*p;
-	substring_t	args[MAX_OPT_ARGS];
-	int		option;
+	struct pstore_fs_context *ctx = fc->fs_private;
+	struct fs_parse_result result;
+	int opt;
 
-	if (!options)
-		return;
+	opt = fs_parse(fc, &pstore_fs_parameters, param, &result);
+	if (opt < 0)
+		return opt;
 
-	while ((p = strsep(&options, ",")) != NULL) {
-		int token;
-
-		if (!*p)
-			continue;
-
-		token = match_token(p, tokens, args);
-		switch (token) {
-		case Opt_kmsg_bytes:
-			if (!match_int(&args[0], &option))
-				pstore_set_kmsg_bytes(option);
-			break;
-		}
+	switch (opt) {
+	case Opt_kmsg_bytes:
+		ctx->kmsg_bytes = result.uint_32;
+		break;
 	}
+
+	return 0;
+}
+
+static void pstore_apply_param(struct fs_context *fc)
+{
+	struct pstore_fs_context *ctx = fc->fs_private;
+
+	pstore_set_kmsg_bytes(ctx->kmsg_bytes);
 }
 
 /*
@@ -259,11 +269,10 @@ static int pstore_show_options(struct seq_file *m, struct dentry *root)
 	return 0;
 }
 
-static int pstore_remount(struct super_block *sb, int *flags, char *data)
+static int pstore_reconfigure(struct fs_context *fc)
 {
-	sync_filesystem(sb);
-	parse_options(data);
-
+	sync_filesystem(fc->root->d_sb);
+	pstore_apply_param(fc);
 	return 0;
 }
 
@@ -271,7 +280,6 @@ static const struct super_operations pstore_ops = {
 	.statfs		= simple_statfs,
 	.drop_inode	= generic_delete_inode,
 	.evict_inode	= pstore_evict_inode,
-	.remount_fs	= pstore_remount,
 	.show_options	= pstore_show_options,
 };
 
@@ -376,11 +384,9 @@ void pstore_get_records(int quiet)
 	inode_unlock(d_inode(root));
 }
 
-static int pstore_fill_super(struct super_block *sb, void *data, int silent)
+static int pstore_fill_super(struct super_block *sb, struct fs_context *fc)
 {
 	struct inode *inode;
-
-	pstore_sb = sb;
 
 	sb->s_maxbytes		= MAX_LFS_FILESIZE;
 	sb->s_blocksize		= PAGE_SIZE;
@@ -389,7 +395,8 @@ static int pstore_fill_super(struct super_block *sb, void *data, int silent)
 	sb->s_op		= &pstore_ops;
 	sb->s_time_gran		= 1;
 
-	parse_options(data);
+	pstore_sb = sb;
+	pstore_apply_param(fc);
 
 	inode = pstore_get_inode(sb);
 	if (inode) {
@@ -407,10 +414,34 @@ static int pstore_fill_super(struct super_block *sb, void *data, int silent)
 	return 0;
 }
 
-static struct dentry *pstore_mount(struct file_system_type *fs_type,
-	int flags, const char *dev_name, void *data)
+static int pstore_get_tree(struct fs_context *fc)
 {
-	return mount_single(fs_type, flags, data, pstore_fill_super);
+	return get_tree_single_reconf(fc, pstore_fill_super);
+}
+
+static void pstore_free_fc(struct fs_context *fc)
+{
+	kfree(fc->fs_private);
+}
+
+static const struct fs_context_operations pstore_context_ops = {
+	.free		= pstore_free_fc,
+	.parse_param	= pstore_parse_param,
+	.get_tree	= pstore_get_tree,
+	.reconfigure	= pstore_reconfigure,
+};
+
+static int pstore_init_fs_context(struct fs_context *fc)
+{
+	struct pstore_fs_context *ctx;
+
+	ctx = kzalloc(sizeof(struct pstore_fs_context), GFP_KERNEL);
+	if (!ctx)
+		return -ENOMEM;
+
+	fc->fs_private = ctx;
+	fc->ops = &pstore_context_ops;
+	return 0;
 }
 
 static void pstore_kill_sb(struct super_block *sb)
@@ -422,7 +453,8 @@ static void pstore_kill_sb(struct super_block *sb)
 static struct file_system_type pstore_fs_type = {
 	.owner          = THIS_MODULE,
 	.name		= "pstore",
-	.mount		= pstore_mount,
+	.init_fs_context = pstore_init_fs_context,
+	.parameters	= &pstore_fs_parameters,
 	.kill_sb	= pstore_kill_sb,
 };
 
