@@ -243,7 +243,7 @@ void __init subsection_map_init(unsigned long pfn, unsigned long nr_pages)
 		ms = __nr_to_section(nr);
 		subsection_mask_set(ms->usage->subsection_map, pfn, pfns);
 
-		pr_debug("%s: sec: %d pfns: %ld set(%d, %d)\n", __func__, nr,
+		pr_debug("%s: sec: %lu pfns: %lu set(%d, %d)\n", __func__, nr,
 				pfns, subsection_map_index(pfn),
 				subsection_map_index(pfn + pfns - 1));
 
