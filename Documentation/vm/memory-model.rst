@@ -205,10 +205,11 @@ subject to its memory ranges being exposed through the sysfs memory
 hotplug api on memory block boundaries. The implementation relies on
 this lack of user-api constraint to allow sub-section sized memory
 ranges to be specified to :c:func:`arch_add_memory`, the top-half of
-memory hotplug. Sub-section support allows for `PMD_SIZE` as the minimum
-alignment granularity for :c:func:`devm_memremap_pages`.
+memory hotplug. Sub-section support allows for 2MB as the cross-arch
+common alignment granularity for :c:func:`devm_memremap_pages`.
 
 The users of `ZONE_DEVICE` are:
+
 * pmem: Map platform persistent memory to be used as a direct-I/O target
   via DAX mappings.
 
