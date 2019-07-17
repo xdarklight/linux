@@ -569,7 +569,7 @@ static inline bool transhuge_vma_suitable(struct vm_area_struct *vma,
 	return true;
 }
 #else
-static inline bool transhuge_vma_suitable(struct vma_area_struct *vma,
+static inline bool transhuge_vma_suitable(struct vm_area_struct *vma,
 		unsigned long haddr)
 {
 	return false;
