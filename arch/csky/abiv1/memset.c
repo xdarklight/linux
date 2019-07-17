@@ -1,37 +1,71 @@
 // SPDX-License-Identifier: GPL-2.0
-// Copyright (C) 2018 Hangzhou C-SKY Microsystems co.,ltd.
+// Copyright (C) 1991-2018 Free Software Foundation, Inc.
 
-#include <linux/types.h>
+#include "memcopy.h"
 
-void *memset(void *dest, int c, size_t l)
+#undef memset
+
+void *
+memset (void *dstpp, int c, size_t len)
 {
-	char *d = dest;
-	int ch = c & 0xff;
-	int tmp = (ch | ch << 8 | ch << 16 | ch << 24);
+  long int dstp = (long int) dstpp;
 
-	while (((uintptr_t)d & 0x3) && l--)
-		*d++ = ch;
+  if (len >= 8)
+    {
+      size_t xlen;
+      op_t cccc;
 
-	while (l >= 16) {
-		*(((u32 *)d))   = tmp;
-		*(((u32 *)d)+1) = tmp;
-		*(((u32 *)d)+2) = tmp;
-		*(((u32 *)d)+3) = tmp;
-		l -= 16;
-		d += 16;
+      cccc = (unsigned char) c;
+      cccc |= cccc << 8;
+      cccc |= cccc << 16;
+      if (OPSIZ > 4)
+	/* Do the shift in two steps to avoid warning if long has 32 bits.  */
+	cccc |= (cccc << 16) << 16;
+
+      /* There are at least some bytes to set.
+	 No need to test for LEN == 0 in this alignment loop.  */
+      while (dstp % OPSIZ != 0)
+	{
+	  ((byte *) dstp)[0] = c;
+	  dstp += 1;
+	  len -= 1;
 	}
 
-	while (l > 3) {
-		*(((u32 *)d)) = tmp;
-		l -= 4;
-		d += 4;
+      /* Write 8 `op_t' per iteration until less than 8 `op_t' remain.  */
+      xlen = len / (OPSIZ * 8);
+      while (xlen > 0)
+	{
+	  ((op_t *) dstp)[0] = cccc;
+	  ((op_t *) dstp)[1] = cccc;
+	  ((op_t *) dstp)[2] = cccc;
+	  ((op_t *) dstp)[3] = cccc;
+	  ((op_t *) dstp)[4] = cccc;
+	  ((op_t *) dstp)[5] = cccc;
+	  ((op_t *) dstp)[6] = cccc;
+	  ((op_t *) dstp)[7] = cccc;
+	  dstp += 8 * OPSIZ;
+	  xlen -= 1;
 	}
+      len %= OPSIZ * 8;
 
-	while (l) {
-		*d = ch;
-		l--;
-		d++;
+      /* Write 1 `op_t' per iteration until less than OPSIZ bytes remain.  */
+      xlen = len / OPSIZ;
+      while (xlen > 0)
+	{
+	  ((op_t *) dstp)[0] = cccc;
+	  dstp += OPSIZ;
+	  xlen -= 1;
 	}
+      len %= OPSIZ;
+    }
 
-	return dest;
+  /* Write the last few bytes.  */
+  while (len > 0)
+    {
+      ((byte *) dstp)[0] = c;
+      dstp += 1;
+      len -= 1;
+    }
+
+  return dstpp;
 }
