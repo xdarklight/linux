@@ -428,7 +428,7 @@ struct page __init *sparse_mem_map_populate(unsigned long pnum, int nid,
 static void *sparsemap_buf __meminitdata;
 static void *sparsemap_buf_end __meminitdata;
 
-static inline void __init sparse_buffer_free(unsigned long size)
+static inline void __meminit sparse_buffer_free(unsigned long size)
 {
 	WARN_ON(!sparsemap_buf || size == 0);
 	memblock_free_early(__pa(sparsemap_buf), size);
