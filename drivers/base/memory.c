@@ -131,17 +131,17 @@ static ssize_t phys_index_show(struct device *dev,
 static ssize_t removable_show(struct device *dev, struct device_attribute *attr,
 			      char *buf)
 {
-	unsigned long i, pfn;
+	unsigned long nr, pfn;
 	int ret = 1;
 	struct memory_block *mem = to_memory_block(dev);
 
 	if (mem->state != MEM_ONLINE)
 		goto out;
 
-	for (i = 0; i < sections_per_block; i++) {
-		if (!present_section_nr(mem->start_section_nr + i))
+	for (nr = 0; nr < sections_per_block; nr++) {
+		if (!present_section_nr(mem->start_section_nr + nr))
 			continue;
-		pfn = section_nr_to_pfn(mem->start_section_nr + i);
+		pfn = section_nr_to_pfn(mem->start_section_nr + nr);
 		ret &= is_mem_section_removable(pfn, PAGES_PER_SECTION);
 	}
 
@@ -695,12 +695,12 @@ static int add_memory_block(unsigned long base_section_nr)
 {
 	int ret, section_count = 0;
 	struct memory_block *mem;
-	unsigned long i;
+	unsigned long nr;
 
-	for (i = base_section_nr;
-	     i < base_section_nr + sections_per_block;
-	     i++)
-		if (present_section_nr(i))
+	for (nr = base_section_nr;
+	     nr < base_section_nr + sections_per_block;
+	     nr++)
+		if (present_section_nr(nr))
 			section_count++;
 
 	if (section_count == 0)
@@ -823,7 +823,7 @@ static const struct attribute_group *memory_root_attr_groups[] = {
  */
 int __init memory_dev_init(void)
 {
-	unsigned long i;
+	unsigned long nr;
 	int ret;
 	int err;
 	unsigned long block_sz;
@@ -840,9 +840,9 @@ int __init memory_dev_init(void)
 	 * during boot and have been initialized
 	 */
 	mutex_lock(&mem_sysfs_mutex);
-	for (i = 0; i <= __highest_present_section_nr;
-		i += sections_per_block) {
-		err = add_memory_block(i);
+	for (nr = 0; nr <= __highest_present_section_nr;
+		nr += sections_per_block) {
+		err = add_memory_block(nr);
 		if (!ret)
 			ret = err;
 	}
