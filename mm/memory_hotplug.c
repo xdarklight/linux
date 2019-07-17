@@ -517,12 +517,16 @@ static void __remove_section(struct zone *zone, unsigned long pfn,
 		struct vmem_altmap *altmap)
 {
 	struct mem_section *ms = __nr_to_section(pfn_to_section_nr(pfn));
+	int ret;
 
 	if (WARN_ON_ONCE(!valid_section(ms)))
 		return;
 
+	ret = sparse_deactivate_section(pfn, nr_pages);
 	__remove_zone(zone, pfn, nr_pages);
-	sparse_remove_section(ms, pfn, nr_pages, map_offset, altmap);
+	if (ret >= 0)
+		sparse_remove_section(pfn, nr_pages, map_offset, altmap,
+				      ret);
 }
 
 /**

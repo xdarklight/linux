@@ -732,16 +732,47 @@ static void free_map_bootmem(struct page *memmap)
 }
 #endif /* CONFIG_SPARSEMEM_VMEMMAP */
 
-static void section_deactivate(unsigned long pfn, unsigned long nr_pages,
-		struct vmem_altmap *altmap)
+static void section_remove(unsigned long pfn, unsigned long nr_pages,
+			   struct vmem_altmap *altmap, int section_empty)
+{
+	struct mem_section *ms = __pfn_to_section(pfn);
+	bool section_early = early_section(ms);
+	struct page *memmap = NULL;
+
+	if (section_empty) {
+		unsigned long section_nr = pfn_to_section_nr(pfn);
+
+		if (!section_early) {
+			kfree(ms->usage);
+			ms->usage = NULL;
+		}
+		memmap = sparse_decode_mem_map(ms->section_mem_map, section_nr);
+		ms->section_mem_map = sparse_encode_mem_map(NULL, section_nr);
+	}
+
+        if (section_early && memmap)
+		free_map_bootmem(memmap);
+        else
+		depopulate_section_memmap(pfn, nr_pages, altmap);
+}
+
+/**
+ * section_deactivate: Deactivate a {sub}section.
+ *
+ * Return:
+ * * -1         - {sub}section has already been deactivated.
+ * * 0          - Section is not empty
+ * * 1          - Section is empty
+ */
+
+static int section_deactivate(unsigned long pfn, unsigned long nr_pages)
 {
 	DECLARE_BITMAP(map, SUBSECTIONS_PER_SECTION) = { 0 };
 	DECLARE_BITMAP(tmp, SUBSECTIONS_PER_SECTION) = { 0 };
 	struct mem_section *ms = __pfn_to_section(pfn);
-	bool section_is_early = early_section(ms);
-	struct page *memmap = NULL;
 	unsigned long *subsection_map = ms->usage
 		? &ms->usage->subsection_map[0] : NULL;
+	int section_empty = 0;
 
 	subsection_mask_set(map, pfn, nr_pages);
 	if (subsection_map)
@@ -750,7 +781,7 @@ static void section_deactivate(unsigned long pfn, unsigned long nr_pages,
 	if (WARN(!subsection_map || !bitmap_equal(tmp, map, SUBSECTIONS_PER_SECTION),
 				"section already deactivated (%#lx + %ld)\n",
 				pfn, nr_pages))
-		return;
+		return -1;
 
 	/*
 	 * There are 3 cases to handle across two configurations
@@ -770,21 +801,10 @@ static void section_deactivate(unsigned long pfn, unsigned long nr_pages,
 	 * For 2/ and 3/ the SPARSEMEM_VMEMMAP={y,n} cases are unified
 	 */
 	bitmap_xor(subsection_map, map, subsection_map, SUBSECTIONS_PER_SECTION);
-	if (bitmap_empty(subsection_map, SUBSECTIONS_PER_SECTION)) {
-		unsigned long section_nr = pfn_to_section_nr(pfn);
+	if (bitmap_empty(subsection_map, SUBSECTIONS_PER_SECTION))
+		section_empty = 1;
 
-		if (!section_is_early) {
-			kfree(ms->usage);
-			ms->usage = NULL;
-		}
-		memmap = sparse_decode_mem_map(ms->section_mem_map, section_nr);
-		ms->section_mem_map = sparse_encode_mem_map(NULL, section_nr);
-	}
-
-	if (section_is_early && memmap)
-		free_map_bootmem(memmap);
-	else
-		depopulate_section_memmap(pfn, nr_pages, altmap);
+	return section_empty;
 }
 
 static struct page * __meminit section_activate(int nid, unsigned long pfn,
@@ -834,7 +854,11 @@ static struct page * __meminit section_activate(int nid, unsigned long pfn,
 
 	memmap = populate_section_memmap(pfn, nr_pages, nid, altmap);
 	if (!memmap) {
-		section_deactivate(pfn, nr_pages, altmap);
+		int ret;
+
+		ret = section_deactivate(pfn, nr_pages);
+		if (ret >= 0)
+			section_remove(pfn, nr_pages, altmap, ret);
 		return ERR_PTR(-ENOMEM);
 	}
 
@@ -919,12 +943,17 @@ static inline void clear_hwpoisoned_pages(struct page *memmap, int nr_pages)
 }
 #endif
 
-void sparse_remove_section(struct mem_section *ms, unsigned long pfn,
-		unsigned long nr_pages, unsigned long map_offset,
-		struct vmem_altmap *altmap)
+int sparse_deactivate_section(unsigned long pfn, unsigned long nr_pages)
+{
+	return section_deactivate(pfn, nr_pages);
+}
+
+void sparse_remove_section(unsigned long pfn, unsigned long nr_pages,
+			   unsigned long map_offset, struct vmem_altmap *altmap,
+			   int section_empty)
 {
 	clear_hwpoisoned_pages(pfn_to_page(pfn) + map_offset,
 			nr_pages - map_offset);
-	section_deactivate(pfn, nr_pages, altmap);
+	section_remove(pfn, nr_pages, altmap, section_empty);
 }
 #endif /* CONFIG_MEMORY_HOTPLUG */
