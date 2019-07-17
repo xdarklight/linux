@@ -38,8 +38,6 @@
 
 #include <linux/sysctl.h>
 
-static int zero;
-static int one = 1;
 static struct ctl_table_header *tipc_ctl_hdr;
 
 static struct ctl_table tipc_table[] = {
