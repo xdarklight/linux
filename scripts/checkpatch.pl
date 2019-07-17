@@ -595,6 +595,11 @@ our %deprecated_apis = (
 	"rcu_barrier_sched"			=> "rcu_barrier",
 	"get_state_synchronize_sched"		=> "get_state_synchronize_rcu",
 	"cond_synchronize_sched"		=> "cond_synchronize_rcu",
+	"strcpy"				=> "strscpy",
+	"strlcpy"				=> "strscpy",
+	"strncpy"				=> "strscpy, strscpy_pad or for
+	non-NUL-terminated strings, strncpy() can still be used, but
+	destinations should be marked with the __nonstring",
 );
 
 #Create a search pattern for all these strings to speed up a loop below
