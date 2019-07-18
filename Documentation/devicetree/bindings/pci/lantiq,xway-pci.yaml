@@ -1,0 +1,131 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/pci/lantiq,xway-pci.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Lantiq XWAY PCI Controller Device Tree Bindings
+
+maintainers:
+  - Martin Blumenstingl <martin.blumenstingl@googlemail.com>
+
+properties:
+
+  compatible:
+    items:
+      - enum:
+        - lantiq,arx100-pci
+        - lantiq,danube-pci
+        - lantiq,vrx200-pci
+      - const: lantiq,xway-pci
+
+  reg:
+    items:
+      - description: The PCI controller register space
+      - description: The PCI configuration space
+
+  reg-names:
+    items:
+      - const: ctrl
+      - const: config
+
+  ranges: true
+
+  "#address-cells":
+    enum: [ 3 ]
+
+  "#size-cells":
+    enum: [ 2 ]
+
+  device_type:
+    items:
+      - const: pci
+
+  interrupts:
+    items:
+      - description: The PCI Controller IR interrupt line
+      - description: The PCI wake interrupt line
+
+  interrupt-names:
+    items:
+      - const: ir
+      - const: wake
+
+  big-endian:
+    description: Indicates that the registers are in big-endian mode
+    type: boolean
+
+  little-endian:
+    description: Indicates that the registers are in little-endian mode
+    type: boolean
+
+  resets:
+    maxItems: 1
+    description: phandle to the PCI controller's reset line
+
+  clocks:
+    items:
+      - description: the PCI module clock
+      - description: the PCI bus clock
+
+  clock-names:
+    items:
+      - const: ctl
+      - const: bus
+
+  reset-gpios:
+    maxItems: 1
+    description: phandle to the PCI bus reset GPIO
+
+required:
+  - compatible
+  - reg
+  - reg-names
+  - ranges
+  - "#address-cells"
+  - "#size-cells"
+  - device_type
+  - interrupts
+  - interrupt-names
+  - "#interrupt-cells"
+  - resets
+  - clocks
+
+additionalProperties: true
+
+examples:
+  - |
+    #include <dt-bindings/gpio/gpio.h>
+    #include <dt-bindings/interrupt-controller/irq.h>
+
+    pci:  pci@e105400 {
+      compatible = "lantiq,vrx200-pci", "lantiq,xway-pci";
+
+      reg = <0xe105400 0x400>, <0x7000000 0x8000>;
+      reg-names = "ctrl", "config";
+
+      resets = <&reset0 13 13>;
+      clocks = <&pmu 4>, <&cgu 0>;
+      clock-names = "ctl", "bus";
+
+      interrupts = <57>, <58>;
+      interrupt-names = "ir", "wake";
+
+      bus-range = <0x0 0xf>;
+      ranges = <0x2000000 0 0x18000000 0x8000000 0 0x2000000   /* MEM */
+                0x1000000 0 0          0xae00000 0 0x0200000>; /* I/O */
+
+      lantiq,bus-clock = <33333333>;
+      req-mask = <0x1>; /* GNT1 */
+
+      device_type = "pci";
+
+      reset-gpios = <&gpio 21 GPIO_ACTIVE_LOW>;
+
+      #interrupt-cells = <1>;
+      interrupt-map-mask = <0xf800 0x0 0x0 0x7>;
+      interrupt-map = <0x7000 0 0 1 &ebu0 0 IRQ_TYPE_LEVEL_LOW>; /* slot 14 */
+
+      #address-cells = <3>;
+      #size-cells = <2>;
+    };
