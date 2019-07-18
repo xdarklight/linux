@@ -76,7 +76,7 @@ static void file_audit_cb(struct audit_buffer *ab, void *va)
 	if (aad(sa)->peer) {
 		audit_log_format(ab, " target=");
 		aa_label_xaudit(ab, labels_ns(aad(sa)->label), aad(sa)->peer,
-				FLAG_VIEW_SUBNS, GFP_ATOMIC);
+				FLAG_VIEW_SUBNS, GFP_KERNEL);
 	} else if (aad(sa)->fs.target) {
 		audit_log_format(ab, " target=");
 		audit_log_untrustedstring(ab, aad(sa)->fs.target);
@@ -332,12 +332,14 @@ int aa_path_perm(const char *op, struct aa_label *label,
 
 	flags |= PATH_DELEGATE_DELETED | (S_ISDIR(cond->mode) ? PATH_IS_DIR :
 								0);
-	get_buffers(buffer);
+	buffer = aa_get_buffer();
+	if (!buffer)
+		return -ENOMEM;
 	error = fn_for_each_confined(label, profile,
 			profile_path_perm(op, profile, path, buffer, request,
 					  cond, flags, &perms));
 
-	put_buffers(buffer);
+	aa_put_buffer(buffer);
 
 	return error;
 }
@@ -475,12 +477,18 @@ int aa_path_link(struct aa_label *label, struct dentry *old_dentry,
 	int error;
 
 	/* buffer freed below, lname is pointer in buffer */
-	get_buffers(buffer, buffer2);
+	buffer = aa_get_buffer();
+	buffer2 = aa_get_buffer();
+	error = -ENOMEM;
+	if (!buffer || !buffer2)
+		goto out;
+
 	error = fn_for_each_confined(label, profile,
 			profile_path_link(profile, &link, buffer, &target,
 					  buffer2, &cond));
-	put_buffers(buffer, buffer2);
-
+out:
+	aa_put_buffer(buffer);
+	aa_put_buffer(buffer2);
 	return error;
 }
 
@@ -524,7 +532,9 @@ static int __file_path_perm(const char *op, struct aa_label *label,
 		return 0;
 
 	flags = PATH_DELEGATE_DELETED | (S_ISDIR(cond.mode) ? PATH_IS_DIR : 0);
-	get_buffers(buffer);
+	buffer = aa_get_buffer();
+	if (!buffer)
+		return -ENOMEM;
 
 	/* check every profile in task label not in current cache */
 	error = fn_for_each_not_in_set(flabel, label, profile,
@@ -553,7 +563,7 @@ static int __file_path_perm(const char *op, struct aa_label *label,
 	if (!error)
 		update_file_ctx(file_ctx(file), label, request);
 
-	put_buffers(buffer);
+	aa_put_buffer(buffer);
 
 	return error;
 }
