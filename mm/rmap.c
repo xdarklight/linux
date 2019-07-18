@@ -1476,6 +1476,7 @@ static bool try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 			 * No need to invalidate here it will synchronize on
 			 * against the special swap migration pte.
 			 */
+			subpage = page;
 			goto discard;
 		}
 

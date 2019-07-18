@@ -1011,6 +1011,8 @@ static int fat_show_options(struct seq_file *m, struct dentry *root)
 		seq_puts(m, ",nfs=stale_rw");
 	if (opts->discard)
 		seq_puts(m, ",discard");
+	if (!opts->barrier)
+		seq_puts(m, ",nobarrier");
 	if (opts->dos1xfloppy)
 		seq_puts(m, ",dos1xfloppy");
 
@@ -1026,8 +1028,9 @@ enum {
 	Opt_shortname_winnt, Opt_shortname_mixed, Opt_utf8_no, Opt_utf8_yes,
 	Opt_uni_xl_no, Opt_uni_xl_yes, Opt_nonumtail_no, Opt_nonumtail_yes,
 	Opt_obsolete, Opt_flush, Opt_tz_utc, Opt_rodir, Opt_err_cont,
-	Opt_err_panic, Opt_err_ro, Opt_discard, Opt_nfs, Opt_time_offset,
-	Opt_nfs_stale_rw, Opt_nfs_nostale_ro, Opt_err, Opt_dos1xfloppy,
+	Opt_err_panic, Opt_err_ro, Opt_discard, Opt_barrier, Opt_nobarrier,
+	Opt_nfs, Opt_time_offset, Opt_nfs_stale_rw, Opt_nfs_nostale_ro,
+	Opt_err, Opt_dos1xfloppy,
 };
 
 static const match_table_t fat_tokens = {
@@ -1057,6 +1060,8 @@ static const match_table_t fat_tokens = {
 	{Opt_err_panic, "errors=panic"},
 	{Opt_err_ro, "errors=remount-ro"},
 	{Opt_discard, "discard"},
+	{Opt_barrier, "barrier"},
+	{Opt_nobarrier, "nobarrier"},
 	{Opt_nfs_stale_rw, "nfs"},
 	{Opt_nfs_stale_rw, "nfs=stale_rw"},
 	{Opt_nfs_nostale_ro, "nfs=nostale_ro"},
@@ -1141,6 +1146,7 @@ static int parse_options(struct super_block *sb, char *options, int is_vfat,
 	opts->numtail = 1;
 	opts->usefree = opts->nocase = 0;
 	opts->tz_set = 0;
+	opts->barrier = 1;
 	opts->nfs = 0;
 	opts->errors = FAT_ERRORS_RO;
 	*debug = 0;
@@ -1264,6 +1270,15 @@ static int parse_options(struct super_block *sb, char *options, int is_vfat,
 		case Opt_err_ro:
 			opts->errors = FAT_ERRORS_RO;
 			break;
+		case Opt_discard:
+			opts->discard = 1;
+			break;
+		case Opt_barrier:
+			opts->barrier = 1;
+			break;
+		case Opt_nobarrier:
+			opts->barrier = 0;
+			break;
 		case Opt_nfs_stale_rw:
 			opts->nfs = FAT_NFS_STALE_RW;
 			break;
@@ -1326,9 +1341,6 @@ static int parse_options(struct super_block *sb, char *options, int is_vfat,
 			break;
 		case Opt_rodir:
 			opts->rodir = 1;
-			break;
-		case Opt_discard:
-			opts->discard = 1;
 			break;
 
 		/* obsolete mount options */

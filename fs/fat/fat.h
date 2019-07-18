@@ -51,6 +51,7 @@ struct fat_mount_options {
 		 tz_set:1,	   /* Filesystem timestamps' offset set */
 		 rodir:1,	   /* allow ATTR_RO for directory */
 		 discard:1,	   /* Issue discard requests on deletions */
+		 barrier:1,	   /* Issue FLUSH command */
 		 dos1xfloppy:1;	   /* Assume default BPB for DOS 1.x floppies */
 };
 

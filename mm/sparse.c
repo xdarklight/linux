@@ -428,6 +428,12 @@ struct page __init *sparse_mem_map_populate(unsigned long pnum, int nid,
 static void *sparsemap_buf __meminitdata;
 static void *sparsemap_buf_end __meminitdata;
 
+static inline void __meminit sparse_buffer_free(unsigned long size)
+{
+	WARN_ON(!sparsemap_buf || size == 0);
+	memblock_free_early(__pa(sparsemap_buf), size);
+}
+
 static void __init sparse_buffer_init(unsigned long size, int nid)
 {
 	phys_addr_t addr = __pa(MAX_DMA_ADDRESS);
@@ -444,7 +450,7 @@ static void __init sparse_buffer_fini(void)
 	unsigned long size = sparsemap_buf_end - sparsemap_buf;
 
 	if (sparsemap_buf && size > 0)
-		memblock_free_early(__pa(sparsemap_buf), size);
+		sparse_buffer_free(size);
 	sparsemap_buf = NULL;
 }
 
@@ -453,11 +459,15 @@ void * __meminit sparse_buffer_alloc(unsigned long size)
 	void *ptr = NULL;
 
 	if (sparsemap_buf) {
-		ptr = PTR_ALIGN(sparsemap_buf, size);
+		ptr = (void *) roundup((unsigned long)sparsemap_buf, size);
 		if (ptr + size > sparsemap_buf_end)
 			ptr = NULL;
-		else
+		else {
+			/* Free redundant aligned space */
+			if ((unsigned long)(ptr - sparsemap_buf) > 0)
+				sparse_buffer_free((unsigned long)(ptr - sparsemap_buf));
 			sparsemap_buf = ptr + size;
+		}
 	}
 	return ptr;
 }
@@ -604,7 +614,6 @@ static void __kfree_section_memmap(struct page *memmap,
 
 	vmemmap_free(start, end, altmap);
 }
-#ifdef CONFIG_MEMORY_HOTREMOVE
 static void free_map_bootmem(struct page *memmap)
 {
 	unsigned long start = (unsigned long)memmap;
@@ -612,7 +621,6 @@ static void free_map_bootmem(struct page *memmap)
 
 	vmemmap_free(start, end, NULL);
 }
-#endif /* CONFIG_MEMORY_HOTREMOVE */
 #else
 static struct page *__kmalloc_section_memmap(void)
 {
@@ -651,7 +659,6 @@ static void __kfree_section_memmap(struct page *memmap,
 			   get_order(sizeof(struct page) * PAGES_PER_SECTION));
 }
 
-#ifdef CONFIG_MEMORY_HOTREMOVE
 static void free_map_bootmem(struct page *memmap)
 {
 	unsigned long maps_section_nr, removing_section_nr, i;
@@ -681,7 +688,6 @@ static void free_map_bootmem(struct page *memmap)
 			put_page_bootmem(page);
 	}
 }
-#endif /* CONFIG_MEMORY_HOTREMOVE */
 #endif /* CONFIG_SPARSEMEM_VMEMMAP */
 
 /**
@@ -735,6 +741,7 @@ int __meminit sparse_add_one_section(int nid, unsigned long start_pfn,
 	 */
 	page_init_poison(memmap, sizeof(struct page) * PAGES_PER_SECTION);
 
+	set_section_nid(section_nr, nid);
 	section_mark_present(ms);
 	sparse_init_one_section(ms, section_nr, memmap, usemap);
 
@@ -746,7 +753,6 @@ out:
 	return ret;
 }
 
-#ifdef CONFIG_MEMORY_HOTREMOVE
 #ifdef CONFIG_MEMORY_FAILURE
 static void clear_hwpoisoned_pages(struct page *memmap, int nr_pages)
 {
@@ -805,8 +811,8 @@ static void free_section_usemap(struct page *memmap, unsigned long *usemap,
 		free_map_bootmem(memmap);
 }
 
-void sparse_remove_one_section(struct zone *zone, struct mem_section *ms,
-		unsigned long map_offset, struct vmem_altmap *altmap)
+void sparse_remove_one_section(struct mem_section *ms, unsigned long map_offset,
+			       struct vmem_altmap *altmap)
 {
 	struct page *memmap = NULL;
 	unsigned long *usemap = NULL;
@@ -823,5 +829,4 @@ void sparse_remove_one_section(struct zone *zone, struct mem_section *ms,
 			PAGES_PER_SECTION - map_offset);
 	free_section_usemap(memmap, usemap, altmap);
 }
-#endif /* CONFIG_MEMORY_HOTREMOVE */
 #endif /* CONFIG_MEMORY_HOTPLUG */

@@ -595,6 +595,11 @@ our %deprecated_apis = (
 	"rcu_barrier_sched"			=> "rcu_barrier",
 	"get_state_synchronize_sched"		=> "get_state_synchronize_rcu",
 	"cond_synchronize_sched"		=> "cond_synchronize_rcu",
+	"strcpy"				=> "strscpy",
+	"strlcpy"				=> "strscpy",
+	"strncpy"				=> "strscpy, strscpy_pad or for
+	non-NUL-terminated strings, strncpy() can still be used, but
+	destinations should be marked with the __nonstring",
 );
 
 #Create a search pattern for all these strings to speed up a loop below
@@ -2725,8 +2730,10 @@ sub process {
 		    ($line =~ /^\s*(?:WARNING:|BUG:)/ ||
 		     $line =~ /^\s*\[\s*\d+\.\d{6,6}\s*\]/ ||
 					# timestamp
-		     $line =~ /^\s*\[\<[0-9a-fA-F]{8,}\>\]/)) {
-					# stack dump address
+		     $line =~ /^\s*\[\<[0-9a-fA-F]{8,}\>\]/) ||
+		     $line =~ /^(?:\s+\w+:\s+[0-9a-fA-F]+){3,3}/ ||
+		     $line =~ /^\s*\#\d+\s*\[[0-9a-fA-F]+\]\s*\w+ at [0-9a-fA-F]+/) {
+					# stack dump address styles
 			$commit_log_possible_stack_dump = 1;
 		}
 
@@ -3069,21 +3076,21 @@ sub process {
 # check SPDX comment style for .[chsS] files
 				if ($realfile =~ /\.[chsS]$/ &&
 				    $rawline =~ /SPDX-License-Identifier:/ &&
-				    $rawline !~ /^\+\s*\Q$comment\E\s*/) {
+				    $rawline !~ m@^\+\s*\Q$comment\E\s*@) {
 					WARN("SPDX_LICENSE_TAG",
 					     "Improper SPDX comment style for '$realfile', please use '$comment' instead\n" . $herecurr);
 				}
 
 				if ($comment !~ /^$/ &&
-				    $rawline !~ /^\+\Q$comment\E SPDX-License-Identifier: /) {
-					 WARN("SPDX_LICENSE_TAG",
-					      "Missing or malformed SPDX-License-Identifier tag in line $checklicenseline\n" . $herecurr);
+				    $rawline !~ m@^\+\Q$comment\E SPDX-License-Identifier: @) {
+					WARN("SPDX_LICENSE_TAG",
+					     "Missing or malformed SPDX-License-Identifier tag in line $checklicenseline\n" . $herecurr);
 				} elsif ($rawline =~ /(SPDX-License-Identifier: .*)/) {
-					 my $spdx_license = $1;
-					 if (!is_SPDX_License_valid($spdx_license)) {
-						  WARN("SPDX_LICENSE_TAG",
-						       "'$spdx_license' is not supported in LICENSES/...\n" . $herecurr);
-					 }
+					my $spdx_license = $1;
+					if (!is_SPDX_License_valid($spdx_license)) {
+						WARN("SPDX_LICENSE_TAG",
+						     "'$spdx_license' is not supported in LICENSES/...\n" . $herecurr);
+					}
 				}
 			}
 		}
