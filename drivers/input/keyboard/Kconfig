@@ -71,6 +71,21 @@ config KEYBOARD_AMIGA
 config ATARI_KBD_CORE
 	bool
 
+config KEYBOARD_APPLESPI
+	tristate "Apple SPI keyboard and trackpad"
+	depends on ACPI && EFI
+	depends on SPI
+	depends on X86 || COMPILE_TEST
+	imply SPI_PXA2XX
+	imply SPI_PXA2XX_PCI
+	imply MFD_INTEL_LPSS_PCI
+	help
+	  Say Y here if you are running Linux on any Apple MacBook8,1 or later,
+	  or any MacBookPro13,* or MacBookPro14,*.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called applespi.
+
 config KEYBOARD_ATARI
 	tristate "Atari keyboard"
 	depends on ATARI
