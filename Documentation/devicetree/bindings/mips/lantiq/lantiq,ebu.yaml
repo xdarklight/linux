@@ -8,25 +8,75 @@ title: Lantiq Xway SoC series External Bus Unit (EBU)
 
 maintainers:
   - John Crispin <john@phrozen.org>
+  - Martin Blumenstingl <martin.blumenstingl@googlemail.com>
 
 properties:
   compatible:
-    items:
-      - enum:
-          - lantiq,ebu-xway
+    enum:
+      - lantiq,ebu-falcon # deprecated
+      - lantiq,ebu-xway # deprecated
+      - lantiq,falcon-ebu
+      - lantiq,ase-ebu
+      - lantiq,danube-ebu
+      - lantiq,xrx100-ebu
+      - lantiq,xrx200-ebu
 
   reg:
     maxItems: 1
 
+  clocks:
+    minItems: 1
+
+  interrupt-controller: true
+
+  '#interrupt-cells':
+    const: 2
+
+  '#address-cells':
+    const: 1
+
+  '#size-cells':
+    const: 1
+
+  ranges: true
+
+  interrupts:
+    minItems: 1
+
+  big-endian: true
+
 required:
   - compatible
   - reg
+  - clocks
 
 additionalProperties: false
 
 examples:
   - |
-    ebu@105300 {
-        compatible = "lantiq,ebu-xway";
-        reg = <0x105300 0x100>;
+    bus@e105300 {
+        compatible = "lantiq,ase-ebu";
+        reg = <0xe105300 0x100>;
+
+        clocks = <&pmu 10>;
+
+        big-endian;
     };
+  - |
+    bus@e105300 {
+        compatible = "lantiq,xrx200-ebu";
+        reg = <0xe105300 0x100>;
+
+        clocks = <&pmu 10>;
+
+        interrupt-controller;
+        #interrupt-cells = <2>;
+        interrupts = <30>;
+
+        big-endian;
+
+        #address-cells = <1>;
+        #size-cells = <1>;
+        ranges;
+    };
+...
