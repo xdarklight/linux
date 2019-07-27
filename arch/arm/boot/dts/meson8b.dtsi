@@ -402,6 +402,10 @@
 	clocks = <&clkc CLKID_EFUSE>;
 	clock-names = "core";
 
+	ethernet_mac_address: mac@1b4 {
+		reg = <0x1b4 0x6>;
+	};
+
 	temperature_calib: calib@1f4 {
 		/* only the upper two bytes are relevant */
 		reg = <0x1f4 0x4>;
