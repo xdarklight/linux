@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0
 /dts-v1/;
 
+#include <dt-bindings/interrupt-controller/irq.h>
+
 /include/ "danube.dtsi"
 
 / {
@@ -105,7 +107,7 @@
 			lantiq,bus-clock = <33333333>;
 			interrupt-map-mask = <0xf800 0x0 0x0 0x7>;
 			interrupt-map = <
-				0x7000 0 0 1 &icu0 29 1 // slot 14, irq 29
+				0x7000 0 0 1 &ebu0 0 IRQ_TYPE_LEVEL_LOW // slot 14
 			>;
 			gpios-reset = <&gpio 21 0>;
 			req-mask = <0x1>;		/* GNT1 */
