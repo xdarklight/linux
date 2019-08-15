@@ -155,7 +155,6 @@
 	#define MESON_SDHC_CLK2_RX_CLK_PHASE			GENMASK(11, 0)
 	#define MESON_SDHC_CLK2_SD_CLK_PHASE			GENMASK(23, 12)
 
-#define MESON_SDHC_BOUNCE_REQ_SIZE				(512 * 1024)
 #define MESON_SDHC_MAX_BLK_SIZE					512
 #define MESON_SDHC_NUM_TUNING_TRIES				10
 #define MESON_SDHC_PRE_REQ_DONE					BIT(0)
@@ -240,8 +239,9 @@ static void meson_mx_sdhc_wait_cmd_ready(struct mmc_host *mmc)
 	u32 stat, esta;
 	int ret;
 
-	ret = readl_poll_timeout(host->base + MESON_SDHC_STAT, stat,
-				 !(stat & MESON_SDHC_STAT_CMD_BUSY), 1, 10000);
+	ret = readl_relaxed_poll_timeout(host->base + MESON_SDHC_STAT, stat,
+					 !(stat & MESON_SDHC_STAT_CMD_BUSY), 1,
+					 10000);
 	if (ret) {
 		dev_warn(mmc_dev(mmc),
 			 "Failed to poll for CMD_BUSY while processing CMD%d\n",
@@ -249,8 +249,9 @@ static void meson_mx_sdhc_wait_cmd_ready(struct mmc_host *mmc)
 		meson_mx_sdhc_hw_reset(mmc);
 	}
 
-	ret = readl_poll_timeout(host->base + MESON_SDHC_ESTA, esta,
-				 !(esta & MESON_SDHC_ESTA_11_13), 1, 10000);
+	ret = readl_relaxed_poll_timeout(host->base + MESON_SDHC_ESTA, esta,
+					 !(esta & MESON_SDHC_ESTA_11_13), 1,
+					 10000);
 	if (ret) {
 		dev_warn(mmc_dev(mmc),
 			 "Failed to poll for ESTA[13:11] while processing CMD%d\n",
@@ -756,6 +757,8 @@ static irqreturn_t meson_mx_sdhc_irq_thread(int irq, void *irq_data)
 	if (cmd->data && !cmd->data->error) {
 		if (!host->platform->hardware_flush_all_cmds &&
 		    cmd->flags & MMC_DATA_READ) {
+			meson_mx_sdhc_wait_cmd_ready(host->mmc);
+
 			pdma = readl(host->base + MESON_SDHC_PDMA);
 			pdma |= FIELD_PREP(MESON_SDHC_PDMA_RXFIFO_MANUAL_FLUSH,
 					   2);
@@ -975,20 +978,20 @@ static void meson_mx_sdhc_wait_before_send_meson8(struct mmc_host *mmc)
 	u32 val;
 	int ret;
 
-	ret = readl_poll_timeout(host->base + MESON_SDHC_ESTA, val, val == 0,
-				 1, 200);
+	ret = readl_relaxed_poll_timeout(host->base + MESON_SDHC_ESTA, val,
+					 val == 0, 1, 200);
 	if (ret)
 		dev_warn(mmc_dev(mmc),
 			 "Failed to wait for ESTA to clear: 0x%08x\n", val);
 
-	if (host->cmd->data && host->cmd->flags & MMC_DATA_WRITE) {
-		ret = readl_poll_timeout(host->base + MESON_SDHC_STAT, val,
-					 val & MESON_SDHC_STAT_TXFIFO_CNT,
-					 1, 200);
-		if (ret)
-			dev_warn(mmc_dev(mmc),
-				 "Failed to wait for TX FIFO to fill\n");
-	}
+	if (!host->cmd->data || !(host->cmd->flags & MMC_DATA_WRITE))
+		return;
+
+	ret = readl_relaxed_poll_timeout(host->base + MESON_SDHC_STAT, val,
+					 val & MESON_SDHC_STAT_TXFIFO_CNT, 1,
+					 200);
+	if (ret)
+		dev_warn(mmc_dev(mmc), "Failed to wait for TX FIFO to fill\n");
 }
 
 static void meson_mx_sdhc_init_hw_meson8m2(struct mmc_host *mmc)
@@ -1158,7 +1161,7 @@ static int meson_mx_sdhc_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-	mmc->max_req_size = MESON_SDHC_BOUNCE_REQ_SIZE;
+	mmc->max_req_size = SZ_128K;
 	mmc->max_seg_size = mmc->max_req_size;
 	mmc->max_blk_count = FIELD_GET(MESON_SDHC_SEND_TOTAL_PACK, ~0);
 	mmc->max_blk_size = MESON_SDHC_MAX_BLK_SIZE;
