@@ -158,6 +158,7 @@
 #define MESON_SDHC_BOUNCE_REQ_SIZE				(512 * 1024)
 #define MESON_SDHC_MAX_BLK_SIZE					512
 #define MESON_SDHC_NUM_TUNING_TRIES				10
+#define MESON_SDHC_PRE_REQ_DONE					BIT(0)
 
 struct meson_mx_sdhc_data {
 	void (*init_hw)(struct mmc_host *mmc);
@@ -512,31 +513,51 @@ static void meson_mx_sdhc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 				dat_type);
 }
 
-static int meson_mx_sdhc_map_dma(struct mmc_host *mmc, struct mmc_request *mrq)
+static void meson_mx_sdhc_pre_req(struct mmc_host *mmc,
+				  struct mmc_request *mrq)
 {
+	struct meson_mx_sdhc_host *host = mmc_priv(mmc);
 	struct mmc_data *data = mrq->data;
-	int dma_len;
 
 	if (!data)
-		return 0;
+		return;
 
-	dma_len = dma_map_sg(mmc_dev(mmc), data->sg, data->sg_len,
-			     mmc_get_dma_dir(data));
-	if (dma_len <= 0) {
+	data->host_cookie |= MESON_SDHC_PRE_REQ_DONE;
+
+	data->sg_count = dma_map_sg(mmc_dev(mmc), data->sg, data->sg_len,
+				    mmc_get_dma_dir(data));
+	if (data->sg_count <= 0) {
 		dev_err(mmc_dev(mmc), "dma_map_sg failed\n");
-		return -ENOMEM;
+		host->error = -ENOMEM;
 	}
-
-	return 0;
 }
 
-static void meson_mx_sdhc_request(struct mmc_host *mmc, struct mmc_request *mrq)
+static void meson_mx_sdhc_post_req(struct mmc_host *mmc,
+				   struct mmc_request *mrq, int err)
+{
+	struct meson_mx_sdhc_host *host = mmc_priv(mmc);
+	struct mmc_data *data = mrq->data;
+
+	if (!data || data->sg_count <= 0)
+		return;
+
+	dma_unmap_sg(mmc_dev(host->mmc), data->sg, data->sg_len,
+		     mmc_get_dma_dir(data));
+}
+
+static void meson_mx_sdhc_request(struct mmc_host *mmc,
+				  struct mmc_request *mrq)
 {
 	struct meson_mx_sdhc_host *host = mmc_priv(mmc);
 	struct mmc_command *cmd = mrq->cmd;
+	struct mmc_data *data = mrq->data;
+	bool needs_pre_post_req;
 
-	if (!host->error)
-		host->error = meson_mx_sdhc_map_dma(mmc, mrq);
+	needs_pre_post_req = data &&
+			     !(data->host_cookie & MESON_SDHC_PRE_REQ_DONE);
+
+	if (needs_pre_post_req)
+		meson_mx_sdhc_pre_req(mmc, mrq);
 
 	if (host->error) {
 		cmd->error = host->error;
@@ -550,6 +571,9 @@ static void meson_mx_sdhc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 		meson_mx_sdhc_start_cmd(mmc, mrq->sbc);
 	else
 		meson_mx_sdhc_start_cmd(mmc, mrq->cmd);
+
+	if (needs_pre_post_req)
+		meson_mx_sdhc_post_req(mmc, mrq, 0);
 }
 
 static int meson_mx_sdhc_card_busy(struct mmc_host *mmc)
@@ -646,6 +670,8 @@ static int meson_mx_sdhc_execute_tuning(struct mmc_host *mmc, u32 opcode)
 
 static const struct mmc_host_ops meson_mx_sdhc_ops = {
 	.hw_reset			= meson_mx_sdhc_hw_reset,
+	.pre_req			= meson_mx_sdhc_pre_req,
+	.post_req			= meson_mx_sdhc_post_req,
 	.request			= meson_mx_sdhc_request,
 	.set_ios			= meson_mx_sdhc_set_ios,
 	.card_busy			= meson_mx_sdhc_card_busy,
@@ -735,9 +761,6 @@ static irqreturn_t meson_mx_sdhc_irq_thread(int irq, void *irq_data)
 					   2);
 			writel(pdma, host->base);
 		}
-
-		dma_unmap_sg(mmc_dev(host->mmc), cmd->data->sg,
-			     cmd->data->sg_len, mmc_get_dma_dir(cmd->data));
 
 		cmd->data->bytes_xfered = cmd->data->blksz * cmd->data->blocks;
 	}
