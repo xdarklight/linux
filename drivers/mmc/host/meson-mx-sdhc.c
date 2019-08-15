@@ -8,6 +8,7 @@
 #include <linux/bitfield.h>
 #include <linux/clk.h>
 #include <linux/clk-provider.h>
+#include <linux/debugfs.h>
 #include <linux/device.h>
 #include <linux/dma-mapping.h>
 #include <linux/interrupt.h>
@@ -182,12 +183,13 @@ struct meson_mx_sdhc_host {
 	struct clk_mux			clkc_clk_src_sel;
 
 	struct clk			*pclk;
+	struct clk			*clkin2;
 
 	struct clk			*tx_clk;
 	struct clk			*rx_clk;
 	struct clk			*sd_clk;
 	struct clk			*mod_clk;
-	struct clk			*clkin2;
+
 	bool				clocks_enabled;
 
 	const struct meson_mx_sdhc_data	*platform;
@@ -302,9 +304,12 @@ static void meson_mx_sdhc_start_cmd(struct mmc_host *mmc,
 					MESON_SDHC_MISC_MANUAL_STOP,
 					MESON_SDHC_MISC_MANUAL_STOP);
 	} else {
+		pack_len = 0;
+
 		ictl |= MESON_SDHC_ICTL_RESP_OK;
 
-		pack_len = 0;
+		meson_mx_sdhc_mask_bits(mmc, MESON_SDHC_MISC,
+					MESON_SDHC_MISC_MANUAL_STOP, 0);
 	}
 
 	if (cmd->opcode == MMC_STOP_TRANSMISSION)
@@ -1025,12 +1030,50 @@ static void meson_mx_sdhc_init_hw(struct mmc_host *mmc)
 	writel(MESON_SDHC_ISTA_ALL_IRQS, host->base + MESON_SDHC_ISTA);
 }
 
+#if defined(CONFIG_DEBUG_FS)
+static int meson_mx_sdhc_regs_show(struct seq_file *s, void *v)
+{
+	struct meson_mx_sdhc_host *host = s->private;
+
+	seq_printf(s, "ARGU:\t0x%08x\n", readl(host->base + MESON_SDHC_ARGU));
+	seq_printf(s, "SEND:\t0x%08x\n", readl(host->base + MESON_SDHC_SEND));
+	seq_printf(s, "CTRL:\t0x%08x\n", readl(host->base + MESON_SDHC_CTRL));
+	seq_printf(s, "STAT:\t0x%08x\n", readl(host->base + MESON_SDHC_STAT));
+	seq_printf(s, "CLKC:\t0x%08x\n", readl(host->base + MESON_SDHC_CLKC));
+	seq_printf(s, "ADDR:\t0x%08x\n", readl(host->base + MESON_SDHC_ADDR));
+	seq_printf(s, "PDMA:\t0x%08x\n", readl(host->base + MESON_SDHC_PDMA));
+	seq_printf(s, "MISC:\t0x%08x\n", readl(host->base + MESON_SDHC_MISC));
+	seq_printf(s, "DATA:\t0x%08x\n", readl(host->base + MESON_SDHC_DATA));
+	seq_printf(s, "ICTL:\t0x%08x\n", readl(host->base + MESON_SDHC_ICTL));
+	seq_printf(s, "ISTA:\t0x%08x\n", readl(host->base + MESON_SDHC_ISTA));
+	seq_printf(s, "SRST:\t0x%08x\n", readl(host->base + MESON_SDHC_SRST));
+	seq_printf(s, "ESTA:\t0x%08x\n", readl(host->base + MESON_SDHC_ESTA));
+	seq_printf(s, "ENHC:\t0x%08x\n", readl(host->base + MESON_SDHC_ENHC));
+	seq_printf(s, "CLK2:\t0x%08x\n", readl(host->base + MESON_SDHC_CLK2));
+
+	return 0;
+}
+DEFINE_SHOW_ATTRIBUTE(meson_mx_sdhc_regs);
+
+static void meson_mx_sdhc_init_debugfs(struct mmc_host *mmc)
+{
+	if (!mmc->debugfs_root)
+		return;
+
+	debugfs_create_file("regs", S_IRUSR, mmc->debugfs_root, mmc_priv(mmc),
+			    &meson_mx_sdhc_regs_fops);
+}
+#else
+static inline void meson_mx_sdhc_init_debugfs(struct mmc_host *mmc)
+{
+}
+#endif
+
 static int meson_mx_sdhc_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct meson_mx_sdhc_host *host;
 	struct mmc_host *mmc;
-	struct resource *res;
 	int ret, irq;
 
 	mmc = mmc_alloc_host(sizeof(*host), dev);
@@ -1053,8 +1096,7 @@ static int meson_mx_sdhc_probe(struct platform_device *pdev)
 	if (!host->platform)
 		return -EINVAL;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	host->base = devm_ioremap_resource(dev, res);
+	host->base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(host->base))
 		return PTR_ERR(host->base);
 
@@ -1119,6 +1161,8 @@ static int meson_mx_sdhc_probe(struct platform_device *pdev)
 	ret = mmc_add_host(mmc);
 	if (ret)
 		return ret;
+
+	meson_mx_sdhc_init_debugfs(mmc);
 
 	return 0;
 }
