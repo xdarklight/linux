@@ -154,7 +154,6 @@
 	#define MESON_SDHC_CLK2_RX_CLK_PHASE			GENMASK(11, 0)
 	#define MESON_SDHC_CLK2_SD_CLK_PHASE			GENMASK(23, 12)
 
-#define MESON_SDHC_PARENT_CLKS					4
 #define MESON_SDHC_BOUNCE_REQ_SIZE				(512 * 1024)
 #define MESON_SDHC_MAX_BLK_SIZE					512
 #define MESON_SDHC_NUM_TUNING_TRIES				10
@@ -182,13 +181,13 @@ struct meson_mx_sdhc_host {
 	struct clk_gate			clkc_mod_clk_on;
 	struct clk_mux			clkc_clk_src_sel;
 
-	struct clk_bulk_data		parent_clks[MESON_SDHC_PARENT_CLKS];
 	struct clk			*pclk;
 
 	struct clk			*tx_clk;
 	struct clk			*rx_clk;
 	struct clk			*sd_clk;
 	struct clk			*mod_clk;
+	struct clk			*clkin2;
 	bool				clocks_enabled;
 
 	const struct meson_mx_sdhc_data	*platform;
@@ -582,10 +581,11 @@ static int meson_mx_sdhc_execute_tuning(struct mmc_host *mmc, u32 opcode)
 	start = 0;
 	best_len = 0;
 
-	old_phase = clk_get_phase(host->rx_clk);
+	val = readl(host->base + MESON_SDHC_CLK2);
+	old_phase = FIELD_GET(MESON_SDHC_CLK2_RX_CLK_PHASE, val);
 
-	div = FIELD_GET(MESON_SDHC_CLKC_CLK_DIV,
-			readl(host->base + MESON_SDHC_CLKC));
+	val = readl(host->base + MESON_SDHC_CLKC);
+	div = FIELD_GET(MESON_SDHC_CLKC_CLK_DIV, val);
 
 	for (curr_phase = 0; curr_phase <= div; curr_phase++) {
 		val = FIELD_PREP(MESON_SDHC_CLK2_RX_CLK_PHASE, curr_phase);
@@ -634,7 +634,7 @@ static int meson_mx_sdhc_execute_tuning(struct mmc_host *mmc, u32 opcode)
 	if (!len && !best_len)
 		return -EIO;
 
-	dev_dbg(mmc_dev(mmc), "Tuned RX clock phase to %u deg\n", new_phase);
+	dev_dbg(mmc_dev(mmc), "Tuned RX clock phase to %u\n", new_phase);
 
 	return 0;
 }
@@ -764,16 +764,11 @@ static struct clk *meson_mx_sdhc_register_clk(struct device *dev,
 					      struct clk_hw *hw,
 					      const char *name,
 					      int num_parents,
-					      struct clk **parents,
+					      const struct clk_parent_data *parent_data,
 					      unsigned long flags,
 					      const struct clk_ops *ops)
 {
-	const char *parent_names[MESON_SDHC_PARENT_CLKS];
 	struct clk_init_data init;
-	int i;
-
-	for (i = 0; i < num_parents; i++)
-		parent_names[i] = __clk_get_name(parents[i]);
 
 	init.name = devm_kasprintf(dev, GFP_KERNEL, "%s#%s", dev_name(dev),
 				   name);
@@ -781,8 +776,8 @@ static struct clk *meson_mx_sdhc_register_clk(struct device *dev,
 		return ERR_PTR(-ENOMEM);
 
 	init.num_parents = num_parents;
-	init.parent_names = parent_names;
-	init.flags = CLK_SET_RATE_PARENT | flags;
+	init.parent_data = parent_data;
+	init.flags = flags;
 	init.ops = ops;
 
 	hw->init = &init;
@@ -792,12 +787,34 @@ static struct clk *meson_mx_sdhc_register_clk(struct device *dev,
 
 static int meson_mx_sdhc_register_clks(struct meson_mx_sdhc_host *host)
 {
-	struct clk *mux_parents[MESON_SDHC_PARENT_CLKS];
+	static const struct clk_div_table clk_div_table[] = {
+		{ .div = 6, .val = 5, },
+		{ .div = 8, .val = 7, },
+		{ .div = 9, .val = 8, },
+		{ .div = 10, .val = 9, },
+		{ .div = 12, .val = 11, },
+		{ .div = 16, .val = 15, },
+		{ .div = 18, .val = 17, },
+		{ .div = 34, .val = 33, },
+		{ .div = 142, .val = 141, },
+		{ .div = 850, .val = 849, },
+		{ .div = 2126, .val = 2125, },
+		{ .div = 4096, .val = 4095, },
+		{ /* sentinel */ },
+	};
+	struct clk_parent_data mux_parent_data[] = {
+		{ .fw_name = "clkin0", .index = -1, },
+		{ .fw_name = "clkin1", .index = -1, },
+		{ .fw_name = "clkin2", .index = -1, },
+		{ .fw_name = "clkin3", .index = -1, },
+	};
+	struct clk_parent_data div_parent_data = {
+		.hw = &host->clkc_clk_src_sel.hw, .index = -1,
+	};
+	struct clk_parent_data gate_parent_data = {
+		.hw = &host->clkc_clk_div.hw, .index = -1,
+	};
 	struct clk *mux_clk, *div_clk;
-	int i;
-
-	for (i = 0; i < MESON_SDHC_PARENT_CLKS; i++)
-		mux_parents[i] = host->parent_clks[i].clk;
 
 	host->clkc_clk_src_sel.reg = host->base + MESON_SDHC_CLKC;
 	host->clkc_clk_src_sel.shift = __ffs(MESON_SDHC_CLKC_CLK_SRC_SEL);
@@ -806,8 +823,9 @@ static int meson_mx_sdhc_register_clks(struct meson_mx_sdhc_host *host)
 	mux_clk = meson_mx_sdhc_register_clk(mmc_dev(host->mmc),
 					     &host->clkc_clk_src_sel.hw,
 					     "clk_src_sel",
-					     MESON_SDHC_PARENT_CLKS,
-					     mux_parents,
+					     ARRAY_SIZE(mux_parent_data),
+					     mux_parent_data,
+					     CLK_SET_RATE_PARENT |
 					     CLK_SET_RATE_NO_REPARENT,
 					     &clk_mux_ops);
 	if (IS_ERR(mux_clk))
@@ -817,9 +835,10 @@ static int meson_mx_sdhc_register_clks(struct meson_mx_sdhc_host *host)
 	host->clkc_clk_div.shift = __ffs(MESON_SDHC_CLKC_CLK_DIV);
 	host->clkc_clk_div.width = fls(MESON_SDHC_CLKC_CLK_DIV) -
 				   host->clkc_clk_div.shift;
+	host->clkc_clk_div.table = clk_div_table;
 	div_clk = meson_mx_sdhc_register_clk(mmc_dev(host->mmc),
 					     &host->clkc_clk_div.hw,
-					     "clk_div", 1, &mux_clk,
+					     "clk_div", 1, &div_parent_data,
 					     CLK_SET_RATE_PARENT,
 					     &clk_divider_ops);
 	if (IS_ERR(div_clk))
@@ -829,8 +848,9 @@ static int meson_mx_sdhc_register_clks(struct meson_mx_sdhc_host *host)
 	host->clkc_mod_clk_on.bit_idx = __ffs(MESON_SDHC_CLKC_MOD_CLK_ON);
 	host->mod_clk = meson_mx_sdhc_register_clk(mmc_dev(host->mmc),
 						   &host->clkc_mod_clk_on.hw,
-						   "mod_clk_on", 1, &div_clk,
-						   0, &clk_gate_ops);
+						   "mod_clk_on", 1,
+						   &gate_parent_data, 0,
+						   &clk_gate_ops);
 	if (IS_ERR(host->mod_clk))
 		return PTR_ERR(host->mod_clk);
 
@@ -838,8 +858,8 @@ static int meson_mx_sdhc_register_clks(struct meson_mx_sdhc_host *host)
 	host->clkc_tx_clk_on.bit_idx = __ffs(MESON_SDHC_CLKC_TX_CLK_ON);
 	host->tx_clk = meson_mx_sdhc_register_clk(mmc_dev(host->mmc),
 						  &host->clkc_tx_clk_on.hw,
-						  "tx_clk_on", 1, &div_clk,
-						  CLK_SET_RATE_GATE |
+						  "tx_clk_on", 1,
+						  &gate_parent_data,
 						  CLK_SET_RATE_PARENT,
 						  &clk_gate_ops);
 	if (IS_ERR(host->tx_clk))
@@ -849,8 +869,8 @@ static int meson_mx_sdhc_register_clks(struct meson_mx_sdhc_host *host)
 	host->clkc_rx_clk_on.bit_idx = __ffs(MESON_SDHC_CLKC_RX_CLK_ON);
 	host->rx_clk = meson_mx_sdhc_register_clk(mmc_dev(host->mmc),
 						  &host->clkc_rx_clk_on.hw,
-						  "rx_clk_on", 1, &div_clk,
-						  CLK_SET_RATE_GATE |
+						  "rx_clk_on", 1,
+						  &gate_parent_data,
 						  CLK_SET_RATE_PARENT,
 						  &clk_gate_ops);
 	if (IS_ERR(host->rx_clk))
@@ -860,20 +880,19 @@ static int meson_mx_sdhc_register_clks(struct meson_mx_sdhc_host *host)
 	host->clkc_sd_clk_on.bit_idx = __ffs(MESON_SDHC_CLKC_SD_CLK_ON);
 	host->sd_clk = meson_mx_sdhc_register_clk(mmc_dev(host->mmc),
 						  &host->clkc_sd_clk_on.hw,
-						  "sd_clk_on", 1, &div_clk,
-						  CLK_SET_RATE_GATE |
+						  "sd_clk_on", 1,
+						  &gate_parent_data,
 						  CLK_SET_RATE_PARENT,
 						  &clk_gate_ops);
-
 	if (IS_ERR(host->sd_clk))
 		return PTR_ERR(host->sd_clk);
 
 	/*
-	 * currently only fclk_div3 is supported as input clock as other
-	 * input clocks are resulting in timeouts (potentially due to the
-	 * phase setup in .set_ios).
+	 * currently only clkin2 (fclk_div3) is supported as input clock
+	 * because the other input clocks result in timeouts (most probably
+	 * due to the phase setup in .set_ios).
 	 */
-	return clk_set_parent(mux_clk, host->parent_clks[2].clk);
+	return clk_set_parent(mux_clk, host->clkin2);
 }
 
 static void meson_mx_sdhc_init_hw_meson8(struct mmc_host *mmc)
@@ -1043,14 +1062,9 @@ static int meson_mx_sdhc_probe(struct platform_device *pdev)
 	if (IS_ERR(host->pclk))
 		return PTR_ERR(host->pclk);
 
-	host->parent_clks[0].id = "clkin0";
-	host->parent_clks[1].id = "clkin1";
-	host->parent_clks[2].id = "clkin2";
-	host->parent_clks[3].id = "clkin3";
-	ret = devm_clk_bulk_get(dev, MESON_SDHC_PARENT_CLKS,
-				host->parent_clks);
-	if (ret)
-		return ret;
+	host->clkin2 = devm_clk_get(dev, "clkin2");
+	if (IS_ERR(host->clkin2))
+		return PTR_ERR(host->clkin2);
 
 	/* accessing any register requires the module clock to be enabled: */
 	ret = clk_prepare_enable(host->pclk);
@@ -1083,9 +1097,9 @@ static int meson_mx_sdhc_probe(struct platform_device *pdev)
 	mmc->max_seg_size = mmc->max_req_size;
 	mmc->max_blk_count = FIELD_GET(MESON_SDHC_SEND_TOTAL_PACK, ~0);
 	mmc->max_blk_size = MESON_SDHC_MAX_BLK_SIZE;
-	mmc->max_busy_timeout = 0; // TODO: actual value?
+	mmc->max_busy_timeout = 30 * MSEC_PER_SEC;
 	mmc->f_min = clk_round_rate(host->sd_clk, 1);
-	mmc->f_max = clk_round_rate(host->sd_clk, ~0UL);
+	mmc->f_max = clk_round_rate(host->sd_clk, ULONG_MAX);
 	mmc->max_current_180 = 300;
 	mmc->max_current_330 = 300;
 	mmc->caps |= MMC_CAP_ERASE | MMC_CAP_CMD23 | MMC_CAP_HW_RESET;
