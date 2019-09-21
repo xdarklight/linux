@@ -23,11 +23,13 @@ description: |+
 properties:
   compatible:
     enum:
+      - amlogic,meson8-pwrc
+      - amlogic,meson8b-pwrc
       - amlogic,meson-g12a-pwrc
       - amlogic,meson-sm1-pwrc
 
   clocks:
-    minItems: 2
+    minItems: 1
 
   clock-names:
     items:
@@ -35,7 +37,7 @@ properties:
       - const: vapb
 
   resets:
-    minItems: 11
+    minItems: 10
 
   reset-names:
     items:
