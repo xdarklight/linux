@@ -23,33 +23,11 @@ description: |+
 properties:
   compatible:
     enum:
+      - amlogic,meson8-pwrc
+      - amlogic,meson8b-pwrc
+      - amlogic,meson8m2-pwrc
       - amlogic,meson-g12a-pwrc
       - amlogic,meson-sm1-pwrc
-
-  clocks:
-    minItems: 2
-
-  clock-names:
-    items:
-      - const: vpu
-      - const: vapb
-
-  resets:
-    minItems: 11
-
-  reset-names:
-    items:
-      - const: viu
-      - const: venc
-      - const: vcbus
-      - const: bt656
-      - const: rdma
-      - const: venci
-      - const: vencp
-      - const: vdac
-      - const: vdi6
-      - const: vencl
-      - const: vid_lock
 
   "#power-domain-cells":
     const: 1
@@ -59,12 +37,88 @@ properties:
     allOf:
       - $ref: /schemas/types.yaml#/definitions/phandle
 
+allOf:
+  - if:
+      properties:
+        compatible:
+          enum:
+            - amlogic,meson8-pwrc
+    then:
+      properties:
+        clocks:
+          minItems: 1
+          maxItems: 1
+        clock-names:
+          items:
+            - const: vpu
+
+  - if:
+      properties:
+        compatible:
+          enum:
+            - amlogic,meson8b-pwrc
+            - amlogic,meson8m2-pwrc
+    then:
+      properties:
+        resets:
+          minItems: 11
+          maxItems: 11
+        reset-names:
+          items:
+            - const: dblk
+            - const: pic_dc
+            - const: hdmi_apb
+            - const: hdmi_system
+            - const: venci
+            - const: vencp
+            - const: vdac
+            - const: vencl
+            - const: viu
+            - const: venc
+            - const: rdma
+        clocks:
+          minItems: 1
+          maxItems: 1
+        clock-names:
+          items:
+            - const: vpu
+
+  - if:
+      properties:
+        compatible:
+          enum:
+            - amlogic,meson-g12a-pwrc
+            - amlogic,meson-sm1-pwrc
+    then:
+      properties:
+        resets:
+          minItems: 11
+          maxItems: 11
+        reset-names:
+          items:
+            - const: viu
+            - const: venc
+            - const: vcbus
+            - const: bt656
+            - const: rdma
+            - const: venci
+            - const: vencp
+            - const: vdac
+            - const: vdi6
+            - const: vencl
+            - const: vid_lock
+        clocks:
+          minItems: 2
+          maxItems: 2
+        clock-names:
+          items:
+            - const: vpu
+            - const: vapb
+
 required:
   - compatible
   - clocks
   - clock-names
-  - resets
-  - reset-names
   - "#power-domain-cells"
   - amlogic,ao-sysctrl
 
@@ -83,11 +137,10 @@ examples:
                    <&reset_vencp>,
                    <&reset_vdac>,
                    <&reset_vdi6>,
-                   <&reset_vencl>,
-                   <&reset_vid_lock>;
+                   <&reset_vencl>;
           reset-names = "viu", "venc", "vcbus", "bt656",
                         "rdma", "venci", "vencp", "vdac",
-                        "vdi6", "vencl", "vid_lock";
+                        "vdi6", "vencl";
           clocks = <&clk_vpu>, <&clk_vapb>;
           clock-names = "vpu", "vapb";
     };
