@@ -68,12 +68,20 @@ properties:
           - amlogic,meson-g12a-vpu # G12A (S905X2, S905Y2, S905D2)
 
   reg:
+    minItems: 1
     maxItems: 2
 
   reg-names:
+    minItems: 1
+    maxItems: 2
     items:
       - const: vpu
       - const: hhi
+
+  amlogic,hhi-sysctrl:
+    $ref: /schemas/types.yaml#definitions/phandle
+    description:
+      The reference to the HHI syscon
 
   interrupts:
     maxItems: 1
@@ -113,8 +121,9 @@ examples:
   - |
     vpu: vpu@d0100000 {
         compatible = "amlogic,meson-gxbb-vpu", "amlogic,meson-gx-vpu";
-        reg = <0xd0100000 0x100000>, <0xc883c000 0x1000>;
-        reg-names = "vpu", "hhi";
+        reg = <0xd0100000 0x100000>;
+        reg-names = "vpu";
+        amlogic,hhi-sysctrl = <&hhi>;
         interrupts = <3>;
         #address-cells = <1>;
         #size-cells = <0>;
