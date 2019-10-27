@@ -155,7 +155,6 @@
 	#define MESON_SDHC_CLK2_RX_CLK_PHASE			GENMASK(11, 0)
 	#define MESON_SDHC_CLK2_SD_CLK_PHASE			GENMASK(23, 12)
 
-#define MESON_SDHC_BOUNCE_REQ_SIZE				(512 * 1024)
 #define MESON_SDHC_MAX_BLK_SIZE					512
 #define MESON_SDHC_NUM_TUNING_TRIES				10
 
@@ -183,7 +182,6 @@ struct meson_mx_sdhc_host {
 	struct clk_mux			clkc_clk_src_sel;
 
 	struct clk			*pclk;
-	struct clk			*clkin2;
 
 	struct clk			*tx_clk;
 	struct clk			*rx_clk;
@@ -723,6 +721,8 @@ static irqreturn_t meson_mx_sdhc_irq_thread(int irq, void *irq_data)
 	if (cmd->data && !cmd->data->error) {
 		if (!host->platform->hardware_flush_all_cmds &&
 		    cmd->flags & MMC_DATA_READ) {
+			meson_mx_sdhc_wait_cmd_ready(host->mmc);
+
 			pdma = readl(host->base + MESON_SDHC_PDMA);
 			pdma |= FIELD_PREP(MESON_SDHC_PDMA_RXFIFO_MANUAL_FLUSH,
 					   2);
@@ -800,7 +800,7 @@ static int meson_mx_sdhc_register_clks(struct meson_mx_sdhc_host *host)
 		{ .div = 4096, .val = 4095, },
 		{ /* sentinel */ },
 	};
-	struct clk_parent_data mux_parent_data[] = {
+	static const struct clk_parent_data mux_parent_data[] = {
 		{ .fw_name = "clkin0", .index = -1, },
 		{ .fw_name = "clkin1", .index = -1, },
 		{ .fw_name = "clkin2", .index = -1, },
@@ -812,35 +812,31 @@ static int meson_mx_sdhc_register_clks(struct meson_mx_sdhc_host *host)
 	struct clk_parent_data gate_parent_data = {
 		.hw = &host->clkc_clk_div.hw, .index = -1,
 	};
-	struct clk *mux_clk, *div_clk;
+	struct clk *clk;
 
 	host->clkc_clk_src_sel.reg = host->base + MESON_SDHC_CLKC;
 	host->clkc_clk_src_sel.shift = __ffs(MESON_SDHC_CLKC_CLK_SRC_SEL);
 	host->clkc_clk_src_sel.mask = MESON_SDHC_CLKC_CLK_SRC_SEL >>
 				      host->clkc_clk_src_sel.shift;
-	mux_clk = meson_mx_sdhc_register_clk(mmc_dev(host->mmc),
-					     &host->clkc_clk_src_sel.hw,
-					     "clk_src_sel",
-					     ARRAY_SIZE(mux_parent_data),
-					     mux_parent_data,
-					     CLK_SET_RATE_PARENT |
-					     CLK_SET_RATE_NO_REPARENT,
-					     &clk_mux_ops);
-	if (IS_ERR(mux_clk))
-		return PTR_ERR(mux_clk);
+	clk = meson_mx_sdhc_register_clk(mmc_dev(host->mmc),
+					 &host->clkc_clk_src_sel.hw,
+					 "clk_src_sel",
+					 ARRAY_SIZE(mux_parent_data),
+					 mux_parent_data, 0, &clk_mux_ops);
+	if (IS_ERR(clk))
+		return PTR_ERR(clk);
 
 	host->clkc_clk_div.reg = host->base + MESON_SDHC_CLKC;
 	host->clkc_clk_div.shift = __ffs(MESON_SDHC_CLKC_CLK_DIV);
 	host->clkc_clk_div.width = fls(MESON_SDHC_CLKC_CLK_DIV) -
 				   host->clkc_clk_div.shift;
 	host->clkc_clk_div.table = clk_div_table;
-	div_clk = meson_mx_sdhc_register_clk(mmc_dev(host->mmc),
-					     &host->clkc_clk_div.hw,
-					     "clk_div", 1, &div_parent_data,
-					     CLK_SET_RATE_PARENT,
-					     &clk_divider_ops);
-	if (IS_ERR(div_clk))
-		return PTR_ERR(div_clk);
+	clk = meson_mx_sdhc_register_clk(mmc_dev(host->mmc),
+					 &host->clkc_clk_div.hw, "clk_div", 1,
+					 &div_parent_data, CLK_SET_RATE_PARENT,
+					 &clk_divider_ops);
+	if (IS_ERR(clk))
+		return PTR_ERR(clk);
 
 	host->clkc_mod_clk_on.reg = host->base + MESON_SDHC_CLKC;
 	host->clkc_mod_clk_on.bit_idx = __ffs(MESON_SDHC_CLKC_MOD_CLK_ON);
@@ -885,12 +881,7 @@ static int meson_mx_sdhc_register_clks(struct meson_mx_sdhc_host *host)
 	if (IS_ERR(host->sd_clk))
 		return PTR_ERR(host->sd_clk);
 
-	/*
-	 * currently only clkin2 (fclk_div3) is supported as input clock
-	 * because the other input clocks result in timeouts (most probably
-	 * due to the phase setup in .set_ios).
-	 */
-	return clk_set_parent(mux_clk, host->clkin2);
+	return 0;
 }
 
 static void meson_mx_sdhc_init_hw_meson8(struct mmc_host *mmc)
@@ -1023,7 +1014,6 @@ static void meson_mx_sdhc_init_hw(struct mmc_host *mmc)
 	writel(MESON_SDHC_ISTA_ALL_IRQS, host->base + MESON_SDHC_ISTA);
 }
 
-#if defined(CONFIG_DEBUG_FS)
 static int meson_mx_sdhc_regs_show(struct seq_file *s, void *v)
 {
 	struct meson_mx_sdhc_host *host = s->private;
@@ -1056,11 +1046,6 @@ static void meson_mx_sdhc_init_debugfs(struct mmc_host *mmc)
 	debugfs_create_file("regs", S_IRUSR, mmc->debugfs_root, mmc_priv(mmc),
 			    &meson_mx_sdhc_regs_fops);
 }
-#else
-static inline void meson_mx_sdhc_init_debugfs(struct mmc_host *mmc)
-{
-}
-#endif
 
 static int meson_mx_sdhc_probe(struct platform_device *pdev)
 {
@@ -1097,10 +1082,6 @@ static int meson_mx_sdhc_probe(struct platform_device *pdev)
 	if (IS_ERR(host->pclk))
 		return PTR_ERR(host->pclk);
 
-	host->clkin2 = devm_clk_get(dev, "clkin2");
-	if (IS_ERR(host->clkin2))
-		return PTR_ERR(host->clkin2);
-
 	/* accessing any register requires the module clock to be enabled: */
 	ret = clk_prepare_enable(host->pclk);
 	if (ret) {
@@ -1128,7 +1109,7 @@ static int meson_mx_sdhc_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-	mmc->max_req_size = MESON_SDHC_BOUNCE_REQ_SIZE;
+	mmc->max_req_size = SZ_128K;
 	mmc->max_seg_size = mmc->max_req_size;
 	mmc->max_blk_count = FIELD_GET(MESON_SDHC_SEND_TOTAL_PACK, ~0);
 	mmc->max_blk_size = MESON_SDHC_MAX_BLK_SIZE;
