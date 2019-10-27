@@ -299,17 +299,10 @@ static void meson_mx_sdhc_start_cmd(struct mmc_host *mmc,
 		else
 			/* software flush: */
 			ictl |= MESON_SDHC_ICTL_DATA_XFER_OK;
-
-		meson_mx_sdhc_mask_bits(mmc, MESON_SDHC_MISC,
-					MESON_SDHC_MISC_MANUAL_STOP,
-					MESON_SDHC_MISC_MANUAL_STOP);
 	} else {
 		pack_len = 0;
 
 		ictl |= MESON_SDHC_ICTL_RESP_OK;
-
-		meson_mx_sdhc_mask_bits(mmc, MESON_SDHC_MISC,
-					MESON_SDHC_MISC_MANUAL_STOP, 0);
 	}
 
 	if (cmd->opcode == MMC_STOP_TRANSMISSION)
