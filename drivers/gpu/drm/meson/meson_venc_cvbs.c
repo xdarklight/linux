@@ -49,7 +49,6 @@ struct meson_cvbs_mode meson_cvbs_modes[MESON_CVBS_MODES_COUNT] = {
 				 720, 732, 795, 864, 0, 576, 580, 586, 625, 0,
 				 DRM_MODE_FLAG_INTERLACE),
 			.vrefresh = 50,
-			.picture_aspect_ratio = HDMI_PICTURE_ASPECT_4_3,
 		},
 	},
 	{ /* NTSC */
@@ -59,7 +58,6 @@ struct meson_cvbs_mode meson_cvbs_modes[MESON_CVBS_MODES_COUNT] = {
 				720, 739, 801, 858, 0, 480, 488, 494, 525, 0,
 				DRM_MODE_FLAG_INTERLACE),
 			.vrefresh = 60,
-			.picture_aspect_ratio = HDMI_PICTURE_ASPECT_4_3,
 		},
 	},
 };
