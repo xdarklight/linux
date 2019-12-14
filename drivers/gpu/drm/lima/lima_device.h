@@ -94,6 +94,24 @@ struct lima_device {
 
 	u32 *dlbu_cpu;
 	dma_addr_t dlbu_dma;
+
+	struct {
+		struct devfreq *devfreq;
+		bool has_opp_of_table;
+		struct opp_table *clkname_opp_table;
+		struct opp_table *regulators_opp_table;
+		struct thermal_cooling_device *cooling;
+		unsigned int busy_count;
+		ktime_t busy_time;
+		ktime_t idle_time;
+		ktime_t time_last_update;
+		/*
+		 * Protect busy_count, busy_time, idle_time and
+		 * time_last_update because these can be updated concurrently,
+		 * for example by the GP and PP interrupts.
+		 */
+		spinlock_t lock;
+	} devfreq;
 };
 
 static inline struct lima_device *
