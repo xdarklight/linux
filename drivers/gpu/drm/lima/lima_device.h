@@ -5,6 +5,7 @@
 #define __LIMA_DEVICE_H__
 
 #include <drm/drm_device.h>
+#include <linux/atomic.h>
 #include <linux/delay.h>
 
 #include "lima_sched.h"
@@ -94,6 +95,23 @@ struct lima_device {
 
 	u32 *dlbu_cpu;
 	dma_addr_t dlbu_dma;
+
+	struct {
+		struct devfreq *devfreq;
+		struct opp_table *clkname_opp_table;
+		struct opp_table *regulators_opp_table;
+		struct thermal_cooling_device *cooling;
+		ktime_t busy_time;
+		ktime_t idle_time;
+		ktime_t time_last_update;
+		atomic_t busy_count;
+		/*
+		 * Protect busy_time, idle_time and time_last_update because
+		 * these can be updated concurrently - for example by the GP
+		 * and PP interrupts.
+		 */
+		spinlock_t lock;
+	} devfreq;
 };
 
 static inline struct lima_device *
