@@ -130,6 +130,16 @@ config SND_MESON_AXG_PDM
 config SND_MESON_CARD_UTILS
 	tristate
 
+config SND_MESON_GX_SOUND_CARD
+	tristate "Amlogic GX Sound Card Support"
+	select SND_MESON_CARD_UTILS
+	imply SND_MESON_AIU_I2S_FIFO
+	imply SND_MESON_AIU_SPDIF_FIFO
+	imply SND_MESON_AIU_I2S_ENCODE
+	imply SND_MESON_AIU_SPDIF_ENCODE
+	help
+	  Select Y or M to add support for the GXBB/GXL SoC sound card
+
 config SND_MESON_G12A_TOHDMITX
 	tristate "Amlogic G12A To HDMI TX Control Support"
 	select REGMAP_MMIO
