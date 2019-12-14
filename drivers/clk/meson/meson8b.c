@@ -1805,7 +1805,7 @@ static struct clk_regmap meson8b_mali_0_sel = {
 		 * RGMII (Ethernet). We don't want to change the audio or
 		 * Ethernet clocks when setting the GPU frequency.
 		 */
-		.flags = 0,
+		.flags = CLK_SET_RATE_GATE,
 	},
 };
 
@@ -1822,7 +1822,7 @@ static struct clk_regmap meson8b_mali_0_div = {
 			&meson8b_mali_0_sel.hw
 		},
 		.num_parents = 1,
-		.flags = CLK_SET_RATE_PARENT,
+		.flags = CLK_SET_RATE_GATE | CLK_SET_RATE_PARENT,
 	},
 };
 
@@ -1860,7 +1860,7 @@ static struct clk_regmap meson8b_mali_1_sel = {
 		 * RGMII (Ethernet). We don't want to change the audio or
 		 * Ethernet clocks when setting the GPU frequency.
 		 */
-		.flags = 0,
+		.flags = CLK_SET_RATE_GATE,
 	},
 };
 
@@ -1877,7 +1877,7 @@ static struct clk_regmap meson8b_mali_1_div = {
 			&meson8b_mali_1_sel.hw
 		},
 		.num_parents = 1,
-		.flags = CLK_SET_RATE_PARENT,
+		.flags = CLK_SET_RATE_GATE | CLK_SET_RATE_PARENT,
 	},
 };
 
