@@ -71,7 +71,7 @@
 	phy-handle = <&eth_phy0>;
 	phy-mode = "rgmii";
 
-	amlogic,tx-delay-ns = <4>;
+	amlogic,tx-delay-ns = <2>;
 
 	mdio {
 		compatible = "snps,dwmac-mdio";
