@@ -33,6 +33,10 @@
 #define PRG_ETH0_CLK_M250_SEL_SHIFT	4
 #define PRG_ETH0_CLK_M250_SEL_MASK	GENMASK(4, 4)
 
+/* TX clock delay in ns = "8ns / 4 * tx_dly_val" (where 8ns are exactly one
+ * cycle of the 125MHz RGMII TX clock):
+ * 0ns = 0x0, 2ns = 0x1, 4ns = 0x2, 6ns = 0x3
+ */
 #define PRG_ETH0_TXDLY_MASK		GENMASK(6, 5)
 
 /* divider for the result of m250_sel */
@@ -43,6 +47,11 @@
 
 #define PRG_ETH0_INVERTED_RMII_CLK	BIT(11)
 #define PRG_ETH0_TX_AND_PHY_REF_CLK	BIT(12)
+
+#define PRG_ETH0_ADJ_ENABLE		BIT(13)
+#define PRG_ETH0_ADJ_SETUP		BIT(14)
+#define PRG_ETH0_ADJ_DELAY		GENMASK(19, 15)
+#define PRG_ETH0_ADJ_SKEW		GENMASK(24, 20)
 
 #define MUX_CLK_NUM_PARENTS		2
 
@@ -241,28 +250,37 @@ static int meson_axg_set_phy_mode(struct meson8b_dwmac *dwmac)
 
 static int meson8b_init_prg_eth(struct meson8b_dwmac *dwmac)
 {
+	u8 tx_dly_val = dwmac->tx_delay_ns >> 1;
+	u32 delay_config;
 	int ret;
-	u8 tx_dly_val = 0;
 
 	switch (dwmac->phy_mode) {
 	case PHY_INTERFACE_MODE_RGMII:
+		delay_config = FIELD_PREP(PRG_ETH0_TXDLY_MASK, tx_dly_val);
+		delay_config |= PRG_ETH0_ADJ_ENABLE | PRG_ETH0_ADJ_SETUP;
+		break;
 	case PHY_INTERFACE_MODE_RGMII_RXID:
-		/* TX clock delay in ns = "8ns / 4 * tx_dly_val" (where
-		 * 8ns are exactly one cycle of the 125MHz RGMII TX clock):
-		 * 0ns = 0x0, 2ns = 0x1, 4ns = 0x2, 6ns = 0x3
-		 */
-		tx_dly_val = dwmac->tx_delay_ns >> 1;
-		/* fall through */
-
-	case PHY_INTERFACE_MODE_RGMII_ID:
+		delay_config = FIELD_PREP(PRG_ETH0_TXDLY_MASK, tx_dly_val);
+		break;
 	case PHY_INTERFACE_MODE_RGMII_TXID:
+		delay_config = PRG_ETH0_ADJ_ENABLE | PRG_ETH0_ADJ_SETUP;
+		break;
+	case PHY_INTERFACE_MODE_RGMII_ID:
+	case PHY_INTERFACE_MODE_RMII:
+	default:
+		delay_config = 0;
+		break;
+	};
+
+	meson8b_dwmac_mask_bits(dwmac, PRG_ETH0, PRG_ETH0_TXDLY_MASK |
+				PRG_ETH0_ADJ_ENABLE | PRG_ETH0_ADJ_SETUP |
+				PRG_ETH0_ADJ_DELAY | PRG_ETH0_ADJ_SKEW,
+				delay_config);
+
+	if (phy_interface_mode_is_rgmii(dwmac->phy_mode)) {
 		/* only relevant for RMII mode -> disable in RGMII mode */
 		meson8b_dwmac_mask_bits(dwmac, PRG_ETH0,
 					PRG_ETH0_INVERTED_RMII_CLK, 0);
-
-		meson8b_dwmac_mask_bits(dwmac, PRG_ETH0, PRG_ETH0_TXDLY_MASK,
-					FIELD_PREP(PRG_ETH0_TXDLY_MASK,
-						   tx_dly_val));
 
 		/* Configure the 125MHz RGMII TX clock, the IP block changes
 		 * the output automatically (= without us having to configure
@@ -286,24 +304,11 @@ static int meson8b_init_prg_eth(struct meson8b_dwmac *dwmac)
 		devm_add_action_or_reset(dwmac->dev,
 					(void(*)(void *))clk_disable_unprepare,
 					dwmac->rgmii_tx_clk);
-		break;
-
-	case PHY_INTERFACE_MODE_RMII:
+	} else {
 		/* invert internal clk_rmii_i to generate 25/2.5 tx_rx_clk */
 		meson8b_dwmac_mask_bits(dwmac, PRG_ETH0,
 					PRG_ETH0_INVERTED_RMII_CLK,
 					PRG_ETH0_INVERTED_RMII_CLK);
-
-		/* TX clock delay cannot be configured in RMII mode */
-		meson8b_dwmac_mask_bits(dwmac, PRG_ETH0, PRG_ETH0_TXDLY_MASK,
-					0);
-
-		break;
-
-	default:
-		dev_err(dwmac->dev, "unsupported phy-mode %s\n",
-			phy_modes(dwmac->phy_mode));
-		return -EINVAL;
 	}
 
 	/* enable TX_CLK and PHY_REF_CLK generator */
