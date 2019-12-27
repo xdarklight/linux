@@ -9,6 +9,7 @@
 #include <dt-bindings/gpio/meson8b-gpio.h>
 #include <dt-bindings/reset/amlogic,meson8b-reset.h>
 #include <dt-bindings/reset/amlogic,meson8b-clkc-reset.h>
+#include <dt-bindings/thermal/thermal.h>
 #include "meson.dtsi"
 
 / {
@@ -25,6 +26,7 @@
 			resets = <&clkc CLKC_RESET_CPU0_SOFT_RESET>;
 			operating-points-v2 = <&cpu_opp_table>;
 			clocks = <&clkc CLKID_CPUCLK>;
+			#cooling-cells = <2>; /* min followed by max */
 		};
 
 		cpu1: cpu@201 {
@@ -36,6 +38,7 @@
 			resets = <&clkc CLKC_RESET_CPU1_SOFT_RESET>;
 			operating-points-v2 = <&cpu_opp_table>;
 			clocks = <&clkc CLKID_CPUCLK>;
+			#cooling-cells = <2>; /* min followed by max */
 		};
 
 		cpu2: cpu@202 {
@@ -47,6 +50,7 @@
 			resets = <&clkc CLKC_RESET_CPU2_SOFT_RESET>;
 			operating-points-v2 = <&cpu_opp_table>;
 			clocks = <&clkc CLKID_CPUCLK>;
+			#cooling-cells = <2>; /* min followed by max */
 		};
 
 		cpu3: cpu@203 {
@@ -58,6 +62,7 @@
 			resets = <&clkc CLKC_RESET_CPU3_SOFT_RESET>;
 			operating-points-v2 = <&cpu_opp_table>;
 			clocks = <&clkc CLKID_CPUCLK>;
+			#cooling-cells = <2>; /* min followed by max */
 		};
 	};
 
@@ -166,6 +171,79 @@
 		};
 	};
 
+	thermal_sensor: thermal-sensor {
+		compatible = "generic-adc-thermal";
+		#thermal-sensor-cells = <0>;
+		io-channels = <&saradc 8>;
+		io-channel-names = "sensor-channel";
+	};
+
+	thermal-zones {
+		soc {
+			/* milliseconds */
+			polling-delay-passive = <250>;
+			polling-delay = <1000>;
+			thermal-sensors = <&thermal_sensor>;
+
+			cooling-maps {
+				map0 {
+					trip = <&soc_alert0>;
+					cooling-device = <&cpu0 1 THERMAL_NO_LIMIT>,
+							 <&cpu1 1 THERMAL_NO_LIMIT>,
+							 <&cpu2 1 THERMAL_NO_LIMIT>,
+							 <&cpu3 1 THERMAL_NO_LIMIT>,
+							 <&mali 1 THERMAL_NO_LIMIT>;
+				};
+				map1 {
+					trip = <&soc_alert1>;
+					cooling-device = <&cpu0 3 THERMAL_NO_LIMIT>,
+							 <&cpu1 3 THERMAL_NO_LIMIT>,
+							 <&cpu2 3 THERMAL_NO_LIMIT>,
+							 <&cpu3 3 THERMAL_NO_LIMIT>,
+							 <&mali 2 THERMAL_NO_LIMIT>;
+				};
+				map2 {
+					trip = <&soc_alert2>;
+					cooling-device = <&cpu0 6 THERMAL_NO_LIMIT>,
+							 <&cpu1 6 THERMAL_NO_LIMIT>,
+							 <&cpu2 6 THERMAL_NO_LIMIT>,
+							 <&cpu3 6 THERMAL_NO_LIMIT>,
+							 <&mali 3 THERMAL_NO_LIMIT>;
+				};
+			};
+
+			trips {
+				soc_alert0: soc-alert0 {
+					/* milliCelsius */
+					temperature = <70000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				soc_alert1: soc-alert1 {
+					/* milliCelsius */
+					temperature = <80000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				soc_alert2: soc-alert2 {
+					/* milliCelsius */
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "hot";
+				};
+
+				soc_crit: soc-crit {
+					/* milliCelsius */
+					temperature = <100000>;
+					hysteresis = <2000>;
+					type = "critical";
+				};
+			};
+		};
+	};
+
 	mmcbus: bus@c8000000 {
 		compatible = "simple-bus";
 		reg = <0xc8000000 0x8000>;
@@ -220,6 +298,7 @@
 			clocks = <&clkc CLKID_CLK81>, <&clkc CLKID_MALI>;
 			clock-names = "bus", "core";
 			operating-points-v2 = <&gpu_opp_table>;
+			#cooling-cells = <2>; /* min followed by max */
 		};
 	};
 }; /* end of / */
