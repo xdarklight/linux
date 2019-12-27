@@ -18,6 +18,11 @@
 		cache-level = <2>;
 	};
 
+	iio-hwmon {
+		compatible = "iio-hwmon";
+		io-channels = <&saradc 8>;
+	};
+
 	soc {
 		compatible = "simple-bus";
 		#address-cells = <1>;
