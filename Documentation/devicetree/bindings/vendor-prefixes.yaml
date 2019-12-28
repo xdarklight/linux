@@ -1031,6 +1031,8 @@ patternProperties:
     deprecated: true
   "^mxicy,.*":
     description: Macronix International Co., Ltd.
+  "^mxtronics,.*":
+    description: Beijing Times Minxin Technology Co., Ltd.
   "^myir,.*":
     description: MYIR Tech Limited
   "^national,.*":
