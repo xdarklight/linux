@@ -67,6 +67,58 @@
 		post-power-on-delay-ms = <300>;
 	};
 
+	sound {
+		compatible = "amlogic,gx-sound-card";
+		model = "M8M2-MXIII";
+		audio-routing = "I2S Encoder Playback", "I2S FIFO Playback",
+				"SPDIF Encoder Playback", "I2S FIFO Playback",
+				"SPDIF Encoder Playback", "SPDIF FIFO Playback";
+
+		assigned-clocks = <&clkc CLKID_MPLL0>,
+				  <&clkc CLKID_MPLL1>;
+		assigned-clock-rates = <270950400>,
+				       <294912000>;
+
+		dai-link-0 {
+			sound-dai = <&aiu AIU_CPU CPU_I2S_FIFO>;
+		};
+
+		dai-link-1 {
+			sound-dai = <&aiu AIU_CPU CPU_SPDIF_FIFO>;
+		};
+
+		dai-link-2 {
+			sound-dai = <&aiu AIU_CPU CPU_I2S_ENCODER>;
+			dai-format = "i2s";
+			mclk-fs = <256>;
+
+			codec-0 {
+				sound-dai = <&stereo_i2s_codec>;
+			};
+		};
+
+		dai-link-3 {
+			sound-dai = <&aiu AIU_CPU CPU_SPDIF_ENCODER>;
+
+			codec-0 {
+				sound-dai = <&spdif_dit>;
+			};
+		};
+	};
+
+	spdif_dit: spdif-audio-codec {
+		compatible = "linux,spdif-dit";
+		#sound-dai-cells = <0>;
+		sound-name-prefix = "DIT";
+	};
+
+	stereo_i2s_codec: i2s-audio-codec {
+		compatible = "mxtronics,mxt8234";
+		#sound-dai-cells = <0>;
+		VDD-supply = <&vcc_va_5v>;
+		sound-name-prefix = "AV";
+	};
+
 	tv-connector {
 		compatible = "composite-video-connector";
 
@@ -84,12 +136,32 @@
 		regulator-max-microvolt = <3300000>;
 	};
 
+	vcc_va_5v: regulator-va-5v {
+		compatible = "regulator-fixed";
+
+		regulator-name = "VA_5V";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		regulator-always-on;
+		gpio = <&gpio GPIO_BSD_EN (GPIO_ACTIVE_HIGH | GPIO_PULL_UP)>;
+		enable-active-high;
+	};
+
 	xtal_32k_out: xtal-32k-out-clk {
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
 		clock-frequency = <32768>;
 		clock-output-names = "xtal_32k_out";
 	};
+};
+
+&aiu {
+	status = "okay";
+
+	pinctrl-0 = <&i2s_am_clk_pins>, <&i2s_out_ao_clk_pins>,
+		    <&i2s_out_lr_clk_pins>, <&i2s_out_ch01_ao_pins>,
+		    <&spdif_out_pins>;
+	pinctrl-names = "default";
 };
 
 &cpu0 {
