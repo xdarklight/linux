@@ -103,6 +103,7 @@ snd-soc-cs4271-spi-y := cs4271-spi.o
 snd-soc-cs42xx8-y := cs42xx8.o
 snd-soc-cs42xx8-i2c-y := cs42xx8-i2c.o
 snd-soc-cs43130-y := cs43130.o
+snd-soc-cs4334-y := cs4334.o
 snd-soc-cs4341-y := cs4341.o
 snd-soc-cs4349-y := cs4349.o
 snd-soc-cs47l15-y := cs47l15.o
@@ -410,6 +411,7 @@ snd-soc-wsa881x-y := wsa881x.o
 snd-soc-wsa883x-y := wsa883x.o
 snd-soc-wsa884x-y := wsa884x.o
 snd-soc-zl38060-y := zl38060.o
+
 # Amp
 snd-soc-max9877-y := max9877.o
 snd-soc-max98504-y := max98504.o
@@ -527,6 +529,7 @@ obj-$(CONFIG_SND_SOC_CS4271_SPI)	+= snd-soc-cs4271-spi.o
 obj-$(CONFIG_SND_SOC_CS42XX8)	+= snd-soc-cs42xx8.o
 obj-$(CONFIG_SND_SOC_CS42XX8_I2C) += snd-soc-cs42xx8-i2c.o
 obj-$(CONFIG_SND_SOC_CS43130)   += snd-soc-cs43130.o
+obj-$(CONFIG_SND_SOC_CS4334)	+= snd-soc-cs4334.o
 obj-$(CONFIG_SND_SOC_CS4341)	+= snd-soc-cs4341.o
 obj-$(CONFIG_SND_SOC_CS4349)	+= snd-soc-cs4349.o
 obj-$(CONFIG_SND_SOC_CS47L24)	+= snd-soc-cs47l24.o
