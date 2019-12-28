@@ -53,11 +53,6 @@
 		};
 	};
 
-	i2s_codec: audio-codec {
-		compatible = "everest,es7134";
-		#sound-dai-cells = <0>;
-	};
-
 	pwmleds {
 		compatible = "pwm-leds";
 
@@ -90,13 +85,10 @@
 				"SPDIF ENCODER I2S IN", "I2S FIFO Playback",
 			      	"SPDIF ENCODER SPDIF IN", "SPDIF FIFO Playback";
 
-		assigned-clocks = <&clkc CLKID_MPLL2>,
-				  <&clkc CLKID_MPLL0>,
+		assigned-clocks = <&clkc CLKID_MPLL0>,
 				  <&clkc CLKID_MPLL1>;
-		assigned-clock-parents = <0>, <0>, <0>;
-		assigned-clock-rates = <294912000>,
-				       <270950400>,
-				       <393216000>;
+		assigned-clock-rates = <270950400>,
+				       <294912000>;
 
 		dai-link-0 {
 			sound-dai = <&i2s_fifo>;
@@ -111,11 +103,9 @@
 			dai-format = "i2s";
 			mclk-fs = <256>;
 
-/*
 			codec-0 {
-				sound-dai = <&hdmi_tx>;
+				sound-dai = <&stereo_i2s_codec>;
 			};
-*/
 		};
 
 		dai-link-3 {
@@ -127,7 +117,12 @@
 		};
 	};
 
-	spdif_dit: audio-codec-0 {
+	stereo_i2s_codec: i2s-audio-codec {
+		compatible = "everest,es7134";
+		#sound-dai-cells = <0>;
+	};
+
+	spdif_dit: spdif-audio-codec {
 		#sound-dai-cells = <0>;
 		compatible = "linux,spdif-dit";
 		sound-name-prefix = "DIT";
@@ -262,6 +257,7 @@
 
 &i2s_encoder {
 	status = "okay";
+
 	pinctrl-0 = <&i2s_am_clk_pins>, <&i2s_out_ao_clk_pins>,
 		    <&i2s_out_lr_clk_pins>, <&i2s_out_ch01_ao_pins>;
 	pinctrl-names = "default";
@@ -396,6 +392,7 @@
 
 &spdif_encoder {
 	status = "okay";
+
 	pinctrl-0 = <&spdif_out_pins>;
 	pinctrl-names = "default";
 };
