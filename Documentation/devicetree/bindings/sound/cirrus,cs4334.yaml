@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/sound/cirrus,cs4334.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+
+title: Cirrus CS4334 - or functionally compatible - I2S Stereo DACs
+
+maintainers:
+  - Martin Blumenstingl <martin.blumenstingl@googlemail.com>
+
+description: |
+  Cirrus CS4334 16-24 bit stereo DAC with I2S input.
+  https://statics.cirrus.com/pubs/proDatasheet/CS4334-5-8-9_F7.pdf
+  http://www.mxtronics.com/n107/n124/n181/n184/c697/attr/2625.pdf
+
+properties:
+  compatible:
+    enum:
+      - cirrus,cs4334
+      - mxtronics,mxt8234
+
+  "#sound-dai-cells":
+    const: 0
+
+  VDD-supply:
+    description:
+      Regulator for the codec voltage supply
+
+required:
+  - compatible
+  - "#sound-dai-cells"
+  - VDD-supply
+
+examples:
+  - |
+     audio-codec {
+         compatible = "mxtronics,mxt8234";
+         #sound-dai-cells = <0>;
+         VDD-supply = <&codec_vdd>;
+     };
