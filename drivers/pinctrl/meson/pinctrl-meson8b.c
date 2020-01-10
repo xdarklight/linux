@@ -939,8 +939,14 @@ static struct meson_bank meson8b_cbus_banks[] = {
 };
 
 static struct meson_bank meson8b_aobus_banks[] = {
-	/*   name    first     lastc        irq    pullen  pull    dir     out     in  */
-	BANK("AO",   GPIOAO_0, GPIO_TEST_N, 0, 13, 0,  16, 0, 0,  0,  0,  0, 16,  1,  0),
+	/*
+	 *   name      first        last          irq      pullen   pull
+	 *   dir      out     in
+	 */
+	BANK("AO",     GPIOAO_0,    GPIO_BSD_EN,   0, 13,  0, 16,  0,  0,
+	      0,  0,  0, 16,  1,  0),
+	BANK_DIR_QUIRK("TEST_N", GPIO_TEST_N, GPIO_TEST_N,  -1, -1,  0, 30,  0, 14,
+	               -1, -1,  0, 31,  0, 31, MESON_DIR_QUIRK_REG_SEC_DIR),
 };
 
 static struct meson_pinctrl_data meson8b_cbus_pinctrl_data = {
@@ -967,7 +973,7 @@ static struct meson_pinctrl_data meson8b_aobus_pinctrl_data = {
 	.num_funcs	= ARRAY_SIZE(meson8b_aobus_functions),
 	.num_banks	= ARRAY_SIZE(meson8b_aobus_banks),
 	.pmx_ops	= &meson8_pmx_ops,
-	.parse_dt	= &meson_pinctrl_alias_reg_pullen_pull,
+	.parse_dt	= &meson8_aobus_parse_dt,
 };
 
 static const struct of_device_id meson8b_pinctrl_dt_match[] = {
