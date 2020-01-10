@@ -1075,8 +1075,14 @@ static struct meson_bank meson8_cbus_banks[] = {
 };
 
 static struct meson_bank meson8_aobus_banks[] = {
-	/*   name    first     last         irq    pullen  pull    dir     out     in  */
-	BANK("AO",   GPIOAO_0, GPIO_TEST_N, 0, 13, 0, 16,  0,  0,  0,  0,  0, 16,  1,  0),
+	/*
+	 *   name      first        last          irq      pullen   pull
+	 *   dir      out     in
+	 */
+	BANK("AO",     GPIOAO_0,    GPIO_BSD_EN,   0, 13,  0, 16,  0,  0,
+	      0,  0,  0, 16,  1,  0),
+	BANK("TEST_N", GPIO_TEST_N, GPIO_TEST_N,  -1, -1,  0, 30,  0, 14,
+	     -1, -1,  0, 31,  0, 31),
 };
 
 static struct meson_pinctrl_data meson8_cbus_pinctrl_data = {
