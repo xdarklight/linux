@@ -483,7 +483,7 @@
 			reg-names = "mux", "pull", "gpio";
 			gpio-controller;
 			#gpio-cells = <2>;
-			gpio-ranges = <&pinctrl_aobus 0 0 16>;
+			gpio-ranges = <&pinctrl_aobus 0 0 15>;
 		};
 
 		hdmi_cec_ao_pins: hdmi-cec-ao {
@@ -630,7 +630,7 @@
 			reg-names = "mux", "pull", "pull-enable", "gpio";
 			gpio-controller;
 			#gpio-cells = <2>;
-			gpio-ranges = <&pinctrl_cbus 0 0 120>;
+			gpio-ranges = <&pinctrl_cbus 0 0 121>;
 		};
 
 		hdmi_hpd_pins: hdmi-hpd {
