@@ -129,6 +129,7 @@
 #define BOOT_16		117
 #define BOOT_17		118
 #define BOOT_18		119
+#define GPIO_BSD_EN	120
 
 /* Second GPIO chip */
 #define GPIOAO_0	0
@@ -145,7 +146,6 @@
 #define GPIOAO_11	11
 #define GPIOAO_12	12
 #define GPIOAO_13	13
-#define GPIO_BSD_EN	14
-#define GPIO_TEST_N	15
+#define GPIO_TEST_N	14
 
 #endif /* _DT_BINDINGS_MESON8_GPIO_H */
