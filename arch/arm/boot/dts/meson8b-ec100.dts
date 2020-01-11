@@ -365,7 +365,7 @@
 		interrupt-parent = <&gpio_intc>;
 		interrupts = <13 IRQ_TYPE_EDGE_BOTH>; /* GPIOAO_13 */
 
-		realtek,ldo1-en-gpios = <&gpio_ao GPIO_BSD_EN GPIO_ACTIVE_LOW>;
+		realtek,ldo1-en-gpios = <&gpio GPIO_BSD_EN GPIO_ACTIVE_LOW>;
 		realtek,in1-differential;
 	};
 };
@@ -430,7 +430,7 @@
 			  "I2S_IN", "SLP_S1_N",
 			  "TCK", "TMS", "TDI", "TDO",
 			  "HDMI_CEC", "5640_IRQ",
-			  "MUTE", "S805_TEST#";
+			  "S805_TEST#";
 };
 
 &gpio {
@@ -470,7 +470,9 @@
 			  "RMII_RXD1", "RMII_RXD0", "RMII_CRS_DV",
 			  "RMII_50M_IN", "GPIODIF_4", "GPIODIF_5",
 			  "RMII_TXEN", "CPUETH_25MOUT", "RMII_MDC",
-			  "RMII_MDIO";
+			  "RMII_MDIO",
+			  /* GPIO_BSD_EN */
+			  "MUTE";
 };
 
 &pwm_cd {
