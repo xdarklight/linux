@@ -168,6 +168,26 @@ int meson_pmx_get_groups(struct pinctrl_dev *pcdev, unsigned selector,
 	return 0;
 }
 
+static int meson_pin_get_fixed_direction(struct meson_pinctrl *pc,
+					 unsigned int pin)
+{
+	struct meson_bank *bank;
+	unsigned int reg, bit;
+	int ret;
+
+	ret = meson_get_bank(pc, pin, &bank);
+	if (ret)
+		return ret;
+
+	meson_calc_reg_and_bit(bank, pin, REG_DIR, &reg, &bit);
+
+	if ((int) bit < 0)
+		/* output only pin */
+		return 0;
+
+	return -EINVAL;
+}
+
 static int meson_pinconf_set_gpio_bit(struct meson_pinctrl *pc,
 				      unsigned int pin,
 				      unsigned int reg_type,
@@ -210,14 +230,31 @@ static int meson_pinconf_set_output(struct meson_pinctrl *pc,
 				    unsigned int pin,
 				    bool out)
 {
-	return meson_pinconf_set_gpio_bit(pc, pin, REG_DIR, !out);
+	int direction, value;
+
+	value = !out;
+
+	direction = meson_pin_get_fixed_direction(pc, pin);
+	if (direction >= 0) {
+		if (direction == value)
+			return 0;
+
+		return -EINVAL;
+	}
+
+	return meson_pinconf_set_gpio_bit(pc, pin, REG_DIR, value);
 }
 
 static int meson_pinconf_get_output(struct meson_pinctrl *pc,
 				    unsigned int pin)
 {
-	int ret = meson_pinconf_get_gpio_bit(pc, pin, REG_DIR);
+	int ret;
 
+	ret = meson_pin_get_fixed_direction(pc, pin);
+	if (ret >= 0)
+		return ret;
+
+	ret = meson_pinconf_get_gpio_bit(pc, pin, REG_DIR);
 	if (ret < 0)
 		return ret;
 
@@ -289,6 +326,9 @@ static int meson_pinconf_enable_bias(struct meson_pinctrl *pc, unsigned int pin,
 		return ret;
 
 	meson_calc_reg_and_bit(bank, pin, REG_PULLEN, &reg, &bit);
+	if ((int) bit < 0)
+		return 0;
+
 	ret = regmap_update_bits(pc->reg_pullen, reg, BIT(bit),	BIT(bit));
 	if (ret)
 		return ret;
@@ -401,10 +441,14 @@ static int meson_pinconf_get_pull(struct meson_pinctrl *pc, unsigned int pin)
 		return ret;
 
 	meson_calc_reg_and_bit(bank, pin, REG_PULLEN, &reg, &bit);
-
-	ret = regmap_read(pc->reg_pullen, reg, &val);
-	if (ret)
-		return ret;
+	if ((int) bit >= 0) {
+		ret = regmap_read(pc->reg_pullen, reg, &val);
+		if (ret)
+			return ret;
+	} else {
+		bit = 0;
+		val = BIT(bit);
+	}
 
 	if (!(val & BIT(bit))) {
 		conf = PIN_CONFIG_BIAS_DISABLE;
