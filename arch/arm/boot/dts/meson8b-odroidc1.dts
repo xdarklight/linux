@@ -281,7 +281,9 @@
 			  "ETH_RXD1", "ETH_RXD0", "ETH_RX_DV",
 			  "RGMII_RX_CLK", "ETH_RXD3", "ETH_RXD2",
 			  "ETH_TXEN", "ETH_PHY_REF_CLK_25MOUT",
-			  "ETH_MDC", "ETH_MDIO";
+			  "ETH_MDC", "ETH_MDIO",
+			  /* GPIO_BSD_EN */
+			  "";
 };
 
 &gpio_ao {
@@ -291,7 +293,7 @@
 			  "IR_IN", "J7 Header Pin 4",
 			  "J7 Header Pin 6", "J7 Header Pin 5",
 			  "J7 Header Pin 7", "HDMI_CEC",
-			  "SYS_LED", "", "";
+			  "SYS_LED", "";
 
 	/*
 	 * WARNING: The USB Hub on the Odroid-C1/C1+ needs a reset signal
