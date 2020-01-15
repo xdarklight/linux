@@ -48,6 +48,14 @@ config MESON_EE_PM_DOMAINS
 	  Say yes to expose Amlogic Meson Everything-Else Power Domains as
 	  Generic Power Domains.
 
+config MESON_MX_SECBUS2
+	tristate "Amlogic Meson6/8/8b/8m2 SECBUS2 driver"
+	depends on (ARM && ARCH_MESON) || COMPILE_TEST
+	select REGMAP_MMIO
+	help
+	  Say yes to have support for the SECBUS2 registers on
+	  Amlogic Meson6, Meson8, Meson8b and Meson8m2 SoCs.
+
 config MESON_SECURE_PM_DOMAINS
 	bool "Amlogic Meson Secure Power Domains driver"
 	depends on (ARCH_MESON || COMPILE_TEST) && MESON_SM
