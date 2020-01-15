@@ -212,6 +212,14 @@
 			#size-cells = <1>;
 			ranges = <0x0 0xc8100000 0x100000>;
 
+			ao_arc_rproc: remoteproc@0 {
+				compatible= "amlogic,meson-ao-arc-rproc";
+				reg = <0x0 0xc>, <0x1c 0x8>, <0x38 0x8>;
+				reg-names = "status", "remap", "cpu";
+				amlogic,remote-processor-memory = <&ao_arc_rproc_mem>; // TODO: actually use this
+				amlogic,secbus2 = <&secbus2>; // TODO: actually use this
+			};
+
 			ir_receiver: ir-receiver@480 {
 				compatible= "amlogic,meson6-ir";
 				reg = <0x480 0x20>;
@@ -284,6 +292,11 @@
 			#address-cells = <1>;
 			#size-cells = <1>;
 			ranges = <0 0xd9000000 0x20000>;
+
+			ao_arc_rproc_mem: ao-arc-rproc-mem@0 {
+				compatible = "amlogic,meson-ao-arc-rproc-mem";
+				reg = <0x0 0x8000>;
+			};
 		};
 
 		bootrom: bootrom@d9040000 {
@@ -303,6 +316,11 @@
 				reg = <0x0 0x2000>;
 				#address-cells = <1>;
 				#size-cells = <1>;
+			};
+
+			secbus2: bus@4000 {
+				compatible = "amlogic,meson-mx-secbus2";
+				reg = <0x4000 0x2000>;
 			};
 		};
 	};
