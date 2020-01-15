@@ -590,6 +590,11 @@
 	resets = <&reset RESET_AIU>;
 };
 
+&ao_arc_rproc {
+	resets = <&reset RESET_MEDIA_CPU>;
+	reset-names = "arc625";
+};
+
 &cbus {
 	reset: reset-controller@4404 {
 		compatible = "amlogic,meson8b-reset";

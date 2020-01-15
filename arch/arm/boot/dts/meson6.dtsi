@@ -55,6 +55,10 @@
 	};
 }; /* end of / */
 
+&ao_arc_rproc {
+	status = "disabled";
+};
+
 &efuse {
 	status = "disabled";
 };
