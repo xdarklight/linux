@@ -6,6 +6,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/io.h>
+#include <linux/iopoll.h>
 #include <linux/slab.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
@@ -24,14 +25,37 @@ static void* __iomem meson_mx_ao_arc_mbox_iomem(struct mbox_chan *chan)
 	return (void* __iomem)chan->con_priv;
 }
 
+static bool meson_mx_ao_arc_mbox_rts(struct mbox_chan *chan)
+{
+	return readl_relaxed(meson_mx_ao_arc_mbox_iomem(chan)) == 0;
+}
+
 static int meson_mx_ao_arc_mbox_send_data(struct mbox_chan *chan, void *data)
 {
 
 	u32 *arg = data;
 
+	if (!meson_mx_ao_arc_mbox_rts(chan))
+		return -EBUSY;
+
 	writel_relaxed(*arg, meson_mx_ao_arc_mbox_iomem(chan));
 
 	return 0;
+}
+
+static int meson_mx_ao_arc_mbox_flush(struct mbox_chan *chan,
+				      unsigned long timeout)
+{
+	timeout = jiffies + msecs_to_jiffies(timeout);
+
+	while (time_before(jiffies, timeout)) {
+		if (meson_mx_ao_arc_mbox_rts(chan))
+			return 0;
+
+		udelay(5);
+	}
+
+	return -ETIMEDOUT;
 }
 
 static int meson_mx_ao_arc_mbox_startup(struct mbox_chan *chan)
@@ -43,12 +67,12 @@ static int meson_mx_ao_arc_mbox_startup(struct mbox_chan *chan)
 
 static bool meson_mx_ao_arc_mbox_last_tx_done(struct mbox_chan *chan)
 {
-
-	return readl_relaxed(meson_mx_ao_arc_mbox_iomem(chan)) == 0;
+	return meson_mx_ao_arc_mbox_rts(chan);
 }
 
 static const struct mbox_chan_ops meson_mx_ao_arc_mbox_ops = {
 	.send_data	= meson_mx_ao_arc_mbox_send_data,
+	.flush		= meson_mx_ao_arc_mbox_flush,
 	.startup	= meson_mx_ao_arc_mbox_startup,
 	.last_tx_done	= meson_mx_ao_arc_mbox_last_tx_done,
 };
