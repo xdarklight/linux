@@ -116,6 +116,7 @@ static int aiu_encoder_i2s_set_clocks(struct snd_soc_component *component,
 {
 	struct aiu *aiu = snd_soc_component_get_drvdata(component);
 	unsigned int srate = params_rate(params);
+	u8 i2s_div, more_i2s_div;
 	unsigned int fs, bs;
 
 	/* Get the oversampling factor */
@@ -135,10 +136,6 @@ static int aiu_encoder_i2s_set_clocks(struct snd_soc_component *component,
 				      FIELD_PREP(AIU_CODEC_DAC_LRCLK_CTRL_DIV,
 						 64 - 1));
 
-	/* Use CLK_MORE for mclk to bclk divider */
-	snd_soc_component_update_bits(component, AIU_CLK_CTRL,
-				      AIU_CLK_CTRL_I2S_DIV, 0);
-
 	/*
 	 * NOTE: this HW is odd.
 	 * In most configuration, the i2s divider is 'mclk / blck'.
@@ -156,10 +153,24 @@ static int aiu_encoder_i2s_set_clocks(struct snd_soc_component *component,
 		bs += bs / 2;
 	}
 
+	if (aiu->platform->has_clk_ctrl_more_i2s_div) {
+		/* Use CLK_MORE for mclk to bclk divider */
+		i2s_div = 0;
+		more_i2s_div = bs - 1;
+	} else {
+		i2s_div = __ffs(bs);
+		more_i2s_div = 0;
+	}
+
+	snd_soc_component_update_bits(component, AIU_CLK_CTRL,
+				      AIU_CLK_CTRL_I2S_DIV,
+				      FIELD_PREP(AIU_CLK_CTRL_I2S_DIV,
+						 i2s_div));
+
 	snd_soc_component_update_bits(component, AIU_CLK_CTRL_MORE,
 				      AIU_CLK_CTRL_MORE_I2S_DIV,
 				      FIELD_PREP(AIU_CLK_CTRL_MORE_I2S_DIV,
-						 bs - 1));
+						 more_i2s_div));
 
 	/* Make sure amclk is used for HDMI i2s as well */
 	snd_soc_component_update_bits(component, AIU_CLK_CTRL_MORE,
