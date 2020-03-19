@@ -6,6 +6,7 @@
 
 #include <drm/gpu_scheduler.h>
 
+struct lima_device;
 struct lima_vm;
 
 struct lima_sched_task {
@@ -43,6 +44,8 @@ struct lima_sched_pipe {
 	u64 fence_context;
 	u32 fence_seqno;
 	spinlock_t fence_lock;
+
+	struct lima_device *ldev;
 
 	struct lima_sched_task *current_task;
 	struct lima_vm *current_vm;

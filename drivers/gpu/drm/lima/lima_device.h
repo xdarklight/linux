@@ -8,6 +8,7 @@
 #include <linux/delay.h>
 
 #include "lima_sched.h"
+#include "lima_devfreq.h"
 
 enum lima_gpu_id {
 	lima_gpu_mali400 = 0,
@@ -94,6 +95,8 @@ struct lima_device {
 
 	u32 *dlbu_cpu;
 	dma_addr_t dlbu_dma;
+
+	struct lima_devfreq devfreq;
 };
 
 static inline struct lima_device *
