@@ -15,6 +15,7 @@
 #define __MESON_VENC_H
 
 struct drm_display_mode;
+struct meson_drm;
 
 enum {
 	MESON_VENC_MODE_NONE = 0,
@@ -59,6 +60,9 @@ extern struct meson_cvbs_enci_mode meson_cvbs_enci_ntsc;
 
 void meson_venci_cvbs_mode_set(struct meson_drm *priv,
 			       struct meson_cvbs_enci_mode *mode);
+void meson_venc_hdmi_bridge_reset(struct meson_drm *priv);
+void meson_venc_hdmi_encoder_enable(struct meson_drm *priv);
+void meson_venc_hdmi_encoder_disable(struct meson_drm *priv);
 void meson_venc_hdmi_mode_set(struct meson_drm *priv, int vic,
 			      unsigned int ycrcb_map,
 			      bool yuv420_mode,
