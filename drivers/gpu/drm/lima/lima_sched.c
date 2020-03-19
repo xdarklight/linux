@@ -5,6 +5,7 @@
 #include <linux/slab.h>
 #include <linux/xarray.h>
 
+#include "lima_devfreq.h"
 #include "lima_drv.h"
 #include "lima_sched.h"
 #include "lima_vm.h"
@@ -214,6 +215,8 @@ static struct dma_fence *lima_sched_run_job(struct drm_sched_job *job)
 	 */
 	ret = dma_fence_get(task->fence);
 
+	lima_devfreq_record_busy(&pipe->ldev->devfreq);
+
 	pipe->current_task = task;
 
 	/* this is needed for MMU to work correctly, otherwise GP/PP
@@ -284,6 +287,8 @@ static void lima_sched_timedout_job(struct drm_sched_job *job)
 
 	pipe->current_vm = NULL;
 	pipe->current_task = NULL;
+
+	lima_devfreq_record_idle(&pipe->ldev->devfreq);
 
 	drm_sched_resubmit_jobs(&pipe->base);
 	drm_sched_start(&pipe->base, true);
@@ -364,5 +369,7 @@ void lima_sched_pipe_task_done(struct lima_sched_pipe *pipe)
 	} else {
 		pipe->task_fini(pipe);
 		dma_fence_signal(task->fence);
+
+		lima_devfreq_record_idle(&pipe->ldev->devfreq);
 	}
 }
