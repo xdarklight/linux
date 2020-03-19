@@ -115,12 +115,6 @@
 
 static DEFINE_SPINLOCK(reg_lock);
 
-enum meson_venc_source {
-	MESON_VENC_SOURCE_NONE = 0,
-	MESON_VENC_SOURCE_ENCI = 1,
-	MESON_VENC_SOURCE_ENCP = 2,
-};
-
 struct meson_dw_hdmi;
 
 struct meson_dw_hdmi_data {
@@ -431,8 +425,6 @@ static int dw_hdmi_phy_init(struct dw_hdmi *hdmi, void *data,
 {
 	struct meson_dw_hdmi *dw_hdmi = (struct meson_dw_hdmi *)data;
 	struct meson_drm *priv = dw_hdmi->priv;
-	unsigned int wr_clk =
-		readl_relaxed(priv->io_base + _REG(VPU_HDMI_SETTING));
 
 	DRM_DEBUG_DRIVER("\"%s\" div%d\n", mode->name,
 			 mode->clock > 340000 ? 40 : 10);
@@ -505,35 +497,7 @@ static int dw_hdmi_phy_init(struct dw_hdmi *hdmi, void *data,
 	meson_dw_hdmi_phy_reset(dw_hdmi);
 	meson_dw_hdmi_phy_reset(dw_hdmi);
 
-	/* Temporary Disable VENC video stream */
-	if (priv->venc.hdmi_use_enci)
-		writel_relaxed(0, priv->io_base + _REG(ENCI_VIDEO_EN));
-	else
-		writel_relaxed(0, priv->io_base + _REG(ENCP_VIDEO_EN));
-
-	/* Temporary Disable HDMI video stream to HDMI-TX */
-	writel_bits_relaxed(0x3, 0,
-			    priv->io_base + _REG(VPU_HDMI_SETTING));
-	writel_bits_relaxed(0xf << 8, 0,
-			    priv->io_base + _REG(VPU_HDMI_SETTING));
-
-	/* Re-Enable VENC video stream */
-	if (priv->venc.hdmi_use_enci)
-		writel_relaxed(1, priv->io_base + _REG(ENCI_VIDEO_EN));
-	else
-		writel_relaxed(1, priv->io_base + _REG(ENCP_VIDEO_EN));
-
-	/* Push back HDMI clock settings */
-	writel_bits_relaxed(0xf << 8, wr_clk & (0xf << 8),
-			    priv->io_base + _REG(VPU_HDMI_SETTING));
-
-	/* Enable and Select HDMI video source for HDMI-TX */
-	if (priv->venc.hdmi_use_enci)
-		writel_bits_relaxed(0x3, MESON_VENC_SOURCE_ENCI,
-				    priv->io_base + _REG(VPU_HDMI_SETTING));
-	else
-		writel_bits_relaxed(0x3, MESON_VENC_SOURCE_ENCP,
-				    priv->io_base + _REG(VPU_HDMI_SETTING));
+	meson_venc_hdmi_bridge_reset(priv);
 
 	return 0;
 }
@@ -715,12 +679,12 @@ static const struct drm_encoder_funcs meson_venc_hdmi_encoder_funcs = {
 };
 
 static u32 *
-meson_venc_hdmi_encoder_get_inp_bus_fmts(struct drm_bridge *bridge,
-					struct drm_bridge_state *bridge_state,
-					struct drm_crtc_state *crtc_state,
-					struct drm_connector_state *conn_state,
-					u32 output_fmt,
-					unsigned int *num_input_fmts)
+meson_dw_hdmi_encoder_get_inp_bus_fmts(struct drm_bridge *bridge,
+				       struct drm_bridge_state *bridge_state,
+				       struct drm_crtc_state *crtc_state,
+				       struct drm_connector_state *conn_state,
+				       u32 output_fmt,
+				       unsigned int *num_input_fmts)
 {
 	u32 *input_fmts = NULL;
 	int i;
@@ -745,7 +709,7 @@ meson_venc_hdmi_encoder_get_inp_bus_fmts(struct drm_bridge *bridge,
 	return input_fmts;
 }
 
-static int meson_venc_hdmi_encoder_atomic_check(struct drm_bridge *bridge,
+static int meson_dw_hdmi_encoder_atomic_check(struct drm_bridge *bridge,
 					struct drm_bridge_state *bridge_state,
 					struct drm_crtc_state *crtc_state,
 					struct drm_connector_state *conn_state)
@@ -759,34 +723,27 @@ static int meson_venc_hdmi_encoder_atomic_check(struct drm_bridge *bridge,
 	return 0;
 }
 
-static void meson_venc_hdmi_encoder_disable(struct drm_bridge *bridge)
+static void meson_dw_hdmi_encoder_disable(struct drm_bridge *bridge)
 {
 	struct meson_dw_hdmi *dw_hdmi = bridge_to_meson_dw_hdmi(bridge);
 	struct meson_drm *priv = dw_hdmi->priv;
 
 	DRM_DEBUG_DRIVER("\n");
 
-	writel_bits_relaxed(0x3, 0,
-			    priv->io_base + _REG(VPU_HDMI_SETTING));
-
-	writel_relaxed(0, priv->io_base + _REG(ENCI_VIDEO_EN));
-	writel_relaxed(0, priv->io_base + _REG(ENCP_VIDEO_EN));
+	meson_venc_hdmi_encoder_disable(priv);
 }
 
-static void meson_venc_hdmi_encoder_enable(struct drm_bridge *bridge)
+static void meson_dw_hdmi_encoder_enable(struct drm_bridge *bridge)
 {
 	struct meson_dw_hdmi *dw_hdmi = bridge_to_meson_dw_hdmi(bridge);
 	struct meson_drm *priv = dw_hdmi->priv;
 
 	DRM_DEBUG_DRIVER("%s\n", priv->venc.hdmi_use_enci ? "VENCI" : "VENCP");
 
-	if (priv->venc.hdmi_use_enci)
-		writel_relaxed(1, priv->io_base + _REG(ENCI_VIDEO_EN));
-	else
-		writel_relaxed(1, priv->io_base + _REG(ENCP_VIDEO_EN));
+	meson_venc_hdmi_encoder_enable(priv);
 }
 
-static void meson_venc_hdmi_encoder_mode_set(struct drm_bridge *bridge,
+static void meson_dw_hdmi_encoder_mode_set(struct drm_bridge *bridge,
 				   const struct drm_display_mode *mode,
 				   const struct drm_display_mode *adjusted_mode)
 {
@@ -821,12 +778,12 @@ static void meson_venc_hdmi_encoder_mode_set(struct drm_bridge *bridge,
 static const struct drm_bridge_funcs meson_venc_hdmi_encoder_bridge_funcs = {
 	.atomic_duplicate_state = drm_atomic_helper_bridge_duplicate_state,
 	.atomic_destroy_state = drm_atomic_helper_bridge_destroy_state,
-	.atomic_get_input_bus_fmts = meson_venc_hdmi_encoder_get_inp_bus_fmts,
+	.atomic_get_input_bus_fmts = meson_dw_hdmi_encoder_get_inp_bus_fmts,
 	.atomic_reset = drm_atomic_helper_bridge_reset,
-	.atomic_check = meson_venc_hdmi_encoder_atomic_check,
-	.enable	= meson_venc_hdmi_encoder_enable,
-	.disable = meson_venc_hdmi_encoder_disable,
-	.mode_set = meson_venc_hdmi_encoder_mode_set,
+	.atomic_check = meson_dw_hdmi_encoder_atomic_check,
+	.enable	= meson_dw_hdmi_encoder_enable,
+	.disable = meson_dw_hdmi_encoder_disable,
+	.mode_set = meson_dw_hdmi_encoder_mode_set,
 };
 
 /* DW HDMI Regmap */
