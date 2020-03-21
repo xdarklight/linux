@@ -1829,7 +1829,7 @@ void meson_venc_init(struct meson_drm *priv)
 
 	/* Power Down Dacs */
 	writel_relaxed(0xff, priv->io_base + _REG(VENC_VDAC_SETTING));
-
+#if 0
 	/* Disable HDMI PHY */
 	regmap_write(priv->hhi, HHI_HDMI_PHY_CNTL0, 0);
 
@@ -1842,7 +1842,7 @@ void meson_venc_init(struct meson_drm *priv)
 	writel_relaxed(0, priv->io_base + _REG(ENCI_VIDEO_EN));
 	writel_relaxed(0, priv->io_base + _REG(ENCP_VIDEO_EN));
 	writel_relaxed(0, priv->io_base + _REG(ENCL_VIDEO_EN));
-
+#endif
 	/* Disable VSync IRQ */
 	meson_venc_disable_vsync(priv);
 
