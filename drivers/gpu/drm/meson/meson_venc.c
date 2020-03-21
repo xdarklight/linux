@@ -1829,10 +1829,10 @@ void meson_venc_init(struct meson_drm *priv)
 
 	/* Power Down Dacs */
 	writel_relaxed(0xff, priv->io_base + _REG(VENC_VDAC_SETTING));
-
+#if 0
 	/* Disable HDMI PHY */
 	regmap_write(priv->hhi, HHI_HDMI_PHY_CNTL0, 0);
-
+#endif
 	/* Disable HDMI */
 	writel_bits_relaxed(VPU_HDMI_ENCI_DATA_TO_HDMI |
 			    VPU_HDMI_ENCP_DATA_TO_HDMI, 0,

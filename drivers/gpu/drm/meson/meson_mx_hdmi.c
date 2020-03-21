@@ -180,8 +180,9 @@ static void meson_mx_hdmi_sys5_reset_deassert(struct meson_mx_hdmi *hdmi)
 	usleep_range(10, 20);
 
 	regmap_write(hdmi->regmap, TX_SYS5_TX_SOFT_RESET_2,
+		     /* HACK:
 		     TX_SYS5_TX_SOFT_RESET_2_HDMI_CH2_RST_IN |
-		     TX_SYS5_TX_SOFT_RESET_2_HDMI_CH1_RST_IN);
+		     TX_SYS5_TX_SOFT_RESET_2_HDMI_CH1_RST_IN |*/ 0x0);
 	usleep_range(10, 20);
 }
 
