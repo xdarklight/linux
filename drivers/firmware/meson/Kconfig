@@ -1,4 +1,16 @@
 # SPDX-License-Identifier: GPL-2.0-only
+
+config MESON_MX_AO_ARC_FIRMWARE
+	tristate "Amlogic Meson6/8/8b/8m2 AO ARC firmware support"
+	depends on HAS_IOMEM
+	depends on ARM
+	depends on ARCH_MESON || COMPILE_TEST
+	help
+	  Say m or y here to enable support for the firmware using
+	  the AO ARC remote processor on Amlogic Meson6/Meson8/Meson8b
+	  and Meson8m2 SoCs. This enables system suspend.
+	  If unusre say N.
+
 #
 # Amlogic Secure Monitor driver
 #
