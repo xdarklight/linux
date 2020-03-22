@@ -52,6 +52,15 @@ config ARMADA_37XX_RWTM_MBOX
 	  SOC. Say Y here if you are building for such a device (for example
 	  the Turris Mox router).
 
+config MESON_MX_AO_ARC_MAILBOX
+	tristate "Amlogic Meson6/8/8b/8m2 AO ARC mailbox support"
+	depends on HAS_IOMEM
+	depends on (ARM && ARCH_MESON) || COMPILE_TEST
+	help
+	  Say m or y here to have support for the AO ARC remote processor
+	  mailbox on Amlogic Meson6/Meson8/Meson8b/Meson8m2 SoCs.
+	  If unusre say N.
+
 config OMAP2PLUS_MBOX
 	tristate "OMAP2+ Mailbox framework support"
 	depends on ARCH_OMAP2PLUS || ARCH_K3
