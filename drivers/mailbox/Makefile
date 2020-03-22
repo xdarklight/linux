@@ -15,6 +15,8 @@ obj-$(CONFIG_PLATFORM_MHU)	+= platform_mhu.o
 
 obj-$(CONFIG_PL320_MBOX)	+= pl320-ipc.o
 
+obj-$(CONFIG_MESON_MX_AO_ARC_MAILBOX)	+= meson-mx-ao-arc-mailbox.o
+
 obj-$(CONFIG_OMAP2PLUS_MBOX)	+= omap-mailbox.o
 
 obj-$(CONFIG_ROCKCHIP_MBOX)	+= rockchip-mailbox.o
