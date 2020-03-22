@@ -212,6 +212,12 @@
 			#size-cells = <1>;
 			ranges = <0x0 0xc8100000 0x100000>;
 
+			ao_arc_mbox: mailbox@0 {
+				compatible= "amlogic,meson-mx-ao-arc-mbox";
+				reg = <0x0 0xc>;
+				#mbox-cells = <1>;
+			};
+
 			ao_arc_rproc: remoteproc@1c {
 				compatible= "amlogic,meson-mx-ao-arc-rproc";
 				reg = <0x1c 0x8>, <0x38 0x8>;
