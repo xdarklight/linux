@@ -160,6 +160,12 @@
 		};
 	};
 
+	ao-arc-firmware {
+		compatible = "amlogic,meson8-ao-arc-firmware";
+		amlogic,rproc = <&ao_arc_rproc>;
+		mboxes = <&ao_arc_mbox 0>, <&ao_arc_mbox 1>, <&ao_arc_mbox 2>;
+	};
+
 	pmu {
 		compatible = "arm,cortex-a9-pmu";
 		interrupts = <GIC_SPI 137 IRQ_TYPE_LEVEL_HIGH>,
