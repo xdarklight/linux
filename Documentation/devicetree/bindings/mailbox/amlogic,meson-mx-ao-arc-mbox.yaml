@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: "http://devicetree.org/schemas/mailbox/amlogic,meson-mx-ao-arc-mbox.yaml#"
+$schema: "http://devicetree.org/meta-schemas/core.yaml#"
+
+title: Amlogic Meson AO ARC Remote Processor mailbox bindings
+
+description:
+  Amlogic Meson6, Meson8, Meson8b and Meson8m2 SoCs have a mailbox
+  to communicate with the embedded an ARC EM4 core.
+
+maintainers:
+  - Martin Blumenstingl <martin.blumenstingl@googlemail.com>
+
+properties:
+  compatible:
+    const: amlogic,meson-mx-ao-arc-mbox
+
+  reg:
+    minItems: 1
+
+  "#mbox-cells":
+    const: 1
+
+required:
+  - compatible
+  - reg
+  - "#mbox-cells"
+
+additionalProperties: false
+
+examples:
+  - |
+    mailbox@0 {
+      compatible= "amlogic,meson-mx-ao-arc-mbox";
+      reg = <0x0 0xc>;
+      #mbox-cells = <1>;
+    };
+
+...
