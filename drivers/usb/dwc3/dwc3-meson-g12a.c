@@ -233,11 +233,18 @@ static int dwc3_meson_g12a_usb2_init(struct dwc3_meson_g12a *priv)
 		priv->otg_phy_mode = PHY_MODE_USB_HOST;
 
 	for (i = 0; i < priv->drvdata->num_phys; ++i) {
+		enum phy_mode mode;
+
 		if (!priv->phys[i])
 			continue;
 
 		if (!strstr(priv->drvdata->phy_names[i], "usb2"))
 			continue;
+
+		if (priv->drvdata->otg_switch_supported && i == USB2_OTG_PHY)
+			mode = priv->otg_phy_mode;
+		else
+			mode = PHY_MODE_USB_HOST;
 
 		ret = priv->drvdata->usb2_init_phy(priv, i, mode);
 		if (ret)
