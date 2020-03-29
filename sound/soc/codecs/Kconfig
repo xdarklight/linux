@@ -971,7 +971,7 @@ config SND_SOC_PCM3168A_SPI
 	select REGMAP_SPI
 
 config SND_SOC_PCM5102A
-	tristate
+	tristate "Texas Instruments PCM5102A"
 
 config SND_SOC_PCM512x
 	tristate
@@ -1092,7 +1092,7 @@ config SND_SOC_RT5631
 	depends on I2C
 
 config SND_SOC_RT5640
-	tristate
+	tristate "Realtek ALC5640/RT5640 CODEC"
 	depends on I2C
 
 config SND_SOC_RT5645
