@@ -26,12 +26,23 @@ static struct snd_soc_dai_driver cs4334_dai = {
 };
 
 static const struct snd_soc_dapm_widget cs4334_dapm_widgets[] = {
+	SND_SOC_DAPM_OUTPUT("AOUTL"),
+	SND_SOC_DAPM_OUTPUT("AOUTR"),
+	SND_SOC_DAPM_DAC("DAC", "Playback", SND_SOC_NOPM, 0, 0),
 	SND_SOC_DAPM_REGULATOR_SUPPLY("VDD", 0, 0),
+};
+
+static const struct snd_soc_dapm_route cs4334_dapm_routes[] = {
+	{ "AOUTL", NULL, "DAC" },
+	{ "AOUTR", NULL, "DAC" },
+	{ "DAC", NULL, "VDD" },
 };
 
 static struct snd_soc_component_driver soc_component_dev_cs4334 = {
 	.dapm_widgets		= cs4334_dapm_widgets,
 	.num_dapm_widgets	= ARRAY_SIZE(cs4334_dapm_widgets),
+	.dapm_routes		= cs4334_dapm_routes,
+	.num_dapm_routes	= ARRAY_SIZE(cs4334_dapm_routes),
 	.idle_bias_on		= 1,
 	.use_pmdown_time	= 1,
 	.endianness		= 1,
