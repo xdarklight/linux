@@ -81,11 +81,53 @@ static struct meson_ee_pwrc_top_domain gxbb_pwrc_vpu = {
 	.iso_mask = BIT(9),
 };
 
+static struct meson_ee_pwrc_top_domain gxbb_pwrc_dos_hcodec = {
+	.sleep_reg = AO_RTI_GEN_PWR_SLEEP0,
+	.sleep_mask = GENMASK(1, 0),
+	.iso_reg = AO_RTI_GEN_PWR_ISO0,
+	.iso_mask = GENMASK(5, 4),
+};
+
+static struct meson_ee_pwrc_top_domain gxbb_pwrc_dos_vdec_1 = {
+	.sleep_reg = AO_RTI_GEN_PWR_SLEEP0,
+	.sleep_mask = GENMASK(3, 2),
+	.iso_reg = AO_RTI_GEN_PWR_ISO0,
+	.iso_mask = GENMASK(7, 6),
+};
+
+static struct meson_ee_pwrc_top_domain gxbb_pwrc_dos_hevc = {
+	.sleep_reg = AO_RTI_GEN_PWR_SLEEP0,
+	.sleep_mask = GENMASK(7, 6),
+	.iso_reg = AO_RTI_GEN_PWR_ISO0,
+	.iso_mask = GENMASK(11, 10),
+};
+
 static struct meson_ee_pwrc_top_domain meson8_pwrc_vpu = {
 	.sleep_reg = AO_RTI_GEN_PWR_SLEEP0 - AO_RTI_GEN_MESON8_PMU_OFFSET,
 	.sleep_mask = BIT(8),
 	.iso_reg = AO_RTI_GEN_PWR_SLEEP0 - AO_RTI_GEN_MESON8_PMU_OFFSET,
 	.iso_mask = BIT(9),
+};
+
+static struct meson_ee_pwrc_top_domain meson8_pwrc_dos_hcodec = {
+	.sleep_reg = AO_RTI_GEN_PWR_SLEEP0 - AO_RTI_GEN_MESON8_PMU_OFFSET,
+	.sleep_mask = GENMASK(1, 0),
+	.iso_reg = AO_RTI_GEN_PWR_ISO0 - AO_RTI_GEN_MESON8_PMU_OFFSET,
+	.iso_mask = GENMASK(5, 4),
+};
+
+static struct meson_ee_pwrc_top_domain meson8_pwrc_dos_vdec_1 = {
+	.sleep_reg = AO_RTI_GEN_PWR_SLEEP0 - AO_RTI_GEN_MESON8_PMU_OFFSET,
+	.sleep_mask = GENMASK(3, 2),
+	.iso_reg = AO_RTI_GEN_PWR_ISO0 - AO_RTI_GEN_MESON8_PMU_OFFSET,
+	.iso_mask = GENMASK(7, 6),
+};
+
+static struct meson_ee_pwrc_top_domain meson8_pwrc_dos_hevc = {
+	.sleep_reg = AO_RTI_GEN_PWR_SLEEP0 - AO_RTI_GEN_MESON8_PMU_OFFSET,
+	.sleep_mask = GENMASK(7, 6),
+	.iso_reg = AO_RTI_GEN_PWR_ISO0 - AO_RTI_GEN_MESON8_PMU_OFFSET,
+	.iso_mask = GENMASK(11, 10),
 };
 
 #define SM1_EE_PD(__bit)					\
@@ -96,6 +138,9 @@ static struct meson_ee_pwrc_top_domain meson8_pwrc_vpu = {
 		.iso_mask = BIT(__bit), 			\
 	}
 
+static struct meson_ee_pwrc_top_domain sm1_pwrc_dos_hcodec = SM1_EE_PD(0);
+static struct meson_ee_pwrc_top_domain sm1_pwrc_dos_vdec = SM1_EE_PD(1);
+static struct meson_ee_pwrc_top_domain sm1_pwrc_dos_hevc = SM1_EE_PD(2);
 static struct meson_ee_pwrc_top_domain sm1_pwrc_vpu = SM1_EE_PD(8);
 static struct meson_ee_pwrc_top_domain sm1_pwrc_nna = SM1_EE_PD(16);
 static struct meson_ee_pwrc_top_domain sm1_pwrc_usb = SM1_EE_PD(17);
@@ -227,18 +272,36 @@ static struct meson_ee_pwrc_mem_domain sm1_pwrc_mem_audio[] = {
 #define MEM_PD(__name, __mem)						\
 	TOP_PD(__name, NULL, __mem, NULL)
 
+#define SINGLE_TOP_PD(__name, __top_pd)					\
+	{								\
+		.name = __name,						\
+		.top_pd = __top_pd,					\
+		.mem_pd_count = 0,					\
+		.get_power = NULL,					\
+	}
+
 static bool pwrc_ee_get_power(struct meson_ee_pwrc_domain *pwrc_domain);
 
 static struct meson_ee_pwrc_domain_desc g12a_pwrc_domains[] = {
 	[PWRC_G12A_VPU_ID]  = VPU_PD("VPU", &gxbb_pwrc_vpu, g12a_pwrc_mem_vpu,
 				     pwrc_ee_get_power, 11, 2),
 	[PWRC_G12A_ETH_ID] = MEM_PD("ETH", meson8_pwrc_mem_eth),
+	[PWRC_G12A_DOS_HCODEC] = SINGLE_TOP_PD("DOS_HCODEC",
+					       &gxbb_pwrc_dos_hcodec),
+	[PWRC_G12A_DOS_VDEC_1] = SINGLE_TOP_PD("DOS_VDEC_1",
+					       &gxbb_pwrc_dos_vdec_1),
+	[PWRC_G12A_DOS_HEVC] = SINGLE_TOP_PD("DOS_HEVC", &gxbb_pwrc_dos_hevc),
 };
 
 static struct meson_ee_pwrc_domain_desc gxbb_pwrc_domains[] = {
 	[PWRC_GXBB_VPU_ID]  = VPU_PD("VPU", &gxbb_pwrc_vpu, gxbb_pwrc_mem_vpu,
 				     pwrc_ee_get_power, 12, 2),
 	[PWRC_GXBB_ETHERNET_MEM_ID] = MEM_PD("ETH", meson8_pwrc_mem_eth),
+	[PWRC_GXBB_DOS_HCODEC] = SINGLE_TOP_PD("DOS_HCODEC",
+					       &gxbb_pwrc_dos_hcodec),
+	[PWRC_GXBB_DOS_VDEC_1] = SINGLE_TOP_PD("DOS_VDEC_1",
+					       &gxbb_pwrc_dos_vdec_1),
+	[PWRC_GXBB_DOS_HEVC] = SINGLE_TOP_PD("DOS_HEVC", &gxbb_pwrc_dos_hevc),
 };
 
 static struct meson_ee_pwrc_domain_desc meson8_pwrc_domains[] = {
@@ -249,6 +312,12 @@ static struct meson_ee_pwrc_domain_desc meson8_pwrc_domains[] = {
 						  meson8_pwrc_mem_eth),
 	[PWRC_MESON8_AUDIO_DSP_MEM_ID] = MEM_PD("AUDIO_DSP_MEM",
 						meson8_pwrc_audio_dsp_mem),
+	[PWRC_MESON8_DOS_HCODEC] = SINGLE_TOP_PD("DOS_HCODEC",
+						 &meson8_pwrc_dos_hcodec),
+	[PWRC_MESON8_DOS_VDEC_1] = SINGLE_TOP_PD("DOS_VDEC_1",
+						 &meson8_pwrc_dos_vdec_1),
+	[PWRC_MESON8_DOS_HEVC] = SINGLE_TOP_PD("DOS_HEVC",
+					       &meson8_pwrc_dos_hevc),
 };
 
 static struct meson_ee_pwrc_domain_desc meson8b_pwrc_domains[] = {
@@ -259,6 +328,12 @@ static struct meson_ee_pwrc_domain_desc meson8b_pwrc_domains[] = {
 						  meson8_pwrc_mem_eth),
 	[PWRC_MESON8_AUDIO_DSP_MEM_ID] = MEM_PD("AUDIO_DSP_MEM",
 						meson8_pwrc_audio_dsp_mem),
+	[PWRC_MESON8_DOS_HCODEC] = SINGLE_TOP_PD("DOS_HCODEC",
+						 &meson8_pwrc_dos_hcodec),
+	[PWRC_MESON8_DOS_VDEC_1] = SINGLE_TOP_PD("DOS_VDEC_1",
+						 &meson8_pwrc_dos_vdec_1),
+	[PWRC_MESON8_DOS_HEVC] = SINGLE_TOP_PD("DOS_HEVC",
+					       &meson8_pwrc_dos_hevc),
 };
 
 static struct meson_ee_pwrc_domain_desc sm1_pwrc_domains[] = {
@@ -274,6 +349,10 @@ static struct meson_ee_pwrc_domain_desc sm1_pwrc_domains[] = {
 				    pwrc_ee_get_power),
 	[PWRC_SM1_AUDIO_ID] = MEM_PD("AUDIO", sm1_pwrc_mem_audio),
 	[PWRC_SM1_ETH_ID] = MEM_PD("ETH", meson8_pwrc_mem_eth),
+	[PWRC_SM1_DOS_HCODEC] = SINGLE_TOP_PD("DOS_HCODEC",
+					      &sm1_pwrc_dos_hcodec),
+	[PWRC_SM1_DOS_VDEC] = SINGLE_TOP_PD("DOS_VDEC", &sm1_pwrc_dos_vdec),
+	[PWRC_SM1_DOS_HEVC] = SINGLE_TOP_PD("DOS_HEVC", &sm1_pwrc_dos_hevc),
 };
 
 struct meson_ee_pwrc_domain {
