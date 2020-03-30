@@ -14,5 +14,8 @@
 #define PWRC_SM1_GE2D_ID	4
 #define PWRC_SM1_AUDIO_ID	5
 #define PWRC_SM1_ETH_ID		6
+#define PWRC_SM1_DOS_HCODEC	7
+#define PWRC_SM1_DOS_VDEC	8
+#define PWRC_SM1_DOS_HEVC	9
 
 #endif
