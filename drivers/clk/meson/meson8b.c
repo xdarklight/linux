@@ -1203,6 +1203,7 @@ static struct clk_regmap meson8b_vid_pll_final_div = {
 			&meson8b_vid_pll.hw
 		},
 		.num_parents = 1,
+		.flags = CLK_SET_RATE_PARENT,
 	},
 };
 
@@ -1213,7 +1214,7 @@ static const struct clk_hw *meson8b_vclk_mux_parent_hws[] = {
 	&meson8b_fclk_div5.hw,
 	&meson8b_vid_pll_final_div.hw,
 	&meson8b_fclk_div7.hw,
-	&meson8b_mpll1.hw,
+	//&meson8b_mpll1.hw,
 };
 
 static struct clk_regmap meson8b_vclk_in_sel = {
@@ -3829,6 +3830,17 @@ static void __init meson8b_clkc_init_common(struct device_node *np,
 		       __func__);
 		return;
 	}
+
+	/*
+	 * HACK: enable the following gates - TODO: figure out what these are:
+	 * - LVDS_CLK_EN
+	 * - meson8b_hdmi_intr_sync
+	 * - meson8b_gclk_venci_int
+	 * (meson8b_vpu_intr is managed by meson_venc.c)
+	 */
+	regmap_update_bits(map, HHI_VID_DIVIDER_CNTL, BIT(11), BIT(11));
+	regmap_update_bits(map, HHI_GCLK_MPEG2, BIT(3), BIT(3));
+	regmap_update_bits(map, HHI_GCLK_OTHER, BIT(8), BIT(8));
 
 	ret = of_clk_add_hw_provider(np, of_clk_hw_onecell_get,
 				     clk_hw_onecell_data);
