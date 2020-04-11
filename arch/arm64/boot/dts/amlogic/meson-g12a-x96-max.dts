@@ -353,9 +353,9 @@
 	pinctrl-0 = <&eth_pins>, <&eth_rgmii_pins>;
 	pinctrl-names = "default";
 	status = "okay";
-	phy-mode = "rgmii";
+	phy-mode = "rgmii-txid";
 	phy-handle = <&external_phy>;
-	amlogic,tx-delay-ns = <2>;
+	amlogic,rx-delay-ns = <0>;
 };
 
 &pwm_ef {
