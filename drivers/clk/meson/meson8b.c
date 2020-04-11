@@ -187,7 +187,7 @@ static struct clk_regmap meson8b_hdmi_pll_dco = {
 	.hw.init = &(struct clk_init_data){
 		/* sometimes also called "HPLL" or "HPLL PLL" */
 		.name = "hdmi_pll_dco",
-		.ops = &meson_clk_pll_ro_ops,
+		.ops = &meson_clk_pll_ops,
 		.parent_data = &(const struct clk_parent_data) {
 			.fw_name = "xtal",
 			.name = "xtal",
@@ -206,12 +206,11 @@ static struct clk_regmap meson8b_hdmi_pll_lvds_out = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "hdmi_pll_lvds_out",
-		.ops = &clk_regmap_divider_ro_ops,
+		.ops = &clk_regmap_divider_ops,
 		.parent_hws = (const struct clk_hw *[]) {
 			&meson8b_hdmi_pll_dco.hw
 		},
 		.num_parents = 1,
-		.flags = CLK_SET_RATE_PARENT,
 	},
 };
 
@@ -224,12 +223,11 @@ static struct clk_regmap meson8b_hdmi_pll_hdmi_out = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "hdmi_pll_hdmi_out",
-		.ops = &clk_regmap_divider_ro_ops,
+		.ops = &clk_regmap_divider_ops,
 		.parent_hws = (const struct clk_hw *[]) {
 			&meson8b_hdmi_pll_dco.hw
 		},
 		.num_parents = 1,
-		.flags = CLK_SET_RATE_PARENT,
 	},
 };
 
@@ -1086,7 +1084,7 @@ static struct clk_regmap meson8b_vid_pll_in_sel = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "vid_pll_in_sel",
-		.ops = &clk_regmap_mux_ro_ops,
+		.ops = &clk_regmap_mux_ops,
 		/*
 		 * TODO: depending on the SoC there is also a second parent:
 		 * Meson8: unknown
@@ -1097,7 +1095,6 @@ static struct clk_regmap meson8b_vid_pll_in_sel = {
 			&meson8b_hdmi_pll_lvds_out.hw
 		},
 		.num_parents = 1,
-		.flags = CLK_SET_RATE_PARENT,
 	},
 };
 
@@ -1108,7 +1105,7 @@ static struct clk_regmap meson8b_vid_pll_in_en = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "vid_pll_in_en",
-		.ops = &clk_regmap_gate_ro_ops,
+		.ops = &clk_regmap_gate_ops,
 		.parent_hws = (const struct clk_hw *[]) {
 			&meson8b_vid_pll_in_sel.hw
 		},
@@ -1133,7 +1130,7 @@ static struct clk_regmap meson8b_vid_pll_pre_div = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "vid_pll_pre_div",
-		.ops = &clk_regmap_divider_ro_ops,
+		.ops = &clk_regmap_divider_ops,
 		.parent_hws = (const struct clk_hw *[]) {
 			&meson8b_vid_pll_in_en.hw
 		},
@@ -1157,7 +1154,7 @@ static struct clk_regmap meson8b_vid_pll_post_div = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "vid_pll_post_div",
-		.ops = &clk_regmap_divider_ro_ops,
+		.ops = &clk_regmap_divider_ops,
 		.parent_hws = (const struct clk_hw *[]) {
 			&meson8b_vid_pll_pre_div.hw
 		},
@@ -1174,7 +1171,7 @@ static struct clk_regmap meson8b_vid_pll = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "vid_pll",
-		.ops = &clk_regmap_mux_ro_ops,
+		.ops = &clk_regmap_mux_ops,
 		/* TODO: parent 0x2 is vid_pll_pre_div_mult7_div2 */
 		.parent_hws = (const struct clk_hw *[]) {
 			&meson8b_vid_pll_pre_div.hw,
@@ -1201,12 +1198,11 @@ static struct clk_regmap meson8b_vid_pll_final_div = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "vid_pll_final_div",
-		.ops = &clk_regmap_divider_ro_ops,
+		.ops = &clk_regmap_divider_ops,
 		.parent_hws = (const struct clk_hw *[]) {
 			&meson8b_vid_pll.hw
 		},
 		.num_parents = 1,
-		.flags = CLK_SET_RATE_PARENT,
 	},
 };
 
@@ -1228,7 +1224,7 @@ static struct clk_regmap meson8b_vclk_in_sel = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "vclk_in_sel",
-		.ops = &clk_regmap_mux_ro_ops,
+		.ops = &clk_regmap_mux_ops,
 		.parent_hws = meson8b_vclk_mux_parent_hws,
 		.num_parents = ARRAY_SIZE(meson8b_vclk_mux_parent_hws),
 		.flags = CLK_SET_RATE_PARENT,
@@ -1242,7 +1238,7 @@ static struct clk_regmap meson8b_vclk_in_en = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "vclk_in_en",
-		.ops = &clk_regmap_gate_ro_ops,
+		.ops = &clk_regmap_gate_ops,
 		.parent_hws = (const struct clk_hw *[]) {
 			&meson8b_vclk_in_sel.hw
 		},
@@ -1258,7 +1254,7 @@ static struct clk_regmap meson8b_vclk_en = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "vclk_en",
-		.ops = &clk_regmap_gate_ro_ops,
+		.ops = &clk_regmap_gate_ops,
 		.parent_hws = (const struct clk_hw *[]) {
 			&meson8b_vclk_in_en.hw
 		},
@@ -1274,7 +1270,7 @@ static struct clk_regmap meson8b_vclk_div1_gate = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "vclk_div1_en",
-		.ops = &clk_regmap_gate_ro_ops,
+		.ops = &clk_regmap_gate_ops,
 		.parent_hws = (const struct clk_hw *[]) {
 			&meson8b_vclk_en.hw
 		},
@@ -1304,7 +1300,7 @@ static struct clk_regmap meson8b_vclk_div2_div_gate = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "vclk_div2_en",
-		.ops = &clk_regmap_gate_ro_ops,
+		.ops = &clk_regmap_gate_ops,
 		.parent_hws = (const struct clk_hw *[]) {
 			&meson8b_vclk_div2_div.hw
 		},
@@ -1334,7 +1330,7 @@ static struct clk_regmap meson8b_vclk_div4_div_gate = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "vclk_div4_en",
-		.ops = &clk_regmap_gate_ro_ops,
+		.ops = &clk_regmap_gate_ops,
 		.parent_hws = (const struct clk_hw *[]) {
 			&meson8b_vclk_div4_div.hw
 		},
@@ -1364,7 +1360,7 @@ static struct clk_regmap meson8b_vclk_div6_div_gate = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "vclk_div6_en",
-		.ops = &clk_regmap_gate_ro_ops,
+		.ops = &clk_regmap_gate_ops,
 		.parent_hws = (const struct clk_hw *[]) {
 			&meson8b_vclk_div6_div.hw
 		},
@@ -1394,7 +1390,7 @@ static struct clk_regmap meson8b_vclk_div12_div_gate = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "vclk_div12_en",
-		.ops = &clk_regmap_gate_ro_ops,
+		.ops = &clk_regmap_gate_ops,
 		.parent_hws = (const struct clk_hw *[]) {
 			&meson8b_vclk_div12_div.hw
 		},
@@ -1411,7 +1407,7 @@ static struct clk_regmap meson8b_vclk2_in_sel = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "vclk2_in_sel",
-		.ops = &clk_regmap_mux_ro_ops,
+		.ops = &clk_regmap_mux_ops,
 		.parent_hws = meson8b_vclk_mux_parent_hws,
 		.num_parents = ARRAY_SIZE(meson8b_vclk_mux_parent_hws),
 		.flags = CLK_SET_RATE_PARENT,
@@ -1425,7 +1421,7 @@ static struct clk_regmap meson8b_vclk2_clk_in_en = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "vclk2_in_en",
-		.ops = &clk_regmap_gate_ro_ops,
+		.ops = &clk_regmap_gate_ops,
 		.parent_hws = (const struct clk_hw *[]) {
 			&meson8b_vclk2_in_sel.hw
 		},
@@ -1441,7 +1437,7 @@ static struct clk_regmap meson8b_vclk2_clk_en = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "vclk2_en",
-		.ops = &clk_regmap_gate_ro_ops,
+		.ops = &clk_regmap_gate_ops,
 		.parent_hws = (const struct clk_hw *[]) {
 			&meson8b_vclk2_clk_in_en.hw
 		},
@@ -1457,7 +1453,7 @@ static struct clk_regmap meson8b_vclk2_div1_gate = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "vclk2_div1_en",
-		.ops = &clk_regmap_gate_ro_ops,
+		.ops = &clk_regmap_gate_ops,
 		.parent_hws = (const struct clk_hw *[]) {
 			&meson8b_vclk2_clk_en.hw
 		},
@@ -1487,7 +1483,7 @@ static struct clk_regmap meson8b_vclk2_div2_div_gate = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "vclk2_div2_en",
-		.ops = &clk_regmap_gate_ro_ops,
+		.ops = &clk_regmap_gate_ops,
 		.parent_hws = (const struct clk_hw *[]) {
 			&meson8b_vclk2_div2_div.hw
 		},
@@ -1517,7 +1513,7 @@ static struct clk_regmap meson8b_vclk2_div4_div_gate = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "vclk2_div4_en",
-		.ops = &clk_regmap_gate_ro_ops,
+		.ops = &clk_regmap_gate_ops,
 		.parent_hws = (const struct clk_hw *[]) {
 			&meson8b_vclk2_div4_div.hw
 		},
@@ -1547,7 +1543,7 @@ static struct clk_regmap meson8b_vclk2_div6_div_gate = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "vclk2_div6_en",
-		.ops = &clk_regmap_gate_ro_ops,
+		.ops = &clk_regmap_gate_ops,
 		.parent_hws = (const struct clk_hw *[]) {
 			&meson8b_vclk2_div6_div.hw
 		},
@@ -1577,7 +1573,7 @@ static struct clk_regmap meson8b_vclk2_div12_div_gate = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "vclk2_div12_en",
-		.ops = &clk_regmap_gate_ro_ops,
+		.ops = &clk_regmap_gate_ops,
 		.parent_hws = (const struct clk_hw *[]) {
 			&meson8b_vclk2_div12_div.hw
 		},
@@ -1602,7 +1598,7 @@ static struct clk_regmap meson8b_cts_enct_sel = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "cts_enct_sel",
-		.ops = &clk_regmap_mux_ro_ops,
+		.ops = &clk_regmap_mux_ops,
 		.parent_hws = meson8b_vclk_enc_mux_parent_hws,
 		.num_parents = ARRAY_SIZE(meson8b_vclk_enc_mux_parent_hws),
 		.flags = CLK_SET_RATE_PARENT,
@@ -1616,7 +1612,7 @@ static struct clk_regmap meson8b_cts_enct = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "cts_enct",
-		.ops = &clk_regmap_gate_ro_ops,
+		.ops = &clk_regmap_gate_ops,
 		.parent_hws = (const struct clk_hw *[]) {
 			&meson8b_cts_enct_sel.hw
 		},
@@ -1633,7 +1629,7 @@ static struct clk_regmap meson8b_cts_encp_sel = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "cts_encp_sel",
-		.ops = &clk_regmap_mux_ro_ops,
+		.ops = &clk_regmap_mux_ops,
 		.parent_hws = meson8b_vclk_enc_mux_parent_hws,
 		.num_parents = ARRAY_SIZE(meson8b_vclk_enc_mux_parent_hws),
 		.flags = CLK_SET_RATE_PARENT,
@@ -1647,7 +1643,7 @@ static struct clk_regmap meson8b_cts_encp = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "cts_encp",
-		.ops = &clk_regmap_gate_ro_ops,
+		.ops = &clk_regmap_gate_ops,
 		.parent_hws = (const struct clk_hw *[]) {
 			&meson8b_cts_encp_sel.hw
 		},
@@ -1664,7 +1660,7 @@ static struct clk_regmap meson8b_cts_enci_sel = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "cts_enci_sel",
-		.ops = &clk_regmap_mux_ro_ops,
+		.ops = &clk_regmap_mux_ops,
 		.parent_hws = meson8b_vclk_enc_mux_parent_hws,
 		.num_parents = ARRAY_SIZE(meson8b_vclk_enc_mux_parent_hws),
 		.flags = CLK_SET_RATE_PARENT,
@@ -1678,7 +1674,7 @@ static struct clk_regmap meson8b_cts_enci = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "cts_enci",
-		.ops = &clk_regmap_gate_ro_ops,
+		.ops = &clk_regmap_gate_ops,
 		.parent_hws = (const struct clk_hw *[]) {
 			&meson8b_cts_enci_sel.hw
 		},
@@ -1695,7 +1691,7 @@ static struct clk_regmap meson8b_hdmi_tx_pixel_sel = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "hdmi_tx_pixel_sel",
-		.ops = &clk_regmap_mux_ro_ops,
+		.ops = &clk_regmap_mux_ops,
 		.parent_hws = meson8b_vclk_enc_mux_parent_hws,
 		.num_parents = ARRAY_SIZE(meson8b_vclk_enc_mux_parent_hws),
 		.flags = CLK_SET_RATE_PARENT,
@@ -1709,7 +1705,7 @@ static struct clk_regmap meson8b_hdmi_tx_pixel = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "hdmi_tx_pixel",
-		.ops = &clk_regmap_gate_ro_ops,
+		.ops = &clk_regmap_gate_ops,
 		.parent_hws = (const struct clk_hw *[]) {
 			&meson8b_hdmi_tx_pixel_sel.hw
 		},
@@ -1734,7 +1730,7 @@ static struct clk_regmap meson8b_cts_encl_sel = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "cts_encl_sel",
-		.ops = &clk_regmap_mux_ro_ops,
+		.ops = &clk_regmap_mux_ops,
 		.parent_hws = meson8b_vclk2_enc_mux_parent_hws,
 		.num_parents = ARRAY_SIZE(meson8b_vclk2_enc_mux_parent_hws),
 		.flags = CLK_SET_RATE_PARENT,
@@ -1748,7 +1744,7 @@ static struct clk_regmap meson8b_cts_encl = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "cts_encl",
-		.ops = &clk_regmap_gate_ro_ops,
+		.ops = &clk_regmap_gate_ops,
 		.parent_hws = (const struct clk_hw *[]) {
 			&meson8b_cts_encl_sel.hw
 		},
@@ -1765,7 +1761,7 @@ static struct clk_regmap meson8b_cts_vdac0_sel = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "cts_vdac0_sel",
-		.ops = &clk_regmap_mux_ro_ops,
+		.ops = &clk_regmap_mux_ops,
 		.parent_hws = meson8b_vclk2_enc_mux_parent_hws,
 		.num_parents = ARRAY_SIZE(meson8b_vclk2_enc_mux_parent_hws),
 		.flags = CLK_SET_RATE_PARENT,
@@ -1779,7 +1775,7 @@ static struct clk_regmap meson8b_cts_vdac0 = {
 	},
 	.hw.init = &(struct clk_init_data){
 		.name = "cts_vdac0",
-		.ops = &clk_regmap_gate_ro_ops,
+		.ops = &clk_regmap_gate_ops,
 		.parent_hws = (const struct clk_hw *[]) {
 			&meson8b_cts_vdac0_sel.hw
 		},
