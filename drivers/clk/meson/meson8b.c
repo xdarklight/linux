@@ -1626,7 +1626,7 @@ static struct clk_regmap meson8b_cts_enct = {
 			&meson8b_cts_enct_sel.hw
 		},
 		.num_parents = 1,
-		.flags = CLK_SET_RATE_PARENT,
+		.flags = CLK_SET_RATE_PARENT | CLK_IS_CRITICAL,
 	},
 };
 
@@ -1657,7 +1657,7 @@ static struct clk_regmap meson8b_cts_encp = {
 			&meson8b_cts_encp_sel.hw
 		},
 		.num_parents = 1,
-		.flags = CLK_SET_RATE_PARENT,
+		.flags = CLK_SET_RATE_PARENT | CLK_IS_CRITICAL,
 	},
 };
 
@@ -1688,7 +1688,7 @@ static struct clk_regmap meson8b_cts_enci = {
 			&meson8b_cts_enci_sel.hw
 		},
 		.num_parents = 1,
-		.flags = CLK_SET_RATE_PARENT,
+		.flags = CLK_SET_RATE_PARENT | CLK_IS_CRITICAL,
 	},
 };
 
@@ -1719,7 +1719,7 @@ static struct clk_regmap meson8b_hdmi_tx_pixel = {
 			&meson8b_hdmi_tx_pixel_sel.hw
 		},
 		.num_parents = 1,
-		.flags = CLK_SET_RATE_PARENT,
+		.flags = CLK_SET_RATE_PARENT | CLK_IS_CRITICAL,
 	},
 };
 
@@ -1758,7 +1758,7 @@ static struct clk_regmap meson8b_cts_encl = {
 			&meson8b_cts_encl_sel.hw
 		},
 		.num_parents = 1,
-		.flags = CLK_SET_RATE_PARENT,
+		.flags = CLK_SET_RATE_PARENT | CLK_IS_CRITICAL,
 	},
 };
 
@@ -1789,7 +1789,7 @@ static struct clk_regmap meson8b_cts_vdac0 = {
 			&meson8b_cts_vdac0_sel.hw
 		},
 		.num_parents = 1,
-		.flags = CLK_SET_RATE_PARENT,
+		.flags = CLK_SET_RATE_PARENT | CLK_IS_CRITICAL,
 	},
 };
 
@@ -3864,6 +3864,24 @@ static void __init meson8b_clkc_init_common(struct device_node *np,
 		       __func__);
 		return;
 	}
+
+	/*
+	 * HACK - deassert the following resets:
+	 * - CLKC_RESET_VID_DIVIDER_CNTL_RESET_N_PRE
+	 * - CLKC_RESET_VID_DIVIDER_CNTL_RESET_N_POST
+	 */
+	regmap_update_bits(map, HHI_VID_DIVIDER_CNTL, 0x3, 0x3);
+
+	/*
+	 * HACK: enable the following gates - TODO: figure out what these are:
+	 * - LVDS_CLK_EN
+	 * - meson8b_hdmi_intr_sync
+	 * - meson8b_gclk_venci_int
+	 * (meson8b_vpu_intr is managed by meson_venc.c)
+	 */
+	regmap_update_bits(map, HHI_VID_DIVIDER_CNTL, BIT(11), BIT(11));
+	regmap_update_bits(map, HHI_GCLK_MPEG2, BIT(3), BIT(3));
+	regmap_update_bits(map, HHI_GCLK_OTHER, BIT(8), BIT(8));
 
 	ret = of_clk_add_hw_provider(np, of_clk_hw_onecell_get,
 				     clk_hw_onecell_data);
