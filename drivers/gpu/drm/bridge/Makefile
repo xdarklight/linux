@@ -21,3 +21,4 @@ obj-$(CONFIG_DRM_TI_TPD12S015) += ti-tpd12s015.o
 
 obj-y += analogix/
 obj-y += synopsys/
+obj-y += transwitch/
