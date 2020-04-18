@@ -195,8 +195,17 @@ static void meson_plane_atomic_update(struct drm_plane *plane,
 	}
 
 	/* On GXBB, Use the old non-HDR RGB2YUV converter */
-	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_GXBB))
-		priv->viu.osd1_blk0_cfg[0] |= OSD_OUTPUT_COLOR_RGB;
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_GXBB)) {
+		switch (fb->format->format) {
+		case DRM_FORMAT_YUV444:
+		case DRM_FORMAT_YUV422:
+		case DRM_FORMAT_YUV420:
+		case DRM_FORMAT_YUV411:
+		case DRM_FORMAT_YUV410:
+			priv->viu.osd1_blk0_cfg[0] |= OSD_OUTPUT_COLOR_RGB;
+			break;
+		}
+	}
 
 	if (priv->viu.osd1_afbcd &&
 	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A)) {
