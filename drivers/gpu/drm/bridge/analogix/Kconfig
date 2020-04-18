@@ -25,3 +25,9 @@ config DRM_ANALOGIX_ANX78XX
 config DRM_ANALOGIX_DP
 	tristate
 	depends on DRM
+
+config DRM_ANALOGIX_HDMI_14_TX
+	tristate
+	depends on DRM
+	depends on REGMAP
+	select CEC_CORE if CEC_NOTIFIER
