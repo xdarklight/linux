@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+config DRM_TRANSWITCH_TXC_48352
+	tristate
+	depends on DRM
+	depends on REGMAP
+	select CEC_CORE if CEC_NOTIFIER
