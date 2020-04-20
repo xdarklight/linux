@@ -942,7 +942,7 @@ static void txc_48352_bridge_mode_set(struct drm_bridge *bridge,
 {
 	struct txc_48352 *priv = to_txc_48352(bridge);
 
-	if (priv->input_bus_format = MEDIA_BUS_FMT_FIXED)
+	if (priv->input_bus_format == MEDIA_BUS_FMT_FIXED)
 		priv->input_bus_format = MEDIA_BUS_FMT_RGB888_1X24;
 
 	priv->cea_mode = drm_match_cea_mode(mode);
