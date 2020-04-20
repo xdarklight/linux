@@ -942,7 +942,7 @@ static void anx_hdmi_14_tx_bridge_mode_set(struct drm_bridge *bridge,
 {
 	struct anx_hdmi_14_tx *priv = to_anx_hdmi_14_tx(bridge);
 
-	if (priv->input_bus_format = MEDIA_BUS_FMT_FIXED)
+	if (priv->input_bus_format == MEDIA_BUS_FMT_FIXED)
 		priv->input_bus_format = MEDIA_BUS_FMT_RGB888_1X24;
 
 	priv->cea_mode = drm_match_cea_mode(mode);
