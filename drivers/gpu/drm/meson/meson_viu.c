@@ -413,7 +413,11 @@ void meson_viu_gxm_disable_osd1_afbc(struct meson_drm *priv)
 
 static inline uint32_t meson_viu_osd_burst_length_reg(uint32_t length)
 {
-	uint32_t val = (((length & 0x80) % 24) / 12);
+	int val;
+	if (length == 96 || length == 128)
+		val = (length / 32) + 1;
+	else
+		val = (length / 16) - 1;
 
 	return (((val & 0x3) << 10) | (((val & 0x4) >> 2) << 31));
 }

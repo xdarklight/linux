@@ -209,11 +209,17 @@ static void meson_plane_atomic_update(struct drm_plane *plane,
 	} else {
 		switch (fb->format->format) {
 		case DRM_FORMAT_XRGB8888:
+			priv->viu.osd1_blk0_cfg[0] |= OSD_BLK_MODE_32 |
+						OSD_COLOR_MATRIX_32_RGBA;
+			break;
 		case DRM_FORMAT_ARGB8888:
 			priv->viu.osd1_blk0_cfg[0] |= OSD_BLK_MODE_32 |
 						OSD_COLOR_MATRIX_32_ARGB;
 			break;
 		case DRM_FORMAT_XBGR8888:
+			priv->viu.osd1_blk0_cfg[0] |= OSD_BLK_MODE_32 |
+						OSD_COLOR_MATRIX_32_BGRA;
+			break;
 		case DRM_FORMAT_ABGR8888:
 			priv->viu.osd1_blk0_cfg[0] |= OSD_BLK_MODE_32 |
 						OSD_COLOR_MATRIX_32_ABGR;
