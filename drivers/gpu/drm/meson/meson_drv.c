@@ -174,6 +174,28 @@ static void meson_remove_framebuffers(void)
 	kfree(ap);
 }
 
+static void meson_fbdev_setup(struct meson_drm *priv)
+{
+	unsigned int preferred_bpp;
+
+	/*
+	 * All SoC generations before GXBB don't have a way to configure the
+	 * alpha value for DRM_FORMAT_XRGB8888 and DRM_FORMAT_XBGR8888 with
+	 * 32-bit but missing alpha ??? TODO: better explanation here.
+	 * Use 24-bit to get a working framebuffer console. Applications that
+	 * can do better (for example: kmscube) will switch to a better format
+	 * like DRM_FORMAT_XRGB8888 while passing a sane alpha value.
+	 */
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8B) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8M2))
+		preferred_bpp = 24;
+	else
+		preferred_bpp = 32;
+
+	drm_fbdev_generic_setup(priv->drm, preferred_bpp);
+}
+
 struct meson_drm_soc_attr {
 	struct meson_drm_soc_limits limits;
 	const struct soc_device_attribute *attrs;
@@ -369,7 +391,7 @@ static int meson_drv_bind_master(struct device *dev, bool has_components)
 	if (ret)
 		goto uninstall_irq;
 
-	drm_fbdev_generic_setup(drm, 32);
+	meson_fbdev_setup(priv);
 
 	return 0;
 
