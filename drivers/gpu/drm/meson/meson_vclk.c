@@ -734,6 +734,11 @@ meson_vclk_dmt_supported_freq(struct meson_drm *priv, unsigned long long freq)
 			return MODE_CLOCK_HIGH;
 	}
 
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8B) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8M2))
+		return MODE_OK;
+
 	if (meson_hdmi_pll_find_params(priv, freq, &m, &frac, &od))
 		return MODE_OK;
 
@@ -816,6 +821,11 @@ meson_vclk_vic_supported_freq(struct meson_drm *priv,
 		    phy_freq > priv->limits->max_hdmi_phy_freq)
 			return MODE_CLOCK_HIGH;
 	}
+
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8B) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8M2))
+		return MODE_OK;
 
 	for (i = 0 ; params[i].pixel_freq ; ++i) {
 		if (meson_vclk_freqs_are_matching_param(i, phy_freq, vclk_freq))
@@ -1046,6 +1056,131 @@ static void meson_vclk_set(struct meson_drm *priv,
 	regmap_update_bits(priv->hhi, HHI_VID_CLK_CNTL, VCLK_EN, VCLK_EN);
 }
 
+static int meson_vclk_set_rate_exclusive(struct meson_drm *priv,
+					 enum vpu_bulk_clk_id clk_id,
+					 unsigned long long rate)
+{
+	struct clk *clk = priv->vid_clks[clk_id].clk;
+	int ret;
+
+	ret = clk_set_rate_exclusive(clk, rate);
+	if (ret)
+		return ret;
+
+	priv->vid_clk_rate_exclusive[clk_id] = true;
+
+	return 0;
+}
+
+static void meson_vclk_disable_ccf(struct meson_drm *priv)
+{
+	unsigned int i;
+
+	/* allow all clocks to be changed in _enable again */
+	for (i = 0; i < VPU_VID_CLK_NUM; i++) {
+		if (!priv->vid_clk_rate_exclusive[i])
+			continue;
+
+		clk_rate_exclusive_put(priv->vid_clks[i].clk);
+		priv->vid_clk_rate_exclusive[i] = false;
+	}
+
+	if (priv->clk_dac_enabled) {
+		clk_disable(priv->clk_dac);
+		priv->clk_dac_enabled = false;
+	}
+
+	if (priv->clk_venc_enabled) {
+		clk_disable(priv->clk_venc);
+		priv->clk_venc_enabled = false;
+	}
+}
+
+static void meson_vclk_set_ccf(struct meson_drm *priv, unsigned int target,
+			       bool hdmi_use_enci, unsigned long long phy_freq,
+			       unsigned long long dac_freq,
+			       unsigned long long venc_freq)
+{
+	enum vpu_bulk_clk_id venc_clk_id, dac_clk_id;
+	int ret;
+
+	if (target == MESON_VCLK_TARGET_CVBS || hdmi_use_enci)
+		venc_clk_id = VPU_VID_CLK_CTS_ENCI;
+	else
+		venc_clk_id = VPU_VID_CLK_CTS_ENCP;
+
+	if (target == MESON_VCLK_TARGET_CVBS)
+		dac_clk_id = VPU_VID_CLK_CTS_VDAC0;
+	else
+		dac_clk_id = VPU_VID_CLK_HDMI_TX_PIXEL;
+
+	/*
+	 * The TMDS clock also updates the PLL. Protect the PLL rate so all
+	 * following clocks are derived from the PLL setting which matches the
+	 * TMDS clock.
+	 */
+	ret = meson_vclk_set_rate_exclusive(priv, VPU_VID_CLK_TMDS, phy_freq);
+	if (ret) {
+		dev_err(priv->dev, "Failed to set TMDS clock to %lluHz: %d\n",
+			phy_freq, ret);
+		return;
+	}
+
+	/*
+	 * The DAC clock may be derived from a parent of the VENC clock so we
+	 * must protect the VENC clock from changing it's rate. This works
+	 * because the DAC freq can be divided by the VENC clock.
+	 */
+	ret = meson_vclk_set_rate_exclusive(priv, venc_clk_id, venc_freq);
+	if (ret) {
+		dev_warn(priv->dev,
+			 "Failed to set VENC clock to %lluHz while TMDS clock is %lluHz: %d\n",
+			 venc_freq, phy_freq, ret);
+		return;
+	}
+
+	priv->clk_venc = priv->vid_clks[venc_clk_id].clk;
+
+	/*
+	 * after changing any of the VID_PLL_* clocks (which can happen when
+	 * update the VENC clock rate) we need to assert and then de-assert the
+	 * VID_DIVIDER_CNTL_* reset lines.
+	 */
+	reset_control_bulk_assert(VPU_RESET_VID_PLL_NUM, priv->vid_pll_resets);
+	reset_control_bulk_deassert(VPU_RESET_VID_PLL_NUM, priv->vid_pll_resets);
+
+	ret = meson_vclk_set_rate_exclusive(priv, dac_clk_id, dac_freq);
+	if (ret) {
+		dev_warn(priv->dev,
+			 "Failed to set pixel clock to %lluHz while TMDS clock is %lluHz: %d\n",
+			 dac_freq, phy_freq, ret);
+		return;
+	}
+
+	priv->clk_dac = priv->vid_clks[dac_clk_id].clk;
+}
+
+static void meson_vclk_enable_ccf(struct meson_drm *priv)
+{
+	int ret;
+
+	ret = clk_enable(priv->clk_venc);
+	if (ret)
+		dev_err(priv->dev,
+			"Failed to re-enable the VENC clock at %luHz: %d\n",
+			clk_get_rate(priv->clk_venc), ret);
+	else
+		priv->clk_venc_enabled = true;
+
+	ret = clk_enable(priv->clk_dac);
+	if (ret)
+		dev_err(priv->dev,
+			"Failed to re-enable the pixel clock at %luHz: %d\n",
+			clk_get_rate(priv->clk_dac), ret);
+	else
+		priv->clk_dac_enabled = true;
+}
+
 void meson_vclk_setup(struct meson_drm *priv, unsigned int target,
 		      unsigned long long phy_freq, unsigned long long vclk_freq,
 		      unsigned long long venc_freq, unsigned long long dac_freq,
@@ -1055,6 +1190,21 @@ void meson_vclk_setup(struct meson_drm *priv, unsigned int target,
 	unsigned long long freq;
 	unsigned long long hdmi_tx_div;
 	unsigned long long venc_div;
+
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8B) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8M2)) {
+		/* CVBS video clocks are generated off a 1296MHz base clock */
+		if (target == MESON_VCLK_TARGET_CVBS)
+			phy_freq = 1296000000;
+
+		dev_err(priv->dev, "%s(target: %u, phy: %llu, dac: %llu, venc: %llu, hdmi_use_enci: %u)\n", __func__, target, phy_freq, dac_freq, venc_freq, hdmi_use_enci);
+		meson_vclk_disable_ccf(priv);
+		meson_vclk_set_ccf(priv, target, hdmi_use_enci, phy_freq,
+				   dac_freq, venc_freq);
+		meson_vclk_enable_ccf(priv);
+		return;
+	}
 
 	if (target == MESON_VCLK_TARGET_CVBS) {
 		meson_venci_cvbs_clock_config(priv);
