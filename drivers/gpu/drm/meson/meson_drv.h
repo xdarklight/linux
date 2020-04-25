@@ -148,6 +148,10 @@ struct meson_drm {
 		u64 modifier;
 		u32 format;
 	} afbcd;
+
+	struct {
+		uint32_t cntl1;
+	} cvbs;
 };
 
 static inline int meson_vpu_is_compatible(struct meson_drm *priv,
