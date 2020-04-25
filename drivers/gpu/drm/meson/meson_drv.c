@@ -304,6 +304,53 @@ static int meson_drv_bind_master(struct device *dev, bool has_components)
 	priv->compat = match->compat;
 	priv->afbcd.ops = match->afbcd_ops;
 
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8B) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8M2)) {
+		priv->vid_pll_resets[0] = devm_reset_control_get_exclusive(dev, "vid_pll_pre");
+		if (IS_ERR(priv->vid_pll_resets[0]))
+			return PTR_ERR(priv->vid_pll_resets[0]);
+
+		priv->vid_pll_resets[1] = devm_reset_control_get_exclusive(dev, "vid_pll_post");
+		if (IS_ERR(priv->vid_pll_resets[1]))
+			return PTR_ERR(priv->vid_pll_resets[1]);
+
+		priv->vid_pll_resets[2] = devm_reset_control_get_exclusive(dev, "vid_pll_soft_pre");
+		if (IS_ERR(priv->vid_pll_resets[2]))
+			return PTR_ERR(priv->vid_pll_resets[2]);
+
+		priv->vid_pll_resets[3] = devm_reset_control_get_exclusive(dev, "vid_pll_soft_post");
+		if (IS_ERR(priv->vid_pll_resets[3]))
+			return PTR_ERR(priv->vid_pll_resets[3]);
+
+		priv->clk_bulk[VPU_BULK_CLK_HDMI_PLL].id = "hdmi_pll_dco";
+		priv->clk_bulk[VPU_BULK_CLK_HDMI_PLL_LVDS_OUT].id = "hdmi_pll_lvds_od";
+		priv->clk_bulk[VPU_BULK_CLK_HDMI_PLL_HDMI_OUT].id = "hdmi_pll_hdmi_od";
+		priv->clk_bulk[VPU_BULK_CLK_PLL_VID].id = "vid_pll";
+		priv->clk_bulk[VPU_BULK_CLK_VID_PLL_FINAL_DIV].id = "vid_pll_final_div";
+		priv->clk_bulk[VPU_BULK_CLK_HDMI_TX_PIXEL].id = "hdmi_tx_pixel";
+		priv->clk_bulk[VPU_BULK_CLK_CTS_ENCP].id = "cts_encp";
+		priv->clk_bulk[VPU_BULK_CLK_CTS_ENCI].id = "cts_enci";
+		priv->clk_bulk[VPU_BULK_CLK_CTS_ENCT].id = "cts_enct";
+		priv->clk_bulk[VPU_BULK_CLK_CTS_ENCL].id = "cts_encl";
+		priv->clk_bulk[VPU_BULK_CLK_CTS_VDAC0].id = "cts_vdac0";
+
+		// TODO: error handling below
+		for (i = 0; i < ARRAY_SIZE(priv->vid_pll_resets); i++) {
+			ret = reset_control_deassert(priv->vid_pll_resets[i]);
+			if (ret)
+				return ret;
+		}
+
+		ret = devm_clk_bulk_get(dev, VPU_BULK_CLK_NUM, priv->clk_bulk);
+		if (ret)
+			return ret;
+
+		ret = clk_bulk_prepare_enable(VPU_BULK_CLK_NUM, priv->clk_bulk);
+		if (ret)
+			return ret;
+	}
+
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "vpu");
 	regs = devm_ioremap_resource(dev, res);
 	if (IS_ERR(regs)) {
@@ -490,6 +537,8 @@ static void meson_drv_unbind(struct device *dev)
 		priv->afbcd.ops->reset(priv);
 		meson_rdma_free(priv);
 	}
+
+	clk_bulk_disable_unprepare(VPU_BULK_CLK_NUM, priv->clk_bulk);
 }
 
 static const struct component_master_ops meson_drv_master_ops = {

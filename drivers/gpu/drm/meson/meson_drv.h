@@ -7,10 +7,12 @@
 #ifndef __MESON_DRV_H
 #define __MESON_DRV_H
 
+#include <linux/clk.h>
 #include <linux/device.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/regmap.h>
+#include <linux/reset.h>
 
 struct drm_crtc;
 struct drm_device;
@@ -37,6 +39,21 @@ struct meson_drm_soc_limits {
 	unsigned int max_hdmi_phy_freq;
 };
 
+enum vpu_bulk_clk_id {
+	VPU_BULK_CLK_HDMI_PLL = 0,
+	VPU_BULK_CLK_HDMI_PLL_LVDS_OUT,
+	VPU_BULK_CLK_HDMI_PLL_HDMI_OUT,
+	VPU_BULK_CLK_PLL_VID,
+	VPU_BULK_CLK_VID_PLL_FINAL_DIV,
+	VPU_BULK_CLK_HDMI_TX_PIXEL,
+	VPU_BULK_CLK_CTS_ENCP,
+	VPU_BULK_CLK_CTS_ENCI,
+	VPU_BULK_CLK_CTS_ENCT,
+	VPU_BULK_CLK_CTS_ENCL,
+	VPU_BULK_CLK_CTS_VDAC0,
+	VPU_BULK_CLK_NUM
+};
+
 struct meson_drm {
 	struct device *dev;
 	enum vpu_compatible compat;
@@ -56,6 +73,11 @@ struct meson_drm {
 	struct drm_plane *overlay_plane;
 
 	const struct meson_drm_soc_limits *limits;
+
+	struct clk_bulk_data clk_bulk[VPU_BULK_CLK_NUM];
+	struct clk *clk_venc;
+	struct clk *clk_dac;
+	struct reset_control *vid_pll_resets[4];
 
 	/* Components Data */
 	struct {

@@ -1024,6 +1024,58 @@ static void meson_vclk_set(struct meson_drm *priv, unsigned int pll_base_freq,
 	regmap_update_bits(priv->hhi, HHI_VID_CLK_CNTL, VCLK_EN, VCLK_EN);
 }
 
+// TODO: error handling
+static void meson_vclk_setup_ccf(struct meson_drm *priv,
+				 unsigned int target, bool hdmi_use_enci,
+				 unsigned int pll_freq, unsigned int phy_freq,
+				 unsigned int dac_freq, unsigned int venc_freq)
+{
+	unsigned int i;
+
+	dev_err(priv->dev, "%s(target: %u, pll: %u, phy: %u, dac: %u, venc: %u, hdmi_use_enci: %u)\n", __func__, target, pll_freq, phy_freq, dac_freq, venc_freq, hdmi_use_enci);
+
+	// HACK: we don't support 2.971GHz on the HDMI PLL yet
+	if (target == MESON_VCLK_TARGET_HDMI && pll_freq >= 2970000)
+		pll_freq /= 2;
+
+	clk_disable(priv->clk_dac);
+	clk_disable(priv->clk_venc);
+	clk_rate_exclusive_put(priv->clk_venc);
+
+	clk_set_rate(priv->clk_bulk[VPU_BULK_CLK_HDMI_PLL].clk,
+			pll_freq * 1000UL);
+	clk_set_rate(priv->clk_bulk[VPU_BULK_CLK_HDMI_PLL_HDMI_OUT].clk,
+			phy_freq * 1000UL);
+
+	if (target == MESON_VCLK_TARGET_CVBS || hdmi_use_enci)
+		priv->clk_venc = priv->clk_bulk[VPU_BULK_CLK_CTS_ENCI].clk;
+	else
+		priv->clk_venc = priv->clk_bulk[VPU_BULK_CLK_CTS_ENCP].clk;
+
+	if (target == MESON_VCLK_TARGET_CVBS)
+		priv->clk_dac = priv->clk_bulk[VPU_BULK_CLK_CTS_VDAC0].clk;
+	else
+		priv->clk_dac = priv->clk_bulk[VPU_BULK_CLK_HDMI_TX_PIXEL].clk;
+
+	/*
+	 * The DAC clock may be derived from a parent of the VENC clock so we
+	 * must protect the VENC clock from changing it's rate. This works
+	 * because the DAC freq can be divided by the VENC clock.
+	 */
+	clk_set_rate_exclusive(priv->clk_venc, venc_freq * 1000UL);
+	clk_set_rate(priv->clk_dac, dac_freq * 1000UL);
+
+	for (i = 0; i < ARRAY_SIZE(priv->vid_pll_resets); i++)
+		reset_control_assert(priv->vid_pll_resets[i]);
+	for (i = 0; i < ARRAY_SIZE(priv->vid_pll_resets); i++)
+		reset_control_deassert(priv->vid_pll_resets[i]);
+
+	if (clk_enable(priv->clk_venc))
+		dev_err(priv->dev, "Failed to re-enable the VENC clock\n");
+	if (clk_enable(priv->clk_dac))
+		dev_err(priv->dev, "Failed to re-enable the DAC clock\n");
+}
+
 void meson_vclk_setup(struct meson_drm *priv, unsigned int target,
 		      unsigned int phy_freq, unsigned int vclk_freq,
 		      unsigned int venc_freq, unsigned int dac_freq,
@@ -1033,6 +1085,17 @@ void meson_vclk_setup(struct meson_drm *priv, unsigned int target,
 	unsigned int freq;
 	unsigned int hdmi_tx_div;
 	unsigned int venc_div;
+
+	if ((meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8) ||
+	     meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8B) ||
+	     meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8M2)) &&
+	    (target == MESON_VCLK_TARGET_CVBS ||
+	     target == MESON_VCLK_TARGET_DMT)) {
+		meson_vclk_setup_ccf(priv,
+				     target, hdmi_use_enci,
+				     phy_freq, phy_freq, dac_freq, venc_freq);
+		return;
+	}
 
 	if (target == MESON_VCLK_TARGET_CVBS) {
 		meson_venci_cvbs_clock_config(priv);
@@ -1102,10 +1165,22 @@ void meson_vclk_setup(struct meson_drm *priv, unsigned int target,
 		return;
 	}
 
-	meson_vclk_set(priv, params[freq].pll_freq,
-		       params[freq].pll_od1, params[freq].pll_od2,
-		       params[freq].pll_od3, params[freq].vid_pll_div,
-		       params[freq].vclk_div, hdmi_tx_div, venc_div,
-		       hdmi_use_enci, vic_alternate_clock);
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8B) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8M2)) {
+		meson_vclk_setup_ccf(priv,
+				     target,
+				     hdmi_use_enci,
+				     params[freq].pll_freq,
+				     params[freq].phy_freq,
+				     params[freq].pixel_freq,
+				     venc_freq);
+	} else {
+		meson_vclk_set(priv, params[freq].pll_freq,
+			       params[freq].pll_od1, params[freq].pll_od2,
+			       params[freq].pll_od3, params[freq].vid_pll_div,
+			       params[freq].vclk_div, hdmi_tx_div, venc_div,
+			       hdmi_use_enci, vic_alternate_clock);
+	}
 }
 EXPORT_SYMBOL_GPL(meson_vclk_setup);
