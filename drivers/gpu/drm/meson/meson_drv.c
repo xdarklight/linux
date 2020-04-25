@@ -646,6 +646,18 @@ static void meson_drv_remove(struct platform_device *pdev)
 	component_master_del(&pdev->dev, &meson_drv_master_ops);
 }
 
+static struct meson_drm_match_data meson_drm_m8_data = {
+	.compat = VPU_COMPATIBLE_M8,
+};
+
+static struct meson_drm_match_data meson_drm_m8b_data = {
+	.compat = VPU_COMPATIBLE_M8B,
+};
+
+static struct meson_drm_match_data meson_drm_m8m2_data = {
+	.compat = VPU_COMPATIBLE_M8M2,
+};
+
 static struct meson_drm_match_data meson_drm_gxbb_data = {
 	.compat = VPU_COMPATIBLE_GXBB,
 };
@@ -665,6 +677,12 @@ static struct meson_drm_match_data meson_drm_g12a_data = {
 };
 
 static const struct of_device_id dt_match[] = {
+	{ .compatible = "amlogic,meson8-vpu",
+	  .data       = (void *)&meson_drm_m8_data },
+	{ .compatible = "amlogic,meson8b-vpu",
+	  .data       = (void *)&meson_drm_m8b_data },
+	{ .compatible = "amlogic,meson8m2-vpu",
+	  .data       = (void *)&meson_drm_m8m2_data },
 	{ .compatible = "amlogic,meson-gxbb-vpu",
 	  .data       = (void *)&meson_drm_gxbb_data },
 	{ .compatible = "amlogic,meson-gxl-vpu",
