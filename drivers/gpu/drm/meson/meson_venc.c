@@ -1954,14 +1954,34 @@ void meson_venc_enable_vsync(struct meson_drm *priv)
 			       priv->io_base + _REG(VENC_INTCTRL));
 	}
 
-	if (priv->hhi)
+	if (priv->intr_clks[0].clk) {
+		if (!priv->intr_clks_enabled) {
+			int ret;
+
+			ret = clk_bulk_enable(priv->num_intr_clks,
+					      priv->intr_clks);
+			if (ret)
+				dev_err(priv->dev,
+					"Failed to enable the interrupt clocks\n");
+			else
+				priv->intr_clks_enabled = true;
+		}
+	} else {
 		regmap_update_bits(priv->hhi, HHI_GCLK_MPEG2, BIT(25), BIT(25));
+	}
 }
 
 void meson_venc_disable_vsync(struct meson_drm *priv)
 {
-	if (priv->hhi)
+	if (priv->intr_clks[0].clk) {
+		if (priv->intr_clks_enabled) {
+			clk_bulk_disable(priv->num_intr_clks,
+					 priv->intr_clks);
+			priv->intr_clks_enabled = false;
+		}
+	} else {
 		regmap_update_bits(priv->hhi, HHI_GCLK_MPEG2, BIT(25), 0);
+	}
 
 	writel_relaxed(0, priv->io_base + _REG(VENC_INTCTRL));
 }
