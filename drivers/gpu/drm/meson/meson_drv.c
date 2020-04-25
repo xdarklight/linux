@@ -12,6 +12,7 @@
 #include <linux/module.h>
 #include <linux/of_graph.h>
 #include <linux/sys_soc.h>
+#include <linux/phy/phy.h>
 #include <linux/platform_device.h>
 #include <linux/soc/amlogic/meson-canvas.h>
 
@@ -127,6 +128,59 @@ static struct regmap_config meson_regmap_config = {
 	.reg_stride     = 4,
 	.max_register   = 0x1000,
 };
+
+static int meson_cvbs_dac_phy_init(struct meson_drm *priv)
+{
+	struct platform_device *pdev;
+	const char *platform_id_name;
+
+	priv->cvbs_dac = devm_phy_optional_get(priv->dev, "cvbs-dac");
+	if (IS_ERR(priv->cvbs_dac))
+		return dev_err_probe(priv->dev, PTR_ERR(priv->cvbs_dac),
+				     "Failed to get the 'cvbs-dac' PHY\n");
+	else if (priv->cvbs_dac)
+		return 0;
+
+	switch (priv->compat) {
+	case VPU_COMPATIBLE_GXBB:
+		platform_id_name = "meson-gxbb-cvbs-dac";
+		break;
+	case VPU_COMPATIBLE_GXL:
+	case VPU_COMPATIBLE_GXM:
+		platform_id_name = "meson-gxl-cvbs-dac";
+		break;
+	case VPU_COMPATIBLE_G12A:
+		platform_id_name = "meson-g12a-cvbs-dac";
+		break;
+	default:
+		return dev_err_probe(priv->dev, -EINVAL,
+				     "No CVBS DAC platform ID found\n");
+	}
+
+	pdev = platform_device_register_data(priv->dev, platform_id_name,
+					     PLATFORM_DEVID_AUTO, NULL, 0);
+	if (IS_ERR(pdev))
+		return dev_err_probe(priv->dev, PTR_ERR(pdev),
+				     "Failed to register fallback CVBS DAC PHY platform device\n");
+
+	priv->cvbs_dac = platform_get_drvdata(pdev);
+	if (IS_ERR(priv->cvbs_dac)) {
+		platform_device_unregister(pdev);
+		return dev_err_probe(priv->dev, PTR_ERR(priv->cvbs_dac),
+				     "Failed to get the 'cvbs-dac' PHY from it's platform device\n");
+	}
+
+	dev_warn(priv->dev, "Using fallback for old .dtbs without CVBS DAC\n");
+
+	priv->cvbs_dac_pdev = pdev;
+
+	return 0;
+}
+
+static void meson_cvbs_dac_phy_exit(struct meson_drm *priv)
+{
+	platform_device_unregister(priv->cvbs_dac_pdev);
+}
 
 static void meson_vpu_init(struct meson_drm *priv)
 {
@@ -263,11 +317,15 @@ static int meson_drv_bind_master(struct device *dev, bool has_components)
 		goto free_drm;
 	}
 
+	ret = meson_cvbs_dac_phy_init(priv);
+	if (ret)
+		goto free_drm;
+
 	priv->vsync_irq = platform_get_irq(pdev, 0);
 
 	ret = drm_vblank_init(drm, 1);
 	if (ret)
-		goto free_drm;
+		goto exit_cvbs_dac_phy;
 
 	/* Assign limits per soc revision/package */
 	for (i = 0 ; i < ARRAY_SIZE(meson_drm_soc_attrs) ; ++i) {
@@ -283,11 +341,11 @@ static int meson_drv_bind_master(struct device *dev, bool has_components)
 	 */
 	ret = drm_aperture_remove_framebuffers(false, &meson_driver);
 	if (ret)
-		goto free_drm;
+		goto exit_cvbs_dac_phy;
 
 	ret = drmm_mode_config_init(drm);
 	if (ret)
-		goto free_drm;
+		goto exit_cvbs_dac_phy;
 	drm->mode_config.max_width = 3840;
 	drm->mode_config.max_height = 2160;
 	drm->mode_config.funcs = &meson_mode_config_funcs;
@@ -302,7 +360,7 @@ static int meson_drv_bind_master(struct device *dev, bool has_components)
 	if (priv->afbcd.ops) {
 		ret = priv->afbcd.ops->init(priv);
 		if (ret)
-			goto free_drm;
+			goto exit_cvbs_dac_phy;
 	}
 
 	/* Encoder Initialization */
@@ -315,7 +373,7 @@ static int meson_drv_bind_master(struct device *dev, bool has_components)
 		ret = component_bind_all(drm->dev, drm);
 		if (ret) {
 			dev_err(drm->dev, "Couldn't bind all components\n");
-			goto exit_afbcd;
+			goto exit_cvbs_dac_phy;
 		}
 	}
 
@@ -358,6 +416,8 @@ uninstall_irq:
 exit_afbcd:
 	if (priv->afbcd.ops)
 		priv->afbcd.ops->exit(priv);
+exit_cvbs_dac_phy:
+	meson_cvbs_dac_phy_exit(priv);
 free_drm:
 	drm_dev_put(drm);
 
@@ -390,6 +450,8 @@ static void meson_drv_unbind(struct device *dev)
 
 	if (priv->afbcd.ops)
 		priv->afbcd.ops->exit(priv);
+
+	meson_cvbs_dac_phy_exit(priv);
 }
 
 static const struct component_master_ops meson_drv_master_ops = {
