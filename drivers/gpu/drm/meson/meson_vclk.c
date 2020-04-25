@@ -1024,6 +1024,89 @@ static void meson_vclk_set(struct meson_drm *priv, unsigned int pll_base_freq,
 	regmap_update_bits(priv->hhi, HHI_VID_CLK_CNTL, VCLK_EN, VCLK_EN);
 }
 
+static void meson_vclk_setup_ccf(struct meson_drm *priv, unsigned int target,
+				 bool hdmi_use_enci, unsigned int phy_freq,
+				 unsigned int dac_freq, unsigned int venc_freq)
+{
+	unsigned int i;
+	int ret;
+
+	dev_err(priv->dev, "%s(target: %u, phy: %u, dac: %u, venc: %u, hdmi_use_enci: %u)\n", __func__, target, phy_freq, dac_freq, venc_freq, hdmi_use_enci);
+
+	clk_rate_exclusive_put(priv->clk_venc);
+	clk_rate_exclusive_put(priv->vid_clks[VPU_VID_CLK_TMDS].clk);
+	clk_disable(priv->clk_dac);
+	clk_disable(priv->clk_venc);
+
+	/*
+	 * The TMDS clock also updates the PLL. Protect the PLL rate so all
+	 * following clocks are derived from the PLL setting which matches the
+	 * TMDS clock.
+	 */
+	ret = clk_set_rate_exclusive(priv->vid_clks[VPU_VID_CLK_TMDS].clk,
+				     phy_freq * 1000UL);
+	if (ret) {
+		dev_err(priv->dev, "Failed to set TMDS clock to %ukHz\n",
+			phy_freq);
+		clk_rate_exclusive_get(priv->clk_venc);
+		clk_rate_exclusive_get(priv->vid_clks[VPU_VID_CLK_TMDS].clk);
+		goto out_enable_clocks;
+	}
+
+	if (target == MESON_VCLK_TARGET_CVBS || hdmi_use_enci)
+		priv->clk_venc = priv->vid_clks[VPU_VID_CLK_CTS_ENCI].clk;
+	else
+		priv->clk_venc = priv->vid_clks[VPU_VID_CLK_CTS_ENCP].clk;
+
+	if (target == MESON_VCLK_TARGET_CVBS)
+		priv->clk_dac = priv->vid_clks[VPU_VID_CLK_CTS_VDAC0].clk;
+	else
+		priv->clk_dac = priv->vid_clks[VPU_VID_CLK_HDMI_TX_PIXEL].clk;
+
+	/*
+	 * The DAC clock may be derived from a parent of the VENC clock so we
+	 * must protect the VENC clock from changing it's rate. This works
+	 * because the DAC freq can be divided by the VENC clock.
+	 */
+	ret = clk_set_rate_exclusive(priv->clk_venc, venc_freq * 1000UL);
+	if (ret) {
+		dev_warn(priv->dev,
+			 "Failed to set VENC clock to %ukHz while TMDS clock is %ukHz\n",
+			 venc_freq, phy_freq);
+		clk_rate_exclusive_get(priv->clk_venc);
+		goto out_enable_clocks;
+	}
+
+	/*
+	 * after changing any of the VID_PLL_* clocks (which can happen when
+	 * update the VENC clock rate) we need to assert and then deassert the
+	 * VID_DIVIDER_CNTL_* reset lines.
+	 */
+	for (i = 0; i < ARRAY_SIZE(priv->vid_pll_resets); i++)
+		reset_control_assert(priv->vid_pll_resets[i]);
+	for (i = 0; i < ARRAY_SIZE(priv->vid_pll_resets); i++)
+		reset_control_deassert(priv->vid_pll_resets[i]);
+
+	ret = clk_set_rate(priv->clk_dac, dac_freq * 1000UL);
+	if (ret) {
+		dev_warn(priv->dev,
+			 "Failed to set pixel clock to %ukHz while TMDS clock is %ukHz\n",
+			 dac_freq, phy_freq);
+		goto out_enable_clocks;
+	}
+
+out_enable_clocks:
+	ret = clk_enable(priv->clk_venc);
+	if (ret)
+		dev_err(priv->dev,
+			"Failed to re-enable the VENC clock at %ukHz\n", venc_freq);
+	ret = clk_enable(priv->clk_dac);
+	if (ret)
+		dev_err(priv->dev,
+			"Failed to re-enable the pixel clock at %ukHz\n",
+			dac_freq);
+}
+
 void meson_vclk_setup(struct meson_drm *priv, unsigned int target,
 		      unsigned int phy_freq, unsigned int vclk_freq,
 		      unsigned int venc_freq, unsigned int dac_freq,
@@ -1033,6 +1116,15 @@ void meson_vclk_setup(struct meson_drm *priv, unsigned int target,
 	unsigned int freq;
 	unsigned int hdmi_tx_div;
 	unsigned int venc_div;
+
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8B) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8M2)) {
+		meson_vclk_setup_ccf(priv,
+				     target, hdmi_use_enci,
+				     phy_freq, dac_freq, venc_freq);
+		return;
+	}
 
 	if (target == MESON_VCLK_TARGET_CVBS) {
 		meson_venci_cvbs_clock_config(priv);

@@ -169,6 +169,66 @@ static void meson_vpu_init(struct meson_drm *priv)
 	}
 }
 
+static int meson_video_clock_init(struct meson_drm *priv)
+{
+	int i, ret;
+
+	if (!meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8) &&
+	    !meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8B) &&
+	    !meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8M2))
+		return 0;
+
+	for (i = 0; i < ARRAY_SIZE(priv->vid_pll_resets); i++) {
+		ret = reset_control_deassert(priv->vid_pll_resets[i]);
+		if (ret)
+			goto assert_resets;
+	}
+
+	ret = clk_bulk_prepare_enable(VPU_VID_CLK_NUM, priv->vid_clks);
+	if (ret)
+		goto assert_resets;
+
+	ret = clk_rate_exclusive_get(priv->vid_clks[VPU_VID_CLK_TMDS].clk);
+	if (ret)
+		goto disable_clks;
+
+	ret = clk_bulk_prepare_enable(VPU_INTR_CLK_NUM, priv->intr_clks);
+	if (ret)
+		goto put_exclusive_clk;
+
+	return 0;
+
+put_exclusive_clk:
+	clk_rate_exclusive_put(priv->vid_clks[VPU_VID_CLK_TMDS].clk);
+assert_resets:
+	for (; i > 0; i++)
+		reset_control_assert(priv->vid_pll_resets[i - 1]);
+disable_clks:
+	clk_bulk_disable_unprepare(VPU_VID_CLK_NUM, priv->vid_clks);
+
+	return ret;
+}
+
+static void meson_video_clock_exit(struct meson_drm *priv)
+{
+	unsigned int i;
+
+	if (!meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8) &&
+	    !meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8B) &&
+	    !meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8M2))
+		return;
+
+	clk_bulk_disable_unprepare(VPU_INTR_CLK_NUM, priv->intr_clks);
+
+	clk_rate_exclusive_put(priv->clk_venc);
+	clk_rate_exclusive_put(priv->vid_clks[VPU_VID_CLK_TMDS].clk);
+
+	clk_bulk_disable_unprepare(VPU_VID_CLK_NUM, priv->vid_clks);
+
+	for (i = 0; i < ARRAY_SIZE(priv->vid_pll_resets); i++)
+		reset_control_assert(priv->vid_pll_resets[i]);
+}
+
 static int meson_cvbs_trimming_init(struct meson_drm *priv)
 {
 	struct nvmem_cell *cell;
@@ -303,6 +363,51 @@ static int meson_drv_bind_master(struct device *dev, bool has_components)
 	priv->dev = dev;
 	priv->compat = match->compat;
 	priv->afbcd.ops = match->afbcd_ops;
+
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8B) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8M2)) {
+		priv->vid_pll_resets[0] = devm_reset_control_get_exclusive(dev, "vid_pll_pre");
+		if (IS_ERR(priv->vid_pll_resets[0]))
+			return PTR_ERR(priv->vid_pll_resets[0]);
+
+		priv->vid_pll_resets[1] = devm_reset_control_get_exclusive(dev, "vid_pll_post");
+		if (IS_ERR(priv->vid_pll_resets[1]))
+			return PTR_ERR(priv->vid_pll_resets[1]);
+
+		priv->vid_pll_resets[2] = devm_reset_control_get_exclusive(dev, "vid_pll_soft_pre");
+		if (IS_ERR(priv->vid_pll_resets[2]))
+			return PTR_ERR(priv->vid_pll_resets[2]);
+
+		priv->vid_pll_resets[3] = devm_reset_control_get_exclusive(dev, "vid_pll_soft_post");
+		if (IS_ERR(priv->vid_pll_resets[3]))
+			return PTR_ERR(priv->vid_pll_resets[3]);
+
+		priv->intr_clks[VPU_INTR_CLK_VPU].id = "vpu_intr";
+		priv->intr_clks[VPU_INTR_CLK_HDMI_INTR_SYNC].id = "hdmi_intr_sync";
+		priv->intr_clks[VPU_INTR_CLK_VENCI].id = "venci_int";
+
+		ret = devm_clk_bulk_get(dev, VPU_INTR_CLK_NUM, priv->intr_clks);
+		if (ret)
+			return ret;
+
+		priv->vid_clks[VPU_VID_CLK_TMDS].id = "tmds";
+		priv->vid_clks[VPU_VID_CLK_HDMI_TX_PIXEL].id = "hdmi_tx_pixel";
+		priv->vid_clks[VPU_VID_CLK_CTS_ENCP].id = "cts_encp";
+		priv->vid_clks[VPU_VID_CLK_CTS_ENCI].id = "cts_enci";
+		priv->vid_clks[VPU_VID_CLK_CTS_ENCT].id = "cts_enct";
+		priv->vid_clks[VPU_VID_CLK_CTS_ENCL].id = "cts_encl";
+		priv->vid_clks[VPU_VID_CLK_CTS_VDAC0].id = "cts_vdac0";
+
+		ret = devm_clk_bulk_get(dev, VPU_VID_CLK_NUM, priv->vid_clks);
+		if (ret)
+			return ret;
+
+		ret = meson_video_clock_init(priv);
+		if (ret)
+			goto free_drm;
+		// TODO: error handling below
+	}
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "vpu");
 	regs = devm_ioremap_resource(dev, res);
@@ -490,6 +595,8 @@ static void meson_drv_unbind(struct device *dev)
 		priv->afbcd.ops->reset(priv);
 		meson_rdma_free(priv);
 	}
+
+	meson_video_clock_exit(priv);
 }
 
 static const struct component_master_ops meson_drv_master_ops = {
@@ -504,6 +611,8 @@ static int __maybe_unused meson_drv_pm_suspend(struct device *dev)
 	if (!priv)
 		return 0;
 
+	// TODO: video clock suspend
+
 	return drm_mode_config_helper_suspend(priv->drm);
 }
 
@@ -514,6 +623,7 @@ static int __maybe_unused meson_drv_pm_resume(struct device *dev)
 	if (!priv)
 		return 0;
 
+	meson_video_clock_init(priv);
 	meson_vpu_init(priv);
 	meson_venc_init(priv);
 	meson_vpp_init(priv);
