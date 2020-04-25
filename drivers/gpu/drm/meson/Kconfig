@@ -13,6 +13,7 @@ config DRM_MESON
 	select REGMAP_MMIO
 	select MESON_CANVAS
 	select CEC_CORE if CEC_NOTIFIER
+	imply PHY_MESON_CVBS_DAC
 
 config DRM_MESON_DW_HDMI
 	tristate "HDMI Synopsys Controller support for Amlogic Meson Display"
