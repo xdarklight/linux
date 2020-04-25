@@ -17,6 +17,8 @@ struct drm_device;
 struct drm_plane;
 struct meson_drm;
 struct meson_afbcd_ops;
+struct phy;
+struct platform_device;
 
 enum vpu_compatible {
 	VPU_COMPATIBLE_GXBB = 0,
@@ -53,6 +55,10 @@ struct meson_drm {
 	struct drm_plane *overlay_plane;
 
 	const struct meson_drm_soc_limits *limits;
+
+	struct phy *cvbs_dac;
+	bool cvbs_dac_enabled;
+	struct platform_device *cvbs_dac_pdev;
 
 	/* Components Data */
 	struct {
