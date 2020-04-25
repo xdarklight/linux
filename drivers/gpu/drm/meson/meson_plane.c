@@ -226,17 +226,21 @@ static void meson_plane_atomic_update(struct drm_plane *plane,
 		};
 	}
 
-	switch (fb->format->format) {
-	case DRM_FORMAT_XRGB8888:
-	case DRM_FORMAT_XBGR8888:
-		/* For XRGB, replace the pixel's alpha by 0xFF */
-		priv->viu.osd1_ctrl_stat2 |= OSD_REPLACE_EN;
-		break;
-	case DRM_FORMAT_ARGB8888:
-	case DRM_FORMAT_ABGR8888:
-		/* For ARGB, use the pixel's alpha */
-		priv->viu.osd1_ctrl_stat2 &= ~OSD_REPLACE_EN;
-		break;
+	if (!meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8) &&
+	    !meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8B) &&
+	    !meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8M2)) {
+		switch (fb->format->format) {
+		case DRM_FORMAT_XRGB8888:
+		case DRM_FORMAT_XBGR8888:
+			/* For XRGB, replace the pixel's alpha by 0xFF */
+			priv->viu.osd1_ctrl_stat2 |= OSD_REPLACE_EN;
+			break;
+		case DRM_FORMAT_ARGB8888:
+		case DRM_FORMAT_ABGR8888:
+			/* For ARGB, use the pixel's alpha */
+			priv->viu.osd1_ctrl_stat2 &= ~OSD_REPLACE_EN;
+			break;
+		}
 	}
 
 	/* Default scaler parameters */
