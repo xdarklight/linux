@@ -431,10 +431,22 @@ void meson_viu_init(struct meson_drm *priv)
 
 	/* Initialize OSD1 fifo control register */
 	reg = VIU_OSD_DDR_PRIORITY_URGENT |
-		VIU_OSD_HOLD_FIFO_LINES(31) |
-		VIU_OSD_FIFO_DEPTH_VAL(32) | /* fifo_depth_val: 32*8=256 */
-		VIU_OSD_WORDS_PER_BURST(4) | /* 4 words in 1 burst */
-		VIU_OSD_FIFO_LIMITS(2);      /* fifo_lim: 2*16=32 */
+	      VIU_OSD_FIFO_DEPTH_VAL(32) | /* fifo_depth_val: 32*8=256 */
+	      VIU_OSD_WORDS_PER_BURST(4) | /* 4 words in 1 burst */
+	      VIU_OSD_FIFO_LIMITS(2);      /* fifo_lim: 2*16=32 */
+
+	/*
+	 * When using AFBC on newer SoCs the AFBC encoder has to be reset. To
+	 * leave time for that we need hold more lines to avoid glitches.
+	 * On the 32-bit SoCs however we need to hold fewer lines because
+	 * otherwise screen tearing can occur (for example in kmscube).
+	 */
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8B) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8M2))
+		reg |= VIU_OSD_HOLD_FIFO_LINES(12);
+	else
+		reg |= VIU_OSD_HOLD_FIFO_LINES(31);
 
 	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A))
 		reg |= VIU_OSD_BURST_LENGTH_32;
