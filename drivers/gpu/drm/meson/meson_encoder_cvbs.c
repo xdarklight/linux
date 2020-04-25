@@ -11,6 +11,8 @@
 
 #include <linux/export.h>
 #include <linux/of_graph.h>
+#include <linux/phy/phy.h>
+#include <linux/platform_device.h>
 
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_bridge.h>
@@ -23,12 +25,6 @@
 #include "meson_registers.h"
 #include "meson_vclk.h"
 #include "meson_encoder_cvbs.h"
-
-/* HHI VDAC Registers */
-#define HHI_VDAC_CNTL0		0x2F4 /* 0xbd offset in data sheet */
-#define HHI_VDAC_CNTL0_G12A	0x2EC /* 0xbd offset in data sheet */
-#define HHI_VDAC_CNTL1		0x2F8 /* 0xbe offset in data sheet */
-#define HHI_VDAC_CNTL1_G12A	0x2F0 /* 0xbe offset in data sheet */
 
 struct meson_encoder_cvbs {
 	struct drm_encoder	encoder;
@@ -88,9 +84,26 @@ static int meson_encoder_cvbs_attach(struct drm_bridge *bridge,
 {
 	struct meson_encoder_cvbs *meson_encoder_cvbs =
 					bridge_to_meson_encoder_cvbs(bridge);
+	int ret;
+
+	ret = phy_init(meson_encoder_cvbs->priv->cvbs_dac);
+	if (ret)
+		return ret;
 
 	return drm_bridge_attach(encoder, meson_encoder_cvbs->next_bridge,
 				 &meson_encoder_cvbs->bridge, flags);
+}
+
+static void meson_encoder_cvbs_detach(struct drm_bridge *bridge)
+{
+	struct meson_encoder_cvbs *meson_encoder_cvbs =
+					bridge_to_meson_encoder_cvbs(bridge);
+	int ret;
+
+	ret = phy_exit(meson_encoder_cvbs->priv->cvbs_dac);
+	if (ret)
+		dev_err(meson_encoder_cvbs->priv->dev,
+			"Failed to exit the CVBS DAC\n");
 }
 
 static int meson_encoder_cvbs_get_modes(struct drm_bridge *bridge,
@@ -148,6 +161,7 @@ static void meson_encoder_cvbs_atomic_enable(struct drm_bridge *bridge,
 	struct drm_connector_state *conn_state;
 	struct drm_crtc_state *crtc_state;
 	struct drm_connector *connector;
+	int ret;
 
 	connector = drm_atomic_get_new_connector_for_encoder(state, bridge->encoder);
 	if (WARN_ON(!connector))
@@ -177,16 +191,13 @@ static void meson_encoder_cvbs_atomic_enable(struct drm_bridge *bridge,
 	writel_bits_relaxed(VENC_VDAC_SEL_ATV_DMD, 0,
 			    priv->io_base + _REG(VENC_VDAC_DACSEL0));
 
-	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_GXBB)) {
-		regmap_write(priv->hhi, HHI_VDAC_CNTL0, 1);
-		regmap_write(priv->hhi, HHI_VDAC_CNTL1, 0);
-	} else if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_GXM) ||
-		 meson_vpu_is_compatible(priv, VPU_COMPATIBLE_GXL)) {
-		regmap_write(priv->hhi, HHI_VDAC_CNTL0, 0xf0001);
-		regmap_write(priv->hhi, HHI_VDAC_CNTL1, 0);
-	} else if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A)) {
-		regmap_write(priv->hhi, HHI_VDAC_CNTL0_G12A, 0x906001);
-		regmap_write(priv->hhi, HHI_VDAC_CNTL1_G12A, 0);
+	if (!priv->cvbs_dac_enabled) {
+		ret = phy_power_on(priv->cvbs_dac);
+		if (ret)
+			dev_err(priv->dev,
+				"Failed to power on the CVBS DAC\n");
+		else
+			priv->cvbs_dac_enabled = true;
 	}
 }
 
@@ -196,19 +207,22 @@ static void meson_encoder_cvbs_atomic_disable(struct drm_bridge *bridge,
 	struct meson_encoder_cvbs *meson_encoder_cvbs =
 					bridge_to_meson_encoder_cvbs(bridge);
 	struct meson_drm *priv = meson_encoder_cvbs->priv;
+	int ret;
 
-	/* Disable CVBS VDAC */
-	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A)) {
-		regmap_write(priv->hhi, HHI_VDAC_CNTL0_G12A, 0);
-		regmap_write(priv->hhi, HHI_VDAC_CNTL1_G12A, 0);
-	} else {
-		regmap_write(priv->hhi, HHI_VDAC_CNTL0, 0);
-		regmap_write(priv->hhi, HHI_VDAC_CNTL1, 8);
-	}
+	if (!priv->cvbs_dac_enabled)
+		return;
+
+	ret = phy_power_off(priv->cvbs_dac);
+	if (ret)
+		dev_err(priv->dev,
+			"Failed to power off the CVBS DAC\n");
+	else
+		priv->cvbs_dac_enabled = false;
 }
 
 static const struct drm_bridge_funcs meson_encoder_cvbs_bridge_funcs = {
 	.attach = meson_encoder_cvbs_attach,
+	.detach = meson_encoder_cvbs_detach,
 	.mode_valid = meson_encoder_cvbs_mode_valid,
 	.get_modes = meson_encoder_cvbs_get_modes,
 	.atomic_enable = meson_encoder_cvbs_atomic_enable,
@@ -218,6 +232,54 @@ static const struct drm_bridge_funcs meson_encoder_cvbs_bridge_funcs = {
 	.atomic_destroy_state = drm_atomic_helper_bridge_destroy_state,
 	.atomic_reset = drm_atomic_helper_bridge_reset,
 };
+
+static int meson_cvbs_dac_probe(struct meson_drm *priv)
+{
+	struct platform_device *pdev;
+	const char *platform_id_name;
+
+	priv->cvbs_dac = devm_phy_optional_get(priv->dev, "cvbs-dac");
+	if (IS_ERR(priv->cvbs_dac))
+		return dev_err_probe(priv->dev, PTR_ERR(priv->cvbs_dac),
+				     "Failed to get the 'cvbs-dac' PHY\n");
+	else if (priv->cvbs_dac)
+		return 0;
+
+	switch (priv->compat) {
+	case VPU_COMPATIBLE_GXBB:
+		platform_id_name = "meson-gxbb-cvbs-dac";
+		break;
+	case VPU_COMPATIBLE_GXL:
+	case VPU_COMPATIBLE_GXM:
+		platform_id_name = "meson-gxl-cvbs-dac";
+		break;
+	case VPU_COMPATIBLE_G12A:
+		platform_id_name = "meson-g12a-cvbs-dac";
+		break;
+	default:
+		return dev_err_probe(priv->dev, -EINVAL,
+				     "No CVBS DAC platform ID found\n");
+	}
+
+	pdev = platform_device_register_data(priv->dev, platform_id_name,
+					     PLATFORM_DEVID_AUTO, NULL, 0);
+	if (IS_ERR(pdev))
+		return dev_err_probe(priv->dev, PTR_ERR(pdev),
+				     "Failed to register fallback CVBS DAC PHY platform device\n");
+
+	priv->cvbs_dac = platform_get_drvdata(pdev);
+	if (IS_ERR(priv->cvbs_dac)) {
+		platform_device_unregister(pdev);
+		return dev_err_probe(priv->dev, PTR_ERR(priv->cvbs_dac),
+				     "Failed to get the 'cvbs-dac' PHY from it's platform device\n");
+	}
+
+	dev_info(priv->dev, "Using fallback for old .dtbs without CVBS DAC\n");
+
+	priv->cvbs_dac_pdev = pdev;
+
+	return 0;
+}
 
 int meson_encoder_cvbs_probe(struct meson_drm *priv)
 {
@@ -255,6 +317,10 @@ int meson_encoder_cvbs_probe(struct meson_drm *priv)
 
 	meson_encoder_cvbs->priv = priv;
 
+	ret = meson_cvbs_dac_probe(priv);
+	if (ret)
+		return ret;
+
 	/* Encoder */
 	ret = drm_simple_encoder_init(priv->drm, &meson_encoder_cvbs->encoder,
 				      DRM_MODE_ENCODER_TVDAC);
@@ -268,21 +334,27 @@ int meson_encoder_cvbs_probe(struct meson_drm *priv)
 	ret = drm_bridge_attach(&meson_encoder_cvbs->encoder, &meson_encoder_cvbs->bridge, NULL,
 				DRM_BRIDGE_ATTACH_NO_CONNECTOR);
 	if (ret) {
-		dev_err(priv->dev, "Failed to attach bridge: %d\n", ret);
-		return ret;
+		dev_err_probe(priv->dev, ret, "Failed to attach bridge\n");
+		goto err_unregister_cvbs_dac_pdev;
 	}
 
 	/* Initialize & attach Bridge Connector */
 	connector = drm_bridge_connector_init(priv->drm, &meson_encoder_cvbs->encoder);
-	if (IS_ERR(connector))
-		return dev_err_probe(priv->dev, PTR_ERR(connector),
-				     "Unable to create CVBS bridge connector\n");
+	if (IS_ERR(connector)) {
+		ret = dev_err_probe(priv->dev, PTR_ERR(connector),
+				    "Unable to create CVBS bridge connector\n");
+		goto err_unregister_cvbs_dac_pdev;
+	}
 
 	drm_connector_attach_encoder(connector, &meson_encoder_cvbs->encoder);
 
 	priv->encoders[MESON_ENC_CVBS] = meson_encoder_cvbs;
 
 	return 0;
+
+err_unregister_cvbs_dac_pdev:
+	platform_device_unregister(priv->cvbs_dac_pdev);
+	return ret;
 }
 
 void meson_encoder_cvbs_remove(struct meson_drm *priv)
@@ -293,4 +365,6 @@ void meson_encoder_cvbs_remove(struct meson_drm *priv)
 		meson_encoder_cvbs = priv->encoders[MESON_ENC_CVBS];
 		drm_bridge_remove(&meson_encoder_cvbs->bridge);
 	}
+
+	platform_device_unregister(priv->cvbs_dac_pdev);
 }
