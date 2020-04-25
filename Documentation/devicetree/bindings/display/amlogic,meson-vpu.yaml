@@ -66,6 +66,9 @@ properties:
           - const: amlogic,meson-gx-vpu
       - enum:
           - amlogic,meson-g12a-vpu # G12A (S905X2, S905Y2, S905D2)
+          - amlogic,meson8-vpu
+          - amlogic,meson8b-vpu
+          - amlogic,meson8m2-vpu
 
   reg:
     minItems: 1
