@@ -471,7 +471,20 @@ static const struct drm_plane_funcs meson_plane_funcs = {
 	.format_mod_supported   = meson_plane_format_mod_supported,
 };
 
-static const uint32_t supported_drm_formats[] = {
+/*
+ * X components (for example in DRM_FORMAT_XRGB8888 and DRM_FORMAT_XBGR8888)
+ * are not supported because these older SoC's are lacking the OSD_REPLACE_EN
+ * bit to replace the X alpha component with a static value, leaving the alpha
+ * component in an undefined state.
+ */
+static const uint32_t supported_drm_formats_m8[] = {
+	DRM_FORMAT_ARGB8888,
+	DRM_FORMAT_ABGR8888,
+	DRM_FORMAT_RGB888,
+	DRM_FORMAT_RGB565,
+};
+
+static const uint32_t supported_drm_formats_gx[] = {
 	DRM_FORMAT_ARGB8888,
 	DRM_FORMAT_ABGR8888,
 	DRM_FORMAT_XRGB8888,
@@ -533,6 +546,8 @@ int meson_plane_create(struct meson_drm *priv)
 {
 	struct meson_plane *meson_plane;
 	struct drm_plane *plane;
+	unsigned int num_drm_formats;
+	const uint32_t *drm_formats;
 	const uint64_t *format_modifiers = format_modifiers_default;
 	int ret;
 
@@ -549,11 +564,19 @@ int meson_plane_create(struct meson_drm *priv)
 	else if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A))
 		format_modifiers = format_modifiers_afbc_g12a;
 
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8B) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8M2)) {
+		drm_formats = supported_drm_formats_m8;
+		num_drm_formats = ARRAY_SIZE(supported_drm_formats_m8);
+	} else {
+		drm_formats = supported_drm_formats_gx;
+		num_drm_formats = ARRAY_SIZE(supported_drm_formats_gx);
+	}
+
 	ret = drm_universal_plane_init(priv->drm, plane, 0xFF,
-					&meson_plane_funcs,
-					supported_drm_formats,
-					ARRAY_SIZE(supported_drm_formats),
-					format_modifiers,
+					&meson_plane_funcs, drm_formats,
+					num_drm_formats, format_modifiers,
 					DRM_PLANE_TYPE_PRIMARY, "meson_primary_plane");
 	if (ret) {
 		devm_kfree(priv->drm->dev, meson_plane);
