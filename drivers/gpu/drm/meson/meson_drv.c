@@ -12,6 +12,7 @@
 #include <linux/module.h>
 #include <linux/of_graph.h>
 #include <linux/sys_soc.h>
+#include <linux/phy/phy.h>
 #include <linux/platform_device.h>
 #include <linux/soc/amlogic/meson-canvas.h>
 
@@ -262,6 +263,11 @@ static int meson_drv_bind_master(struct device *dev, bool has_components)
 		meson_canvas_free(priv->canvas, priv->canvas_id_vd1_1);
 		goto free_drm;
 	}
+
+	priv->cvbs_dac = devm_phy_optional_get(dev, "cvbs-dac");
+	if (IS_ERR(priv->cvbs_dac))
+		return dev_err_probe(dev, PTR_ERR(priv->cvbs_dac),
+				     "Failed to get the 'cvbs-dac' PHY\n");
 
 	priv->vsync_irq = platform_get_irq(pdev, 0);
 
