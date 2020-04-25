@@ -1750,13 +1750,21 @@ void meson_venc_enable_vsync(struct meson_drm *priv)
 	writel_relaxed(VENC_INTCTRL_ENCI_LNRST_INT_EN,
 		       priv->io_base + _REG(VENC_INTCTRL));
 
-	if (priv->hhi)
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8B) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8M2))
+		clk_bulk_prepare_enable(VPU_INTR_CLK_NUM, priv->intr_clks);
+	else
 		regmap_update_bits(priv->hhi, HHI_GCLK_MPEG2, BIT(25), BIT(25));
 }
 
 void meson_venc_disable_vsync(struct meson_drm *priv)
 {
-	if (priv->hhi)
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8B) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8M2))
+		clk_bulk_disable_unprepare(VPU_INTR_CLK_NUM, priv->intr_clks);
+	else
 		regmap_update_bits(priv->hhi, HHI_GCLK_MPEG2, BIT(25), 0);
 
 	writel_relaxed(0, priv->io_base + _REG(VENC_INTCTRL));
