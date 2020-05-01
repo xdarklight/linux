@@ -18,6 +18,7 @@
 
 #include "meson8b.h"
 #include "clk-regmap.h"
+#include "clk-phase.h"
 #include "clk-pll.h"
 #include "clk-mpll.h"
 
@@ -2639,6 +2640,78 @@ static struct clk_regmap meson8b_cts_i958 = {
 	},
 };
 
+static u32 meson8_eth_clk_mux_table[] = { 7 };
+
+static struct clk_regmap meson8_eth_clk_sel = {
+	.data = &(struct clk_regmap_mux_data) {
+		.offset = HHI_ETH_CLK_CNTL,
+		.mask = 0x7,
+		.shift = 9,
+		.table = meson8_eth_clk_mux_table,
+	},
+	.hw.init = &(struct clk_init_data) {
+		.name = "eth_clk_sel",
+		.ops = &clk_regmap_mux_ops,
+		.parent_data = &(const struct clk_parent_data) {
+			/* TODO: all other parents are unknown */
+			.fw_name = "rmii_clk",
+		},
+		.num_parents = 1,
+	},
+};
+
+static struct clk_regmap meson8_eth_clk_div = {
+	.data = &(struct clk_regmap_div_data) {
+		.offset = HHI_ETH_CLK_CNTL,
+		.shift = 0,
+		.width = 8,
+	},
+	.hw.init = &(struct clk_init_data) {
+		.name = "eth_clk_div",
+		.ops = &clk_regmap_divider_ops,
+		.parent_hws = (const struct clk_hw *[]) {
+			&meson8_eth_clk_sel.hw
+		},
+		.num_parents = 1,
+		.flags = CLK_SET_RATE_PARENT,
+	},
+};
+
+static struct clk_regmap meson8_eth_clk_phase = {
+	.data = &(struct meson_clk_phase_data) {
+		.ph = {
+			.reg_off = HHI_ETH_CLK_CNTL,
+			.shift = 14,
+			.width = 1,
+		},
+	},
+	.hw.init = &(struct clk_init_data){
+		.name = "eth_clk_inverted",
+		.ops = &meson_clk_phase_ops,
+		.parent_hws = (const struct clk_hw *[]) {
+			&meson8_eth_clk_div.hw
+		},
+		.num_parents = 1,
+		.flags = CLK_SET_RATE_PARENT,
+	},
+};
+
+static struct clk_regmap meson8_eth_clk_gate = {
+	.data = &(struct clk_regmap_gate_data) {
+		.offset = HHI_ETH_CLK_CNTL,
+		.bit_idx = 8,
+	},
+	.hw.init = &(struct clk_init_data){
+		.name = "eth_clk_en",
+		.ops = &clk_regmap_gate_ops,
+		.parent_hws = (const struct clk_hw *[]) {
+			&meson8_eth_clk_phase.hw
+		},
+		.num_parents = 1,
+		.flags = CLK_SET_RATE_PARENT,
+	},
+};
+
 #define MESON_GATE(_name, _reg, _bit) \
 	MESON_PCLK(_name, _reg, _bit, &meson8b_clk81.hw)
 
@@ -2933,6 +3006,10 @@ static struct clk_hw_onecell_data meson8_hw_onecell_data = {
 		[CLKID_CTS_MCLK_I958_DIV]   = &meson8b_cts_mclk_i958_div.hw,
 		[CLKID_CTS_MCLK_I958]	    = &meson8b_cts_mclk_i958.hw,
 		[CLKID_CTS_I958]	    = &meson8b_cts_i958.hw,
+		[CLKID_ETH_CLK_SEL]	    = &meson8_eth_clk_sel.hw,
+		[CLKID_ETH_CLK_DIV]	    = &meson8_eth_clk_div.hw,
+		[CLKID_ETH_CLK_PHASE]	    = &meson8_eth_clk_phase.hw,
+		[CLKID_ETH_CLK]		    = &meson8_eth_clk_gate.hw,
 		[CLK_NR_CLKS]		    = NULL,
 	},
 	.num = CLK_NR_CLKS,
@@ -3563,6 +3640,10 @@ static struct clk_regmap *const meson8b_clk_regmaps[] = {
 	&meson8b_cts_mclk_i958_div,
 	&meson8b_cts_mclk_i958,
 	&meson8b_cts_i958,
+	&meson8_eth_clk_sel,
+	&meson8_eth_clk_div,
+	&meson8_eth_clk_phase,
+	&meson8_eth_clk_gate,
 };
 
 static const struct meson8b_clk_reset_line {
