@@ -21,7 +21,7 @@ properties:
 
   clocks:
     minItems: 2
-    maxItems: 3
+    maxItems: 4
 
   clock-names:
     minItems: 2
@@ -29,6 +29,7 @@ properties:
       - const: xtal
       - const: ddr_pll
       - const: clk_32k
+      - const: rmii_clk
 
   '#clock-cells':
     const: 1
