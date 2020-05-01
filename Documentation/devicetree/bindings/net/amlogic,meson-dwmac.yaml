@@ -84,6 +84,28 @@ allOf:
             "rgmii-rxid" the RX clock delay is already provided by the PHY.
             Any configuration is ignored when the phy-mode is set to "rmii".
 
+  - if:
+      properties:
+        compatible:
+          contains:
+            enum:
+              - amlogic,meson6-dwmac
+    then:
+      properties:
+        clocks:
+          minItems: 1
+          maxItems: 2
+          items:
+            - description: GMAC main clock
+            - description: The RMII reference clock
+
+        clock-names:
+          minItems: 1
+          maxItems: 2
+          items:
+            - const: stmmaceth
+            - const: ethernet
+
 properties:
   compatible:
     additionalItems: true
