@@ -43,6 +43,7 @@
 #define HHI_MALI_CLK_CNTL		0x1b0 /* 0x6c offset in data sheet */
 #define HHI_VPU_CLK_CNTL		0x1bc /* 0x6f offset in data sheet */
 #define HHI_HDMI_CLK_CNTL		0x1cc /* 0x73 offset in data sheet */
+#define HHI_ETH_CLK_CNTL		0x1d8 /* 0x76 offset in data sheet */
 #define HHI_VDEC_CLK_CNTL		0x1e0 /* 0x78 offset in data sheet */
 #define HHI_VDEC2_CLK_CNTL		0x1e4 /* 0x79 offset in data sheet */
 #define HHI_VDEC3_CLK_CNTL		0x1e8 /* 0x7a offset in data sheet */
