@@ -126,5 +126,6 @@
 #define CLKID_CTS_AMCLK		209
 #define CLKID_CTS_MCLK_I958	212
 #define CLKID_CTS_I958		213
+#define CLKID_ETH_CLK		217
 
 #endif /* __MESON8B_CLKC_H */
