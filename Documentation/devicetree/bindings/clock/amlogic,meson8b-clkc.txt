@@ -16,6 +16,8 @@ Required Properties:
   * "xtal": the 24MHz system oscillator
   * "ddr_pll": the DDR PLL clock
   * "clk_32k": (if present) the 32kHz clock signal from GPIOAO_6 (CLK_32K_IN)
+  * "rmii_clk": (if present) the 50MHz RMII reference clock (from the PHY or
+                an external oscillator
 
 Parent node should have the following properties :
 - compatible: "amlogic,meson-hhi-sysctrl", "simple-mfd", "syscon"
