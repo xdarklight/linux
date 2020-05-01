@@ -823,8 +823,8 @@
 };
 
 &ethmac {
-	clocks = <&clkc CLKID_ETH>;
-	clock-names = "stmmaceth";
+	clocks = <&clkc CLKID_ETH>, <&clkc CLKID_ETH_CLK>;
+	clock-names = "stmmaceth", "ethernet";
 
 	power-domains = <&pwrc PWRC_MESON8_ETHERNET_MEM_ID>;
 };
