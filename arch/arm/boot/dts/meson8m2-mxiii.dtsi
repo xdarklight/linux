@@ -129,6 +129,18 @@
 		};
 	};
 
+	usb_vbus: regulator-usb-vbus {
+		compatible = "regulator-fixed";
+
+		regulator-name = "USB_VBUS";
+
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+
+		gpio = <&gpio GPIOZ_1 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+	};
+
 	vcc_3v3: regulator-vcc3v3 {
 		compatible = "regulator-fixed";
 		regulator-name = "VCC3V3";
@@ -304,6 +316,15 @@
 
 &usb0 {
 	status = "okay";
+
+	dr_mode = "otg";
+	usb-role-switch;
+
+	connector {
+		compatible = "amlogic,meson8b-usb-b-connector", "usb-b-connector";
+		type = "micro";
+		vbus-supply = <&usb_vbus>;
+	};
 };
 
 &usb1 {
