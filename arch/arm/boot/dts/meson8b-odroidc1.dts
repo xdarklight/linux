@@ -134,6 +134,20 @@
 		#sound-dai-cells = <0>;
 	};
 
+	usb0_vbus: regulator-usb0-vbus {
+		/* Richtek RT9715EGB */
+		compatible = "regulator-fixed";
+
+		regulator-name = "USB0_VBUS";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+
+		vin-supply = <&p5v0>;
+
+		gpio = <&gpio_ao GPIOAO_5 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+	};
+
 	vcc_1v8: regulator-vcc-1v8 {
 		/*
 		 * RICHTEK RT9179 configured for a fixed output voltage of
@@ -440,10 +454,27 @@
 	pinctrl-names = "default";
 };
 
-&usb1_phy {
+&usb0 {
 	status = "okay";
+
+	dr_mode = "otg";
+	usb-role-switch;
+
+	connector {
+		compatible = "amlogic,meson8b-usb-b-connector", "usb-b-connector";
+		type = "micro";
+		vbus-supply = <&usb0_vbus>;
+	};
 };
 
 &usb1 {
+	status = "okay";
+};
+
+&usb0_phy {
+	status = "okay";
+};
+
+&usb1_phy {
 	status = "okay";
 };
