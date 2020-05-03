@@ -43,6 +43,7 @@
 #include <linux/usb/gadget.h>
 #include <linux/usb/otg.h>
 #include <linux/usb/phy.h>
+#include <linux/usb/role.h>
 #include "hw.h"
 
 /*
@@ -1206,6 +1207,8 @@ struct dwc2_hsotg {
 	struct dwc2_hsotg_ep *eps_in[MAX_EPS_CHANNELS];
 	struct dwc2_hsotg_ep *eps_out[MAX_EPS_CHANNELS];
 #endif /* CONFIG_USB_DWC2_PERIPHERAL || CONFIG_USB_DWC2_DUAL_ROLE */
+
+	struct usb_role_switch *role_switch;
 };
 
 /* Normal architectures just use readl/write */

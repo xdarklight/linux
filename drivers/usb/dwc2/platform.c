@@ -293,6 +293,66 @@ static int dwc2_lowlevel_hw_init(struct dwc2_hsotg *hsotg)
 	return 0;
 }
 
+static enum usb_role dwc2_usb_role_switch_get(struct usb_role_switch *sw)
+{
+	struct dwc2_hsotg *hsotg = usb_role_switch_get_drvdata(sw);
+
+	return dwc2_is_host_mode(hsotg) ? USB_ROLE_HOST : USB_ROLE_DEVICE;
+}
+
+static int dwc2_usb_role_switch_set(struct usb_role_switch *sw,
+				    enum usb_role role)
+{
+	struct dwc2_hsotg *hsotg = usb_role_switch_get_drvdata(sw);
+
+	if (dwc2_is_host_mode(hsotg))
+		dwc2_hcd_disconnect(hsotg, false);
+
+	switch (role) {
+	case USB_ROLE_HOST:
+		dwc2_force_mode(hsotg, true);
+		break;
+	case USB_ROLE_DEVICE:
+		dwc2_force_mode(hsotg, false);
+		break;
+	default:
+		dwc2_force_dr_mode(hsotg);
+		break;
+	}
+
+	if (dwc2_is_host_mode(hsotg))
+		dwc2_hcd_start(hsotg);
+
+	return 0;
+}
+
+static int dwc2_usb_role_switch_register(struct dwc2_hsotg *hsotg)
+{
+	struct usb_role_switch_desc desc = {
+		.fwnode = dev_fwnode(hsotg->dev),
+		.get = dwc2_usb_role_switch_get,
+		.set = dwc2_usb_role_switch_set,
+		.allow_userspace_control = false,
+	};
+
+	if (!IS_ENABLED(CONFIG_USB_ROLE_SWITCH))
+		return 0;
+
+	if (hsotg->dr_mode != USB_DR_MODE_OTG)
+		return 0;
+
+	if (!of_property_read_bool(hsotg->dev->of_node, "usb-role-switch"))
+		return 0;
+
+	hsotg->role_switch = usb_role_switch_register(hsotg->dev, &desc);
+	if (IS_ERR(hsotg->role_switch))
+		return PTR_ERR(hsotg->role_switch);
+
+	usb_role_switch_set_drvdata(hsotg->role_switch, hsotg);
+
+	return 0;
+}
+
 /**
  * dwc2_driver_remove() - Called when the DWC_otg core is unregistered with the
  * DWC_otg driver
@@ -307,6 +367,8 @@ static int dwc2_lowlevel_hw_init(struct dwc2_hsotg *hsotg)
 static int dwc2_driver_remove(struct platform_device *dev)
 {
 	struct dwc2_hsotg *hsotg = platform_get_drvdata(dev);
+
+	usb_role_switch_put(hsotg->role_switch);
 
 	dwc2_debugfs_exit(hsotg);
 	if (hsotg->hcd_enabled)
@@ -536,8 +598,24 @@ static int dwc2_driver_probe(struct platform_device *dev)
 	if (hsotg->dr_mode == USB_DR_MODE_PERIPHERAL)
 		dwc2_lowlevel_hw_disable(hsotg);
 
+	retval = dwc2_usb_role_switch_register(hsotg);
+	if (retval)
+		goto error_debugfs;
+
+	retval = of_platform_populate(dev->dev.of_node, NULL, NULL, &dev->dev);
+	if (retval) {
+		dev_err(hsotg->dev,
+			"Failed to create child devices/connectors for %p\n",
+			dev->dev.of_node);
+		goto error_role_switch;
+	}
+
 	return 0;
 
+error_role_switch:
+	usb_role_switch_put(hsotg->role_switch);
+error_debugfs:
+	dwc2_debugfs_exit(hsotg);
 error_init:
 	if (hsotg->params.activate_stm_id_vb_detection)
 		regulator_disable(hsotg->usb33d);
