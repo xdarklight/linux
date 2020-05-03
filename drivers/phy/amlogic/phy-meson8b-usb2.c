@@ -7,6 +7,7 @@
 
 #include <linux/clk.h>
 #include <linux/delay.h>
+#include <linux/gpio/driver.h>
 #include <linux/io.h>
 #include <linux/mod_devicetable.h>
 #include <linux/module.h>
@@ -127,6 +128,7 @@ struct phy_meson8b_usb2_priv {
 	struct clk					*clk_usb_general;
 	struct clk					*clk_usb;
 	struct reset_control				*reset;
+	struct gpio_chip				gpiochip;
 	const struct phy_meson8b_usb2_match_data	*match;
 };
 
@@ -236,12 +238,44 @@ static const struct phy_ops phy_meson8b_usb2_ops = {
 	.owner		= THIS_MODULE,
 };
 
+static int phy_meson8b_usb2_id_gpio_get_direction(struct gpio_chip *gc,
+						  unsigned int offset)
+{
+	return GPIO_LINE_DIRECTION_IN;
+}
+
+static int phy_meson8b_usb2_id_gpio_get_value(struct gpio_chip *gc,
+					      unsigned int offset)
+{
+	struct phy_meson8b_usb2_priv *priv = gpiochip_get_data(gc);
+	unsigned int val;
+
+	regmap_read(priv->regmap, REG_ADP_BC, &val);
+
+	return (val & REG_ADP_BC_ID_DIG) ? 1 : 0;
+}
+
+static int phy_meson8b_usb2_id_gpiochip_add(struct device *dev,
+					    struct phy_meson8b_usb2_priv *priv)
+{
+	priv->gpiochip.label = dev_name(dev);
+	priv->gpiochip.parent = dev;
+	priv->gpiochip.get_direction = phy_meson8b_usb2_id_gpio_get_direction;
+	priv->gpiochip.get = phy_meson8b_usb2_id_gpio_get_value;
+	priv->gpiochip.of_gpio_n_cells = 2;
+	priv->gpiochip.base = -1;
+	priv->gpiochip.ngpio = 1;
+
+	return devm_gpiochip_add_data(dev, &priv->gpiochip, priv);
+}
+
 static int phy_meson8b_usb2_probe(struct platform_device *pdev)
 {
 	struct phy_meson8b_usb2_priv *priv;
-	struct phy *phy;
 	struct phy_provider *phy_provider;
 	void __iomem *base;
+	struct phy *phy;
+	int ret;
 
 	priv = devm_kzalloc(&pdev->dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
@@ -278,6 +312,12 @@ static int phy_meson8b_usb2_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev,
 			"missing dual role configuration of the controller\n");
 		return -EINVAL;
+	}
+
+	if (device_property_read_bool(&pdev->dev, "gpio-controller")) {
+		ret = phy_meson8b_usb2_id_gpiochip_add(&pdev->dev, priv);
+		if (ret)
+			return ret;
 	}
 
 	phy = devm_phy_create(&pdev->dev, NULL, &phy_meson8b_usb2_ops);
