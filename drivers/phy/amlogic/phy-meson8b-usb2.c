@@ -7,6 +7,7 @@
 
 #include <linux/clk.h>
 #include <linux/delay.h>
+#include <linux/extcon-provider.h>
 #include <linux/io.h>
 #include <linux/module.h>
 #include <linux/of_device.h>
@@ -16,6 +17,7 @@
 #include <linux/phy/phy.h>
 #include <linux/platform_device.h>
 #include <linux/usb/of.h>
+#include <linux/workqueue.h>
 
 #define REG_CONFIG					0x00
 	#define REG_CONFIG_CLK_EN			BIT(0)
@@ -127,6 +129,9 @@ struct phy_meson8b_usb2_priv {
 	struct clk					*clk_usb_general;
 	struct clk					*clk_usb;
 	struct reset_control				*reset;
+	struct extcon_dev				*extcon_dev;
+	unsigned int					last_cable_state;
+	struct delayed_work				otg_detect_work;
 	const struct phy_meson8b_usb2_match_data	*match;
 };
 
@@ -228,6 +233,76 @@ static const struct phy_ops phy_meson8b_usb2_ops = {
 	.owner		= THIS_MODULE,
 };
 
+static const unsigned int phy_meson8b_usb2_extcon_cable[] = {
+	EXTCON_USB,
+	EXTCON_USB_HOST,
+	EXTCON_NONE,
+};
+
+static struct extcon_dev *phy_meson8b_usb2_extcon_register(struct device *dev)
+{
+	struct extcon_dev *extcon_dev;
+	int ret;
+
+	if (!IS_ENABLED(CONFIG_EXTCON))
+		return NULL;
+
+	extcon_dev = devm_extcon_dev_allocate(dev,
+					      phy_meson8b_usb2_extcon_cable);
+	if (IS_ERR(extcon_dev))
+		return extcon_dev;
+
+	ret = devm_extcon_dev_register(dev, extcon_dev);
+	if (ret)
+		return ERR_PTR(ret);
+
+	return extcon_dev;
+}
+
+static void phy_meson8b_usb2_set_cable_state(struct phy_meson8b_usb2_priv *priv,
+					     unsigned int new_cable_state)
+{
+	struct device *dev = regmap_get_device(priv->regmap);
+	int ret;
+
+	if (new_cable_state == priv->last_cable_state)
+		return;
+
+	dev_dbg(dev, "Changing cable state from %u to %u\n",
+		priv->last_cable_state, new_cable_state);
+
+	ret = extcon_set_state_sync(priv->extcon_dev, priv->last_cable_state,
+				    false);
+	if (ret)
+		dev_err(dev, "Failed to disconnect last cable state %u\n",
+			priv->last_cable_state);
+
+	ret = extcon_set_state_sync(priv->extcon_dev, new_cable_state, true);
+	if (ret)
+		dev_err(dev, "Failed to connect new cable state %u\n",
+			new_cable_state);
+	else
+		priv->last_cable_state = new_cable_state;
+}
+
+static void phy_meson8b_usb2_otg_detect(struct work_struct *work)
+{
+	struct phy_meson8b_usb2_priv *priv;
+	unsigned int val;
+
+	priv = container_of(to_delayed_work(work),
+			    struct phy_meson8b_usb2_priv, otg_detect_work);
+
+	regmap_read(priv->regmap, REG_ADP_BC, &val);
+	if (val & REG_ADP_BC_ID_DIG)
+		phy_meson8b_usb2_set_cable_state(priv, EXTCON_USB);
+	else
+		phy_meson8b_usb2_set_cable_state(priv, EXTCON_USB_HOST);
+
+	queue_delayed_work(system_power_efficient_wq, &priv->otg_detect_work,
+			   msecs_to_jiffies(500));
+}
+
 static int phy_meson8b_usb2_probe(struct platform_device *pdev)
 {
 	struct phy_meson8b_usb2_priv *priv;
@@ -269,6 +344,20 @@ static int phy_meson8b_usb2_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev,
 			"missing dual role configuration of the controller\n");
 		return -EINVAL;
+	} else if (priv->dr_mode == USB_DR_MODE_OTG) {
+		priv->last_cable_state = EXTCON_NONE;
+		INIT_DELAYED_WORK(&priv->otg_detect_work,
+				  phy_meson8b_usb2_otg_detect);
+
+		priv->extcon_dev = phy_meson8b_usb2_extcon_register(&pdev->dev);
+		if (IS_ERR(priv->extcon_dev)) {
+			dev_err(&pdev->dev,
+				"Failed to register extcon cable state\n");
+			return PTR_ERR(priv->extcon_dev);
+		}
+
+		queue_delayed_work(system_power_efficient_wq,
+				   &priv->otg_detect_work, 0);
 	}
 
 	phy = devm_phy_create(&pdev->dev, NULL, &phy_meson8b_usb2_ops);
@@ -283,6 +372,16 @@ static int phy_meson8b_usb2_probe(struct platform_device *pdev)
 		devm_of_phy_provider_register(&pdev->dev, of_phy_simple_xlate);
 
 	return PTR_ERR_OR_ZERO(phy_provider);
+}
+
+static int phy_meson8b_usb2_remove(struct platform_device *pdev)
+{
+	struct phy_meson8b_usb2_priv *priv = platform_get_drvdata(pdev);
+
+	if (priv->dr_mode == USB_DR_MODE_OTG)
+		cancel_delayed_work_sync(&priv->otg_detect_work);
+
+	return 0;
 }
 
 static const struct phy_meson8b_usb2_match_data phy_meson8_usb2_match_data = {
@@ -316,6 +415,7 @@ MODULE_DEVICE_TABLE(of, phy_meson8b_usb2_of_match);
 
 static struct platform_driver phy_meson8b_usb2_driver = {
 	.probe	= phy_meson8b_usb2_probe,
+	.remove	= phy_meson8b_usb2_remove,
 	.driver	= {
 		.name		= "phy-meson-usb2",
 		.of_match_table	= phy_meson8b_usb2_of_match,
