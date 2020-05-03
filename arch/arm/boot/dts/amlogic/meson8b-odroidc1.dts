@@ -93,6 +93,20 @@
 		#clock-cells = <0>;
 	};
 
+	usb0_vbus: regulator-usb0-vbus {
+		/* Richtek RT9715EGB */
+		compatible = "regulator-fixed";
+
+		regulator-name = "USB0_VBUS";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+
+		vin-supply = <&p5v0>;
+
+		gpio = <&gpio_ao GPIOAO_5 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+	};
+
 	vcc_1v8: regulator-vcc-1v8 {
 		/*
 		 * RICHTEK RT9179 configured for a fixed output voltage of
@@ -361,8 +375,18 @@
 	pinctrl-names = "default";
 };
 
-&usb1_phy {
+&usb0 {
 	status = "okay";
+
+	dr_mode = "otg";
+	usb-role-switch;
+	role-switch-default-mode = "peripheral";
+
+	port {
+		usb_to_musbcon: endpoint {
+			remote-endpoint = <&musbcon_to_usb>;
+		};
+	};
 };
 
 &usb1 {
@@ -378,4 +402,25 @@
 		vdd-supply = <&p5v0>;
 		reset-gpios = <&gpio_ao GPIOAO_4 GPIO_ACTIVE_LOW>;
 	};
+};
+
+&usb0_phy {
+	status = "okay";
+
+	connector {
+		compatible = "gpio-usb-b-connector", "usb-b-connector";
+		type = "micro";
+		id-gpios = <&usb0_phy 0 GPIO_ACTIVE_HIGH>;
+		vbus-supply = <&usb0_vbus>;
+
+		port {
+			musbcon_to_usb: endpoint {
+				remote-endpoint = <&usb_to_musbcon>;
+			};
+		};
+	};
+};
+
+&usb1_phy {
+	status = "okay";
 };
