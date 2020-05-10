@@ -36,6 +36,18 @@ config USB_ULPI_BUS
 	  To compile this driver as a module, choose M here: the module will
 	  be called ulpi.
 
+config USB_CONN_EXTCON
+	tristate "USB EXTCON Based Connection Detection Driver"
+	depends on EXTCON
+	select USB_ROLE_SWITCH
+	help
+	  The driver supports USB role switch between host and device via
+	  extcon based USB cable detection, used for example if the USB PHY has
+	  built-in cable state detection.
+
+	  To compile the driver as a module, choose M here: the module will
+	  be called usb-conn-extcon.ko
+
 config USB_CONN_GPIO
 	tristate "USB GPIO Based Connection Detection Driver"
 	depends on GPIOLIB
