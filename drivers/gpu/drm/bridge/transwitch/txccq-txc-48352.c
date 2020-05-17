@@ -32,6 +32,7 @@
 #include <uapi/linux/videodev2.h>
 
 #include "txccq-txc-48352.h"
+#include "txccq-txc-48352-audio-dai.h"
 
 struct txc_48352 {
 	struct device			*dev;
@@ -44,6 +45,8 @@ struct txc_48352 {
 
 	struct mutex			cec_notifier_mutex;
 	struct cec_notifier		*cec_notifier;
+
+	struct platform_device		*audio_dai_pdev;
 
 	struct drm_connector		connector;
 	struct drm_bridge		bridge;
@@ -1188,6 +1191,25 @@ err_phy_exit:
 	return 0;
 }
 
+static int txc_48352_audio_dai_init(struct txc_48352 *priv)
+{
+	const struct txc_48352_audio_dai audio_dai = {
+		.regmap = priv->tx_regmap,
+		.write_infoframe = txc_48352_write_infoframe,
+	};
+	const struct platform_device_info pdevinfo = {
+		.id = PLATFORM_DEVID_AUTO,
+		.name = "txccq-txc-48352-audio-dai",
+		.parent = priv->dev,
+		.data = &audio_dai,
+		.size_data = sizeof(audio_dai),
+	};
+
+	priv->audio_dai_pdev = platform_device_register_full(&pdevinfo);
+
+	return PTR_ERR_OR_ZERO(priv->audio_dai_pdev);
+}
+
 static void txc_48352_exit(struct txc_48352 *priv)
 {
 	/* mask (= disable) all interrupts */
@@ -1247,6 +1269,10 @@ struct txc_48352 *txc_48352_bind(struct drm_encoder *encoder,
 	if (ret)
 		return ERR_PTR(ret);
 
+	ret = txc_48352_audio_dai_init(priv);
+	if (ret)
+		return ERR_PTR(ret);
+
 	priv->bridge.driver_private = priv;
 	priv->bridge.funcs = &txc_48352_bridge_funcs;
 	priv->bridge.ops = DRM_BRIDGE_OP_DETECT | DRM_BRIDGE_OP_EDID | DRM_BRIDGE_OP_HPD;
@@ -1260,6 +1286,8 @@ EXPORT_SYMBOL_GPL(txc_48352_bind);
 
 void txc_48352_unbind(struct txc_48352 *priv)
 {
+	platform_device_unregister(priv->audio_dai_pdev);
+
 	drm_bridge_remove(&priv->bridge);
 
 	txc_48352_exit(priv);
