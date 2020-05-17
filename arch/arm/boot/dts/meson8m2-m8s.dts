@@ -71,8 +71,8 @@
 		pinctrl-0 = <&xtal_32k_out_pins>;
 		pinctrl-names = "default";
 
-		reset-gpios = <&gpio_ao GPIOAO_6 GPIO_ACTIVE_HIGH>,
-			      <&gpio GPIOX_11 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&gpio_ao GPIOAO_6 GPIO_ACTIVE_LOW>,
+			      <&gpio GPIOX_11 GPIO_ACTIVE_LOW>; /* TODO: should be enable-gpios with GPIO_ACTIVE_HIGH in the card's node, this is WIFI_DISn */
 
 		clocks = <&xtal_32k_out>;
 		clock-names = "ext_clock";
