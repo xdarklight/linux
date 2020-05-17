@@ -107,7 +107,6 @@
 	sound {
 		compatible = "amlogic,gx-sound-card";
 		model = "M8B-ODROID-C1";
-		audio-routing = "I2S Encoder Playback", "I2S FIFO Playback";
 
 		assigned-clocks = <&clkc CLKID_MPLL0>,
 				  <&clkc CLKID_MPLL1>;
@@ -124,14 +123,17 @@
 			mclk-fs = <256>;
 
 			codec-0 {
-				sound-dai = <&sound_dummy_codec>;
+				sound-dai = <&aiu AIU_HDMI CTRL_I2S>;
 			};
 		};
-	};
 
-	sound_dummy_codec: audio-codec-0 {
-		compatible = "ti,pcm5102a";
-		#sound-dai-cells = <0>;
+		dai-link-2 {
+			sound-dai = <&aiu AIU_HDMI CTRL_OUT>;
+
+			codec-0 {
+				sound-dai = <&hdmi_tx>;
+			};
+		};
 	};
 
 	usb0_vbus: regulator-usb0-vbus {
@@ -244,11 +246,6 @@
 
 &aiu {
 	status = "okay";
-
-	pinctrl-0 = <&i2s_am_clk_pins>, <&i2s_out_ao_clk_pins>,
-		    <&i2s_out_lr_clk_pins>, <&i2s_out_ch01_ao_pins>,
-		    <&spdif_out_1_pins>;
-	pinctrl-names = "default";
 };
 
 &cpu0 {
