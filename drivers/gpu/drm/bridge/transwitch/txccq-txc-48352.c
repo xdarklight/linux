@@ -32,6 +32,7 @@
 #include <uapi/linux/videodev2.h>
 
 #include "txccq-txc-48352.h"
+#include "txccq-txc-48352-audio-dai.h"
 
 struct txc_48352 {
 	struct device			*dev;
