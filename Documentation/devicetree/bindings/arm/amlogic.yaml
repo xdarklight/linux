@@ -169,6 +169,8 @@ properties:
       - description: Boards with the Amlogic Meson SM1 S905X3/D3/Y3 SoC
         items:
           - enum:
+              - amediatech,x96-air-2g
+              - amediatech,x96-air-4g
               - hardkernel,odroid-c4
               - hardkernel,odroid-hc4
               - khadas,vim3l
