@@ -471,6 +471,7 @@
 	pinctrl_aobus: pinctrl@84 {
 		compatible = "amlogic,meson8-aobus-pinctrl";
 		reg = <0x84 0xc>;
+		amlogic,secbus2 = <&secbus2>;
 		#address-cells = <1>;
 		#size-cells = <1>;
 		ranges;
