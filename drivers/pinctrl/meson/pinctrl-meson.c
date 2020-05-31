@@ -711,7 +711,7 @@ static int meson_pinctrl_parse_dt(struct meson_pinctrl *pc,
 	return 0;
 }
 
-int meson8_aobus_parse_dt_extra(struct meson_pinctrl *pc)
+int meson_pinctrl_alias_reg_pullen_pull(struct meson_pinctrl *pc)
 {
 	if (!pc->reg_pull)
 		return -EINVAL;
