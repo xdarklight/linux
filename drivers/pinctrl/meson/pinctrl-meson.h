@@ -83,6 +83,7 @@ enum meson_pinconf_drv {
 
 enum {
 	MESON_DIR_QUIRK_REG_SEC_DIR = 1,
+	MESON_DIR_QUIRK_OUTPUT_ONLY = 2,
 };
 
 /**
