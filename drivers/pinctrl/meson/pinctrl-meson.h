@@ -174,7 +174,7 @@ int meson_pmx_get_groups(struct pinctrl_dev *pcdev,
 
 /* Common probe function */
 int meson_pinctrl_probe(struct platform_device *pdev);
-/* Common ao groups extra dt parse function for SoCs before g12a  */
-int meson8_aobus_parse_dt_extra(struct meson_pinctrl *pc);
+/* Use reg_pullen for reg_pull, typically used for AOBUS before G12A */
+int meson_pinctrl_alias_reg_pullen_pull(struct meson_pinctrl *pc);
 /* Common extra dt parse function for SoCs like A1  */
 int meson_a1_parse_dt_extra(struct meson_pinctrl *pc);
