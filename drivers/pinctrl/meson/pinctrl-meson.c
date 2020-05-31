@@ -182,8 +182,13 @@ static int meson_pinconf_set_gpio_bit(struct meson_pinctrl *pc,
 		return ret;
 
 	meson_calc_reg_and_bit(bank, pin, reg_type, &reg, &bit);
-	return regmap_update_bits(pc->reg_gpio, reg, BIT(bit),
-				  arg ? BIT(bit) : 0);
+
+	if (reg_type == REG_DIR && bank->dir_quirks & MESON_DIR_QUIRK_REG_SEC_DIR)
+		return regmap_update_bits(pc->reg_sec_dir, reg, BIT(bit),
+					  arg ? 0 : BIT(bit));
+	else
+		return regmap_update_bits(pc->reg_gpio, reg, BIT(bit),
+					  arg ? BIT(bit) : 0);
 }
 
 static int meson_pinconf_get_gpio_bit(struct meson_pinctrl *pc,
@@ -192,6 +197,7 @@ static int meson_pinconf_get_gpio_bit(struct meson_pinctrl *pc,
 {
 	struct meson_bank *bank;
 	unsigned int reg, bit, val;
+	struct regmap *regmap;
 	int ret;
 
 	ret = meson_get_bank(pc, pin, &bank);
@@ -199,11 +205,24 @@ static int meson_pinconf_get_gpio_bit(struct meson_pinctrl *pc,
 		return ret;
 
 	meson_calc_reg_and_bit(bank, pin, reg_type, &reg, &bit);
-	ret = regmap_read(pc->reg_gpio, reg, &val);
+
+	if (reg_type == REG_DIR && bank->dir_quirks & MESON_DIR_QUIRK_REG_SEC_DIR)
+		regmap = pc->reg_sec_dir;
+	else
+		regmap = pc->reg_gpio;
+
+	if (!regmap)
+		return -EINVAL;
+
+	ret = regmap_read(regmap, reg, &val);
 	if (ret)
 		return ret;
 
-	return BIT(bit) & val ? 1 : 0;
+	ret = BIT(bit) & val ? 1 : 0;
+	if (reg_type == REG_DIR && bank->dir_quirks & MESON_DIR_QUIRK_REG_SEC_DIR)
+		reg = !reg;
+
+	return reg;
 }
 
 static int meson_pinconf_set_output(struct meson_pinctrl *pc,
