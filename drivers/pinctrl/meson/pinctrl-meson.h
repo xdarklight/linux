@@ -191,5 +191,7 @@ int meson_pmx_get_groups(struct pinctrl_dev *pcdev,
 int meson_pinctrl_probe(struct platform_device *pdev);
 /* Use reg_pullen for reg_pull, typically used for AOBUS before G12A */
 int meson_pinctrl_alias_reg_pullen_pull(struct meson_pinctrl *pc);
+/* Meson8, Meson8b and Meson8m2 specific DT initialization */
+int meson8_aobus_parse_dt(struct meson_pinctrl *pc);
 /* Common extra dt parse function for SoCs like A1  */
 int meson_a1_parse_dt_extra(struct meson_pinctrl *pc);

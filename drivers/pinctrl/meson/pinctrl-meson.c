@@ -746,6 +746,32 @@ int meson_pinctrl_alias_reg_pullen_pull(struct meson_pinctrl *pc)
 	return 0;
 }
 
+int meson8_aobus_parse_dt(struct meson_pinctrl *pc)
+{
+	struct platform_device *secbus2_pdev;
+	struct device_node *secbus2_np;
+
+	secbus2_np = of_parse_phandle(pc->dev->of_node, "amlogic,secbus2", 0);
+	if (secbus2_np) {
+		secbus2_pdev = of_find_device_by_node(secbus2_np);
+		if (!secbus2_pdev)
+			goto err_defer_put_secbus2_np;
+
+		pc->reg_sec_dir = dev_get_regmap(&secbus2_pdev->dev, NULL);
+		if (!pc->reg_sec_dir)
+			goto err_defer_put_secbus2_np;
+	} else {
+		dev_warn(pc->dev,
+			 "amlogic,secbus2 is missing, GPIO_TEST_N direction won't work\n");
+	}
+
+	return meson_pinctrl_alias_reg_pullen_pull(pc);
+
+err_defer_put_secbus2_np:
+	of_node_put(secbus2_np);
+	return -EPROBE_DEFER;
+}
+
 int meson_a1_parse_dt_extra(struct meson_pinctrl *pc)
 {
 	pc->reg_pull = pc->reg_gpio;
