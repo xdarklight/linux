@@ -69,6 +69,34 @@
  */
 #define PRG_ETH0_ADJ_SKEW		GENMASK(24, 20)
 
+#define PRG_ETH0_START_CALIBRATION	BIT(25)
+
+/* 0: falling edge, 1: rising edge */
+#define PRG_ETH0_TEST_EDGE		BIT(26)
+
+/* Select one signal from {RXDV, RXD[3:0]} to calibrate */
+#define PRG_ETH0_SIGNAL_TO_CALIBRATE	GENMASK(29, 27)
+
+#define PRG_ETH1			0x4
+
+/* Signal switch position in 1ns resolution */
+#define PRG_ETH1_SIGNAL_SWITCH_POSITION	GENMASK(4, 0)
+
+/* RXC (RX clock) length in 1ns resolution */
+#define PRG_ETH1_RX_CLK_LENGTH		GENMASK(9, 5)
+
+#define PRG_ETH1_CALI_WAITING_FOR_EVENT	BIT(10)
+
+#define PRG_ETH1_SIGNAL_UNDER_TEST	GENMASK(13, 11)
+
+/* 0: falling edge, 1: rising edge */
+#define PRG_ETH1_RESULT_EDGE		BIT(14)
+
+#define PRG_ETH1_RESULT_IS_VALID	BIT(15)
+
+/* undocumented - only valid on G12A and later */
+#define PRG_ETH1_AUTO_CALI_IDX_VAL	GENMASK(19, 16)
+
 struct meson8b_dwmac;
 
 struct meson8b_dwmac_data {
