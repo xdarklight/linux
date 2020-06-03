@@ -69,7 +69,22 @@
  */
 #define PRG_ETH0_ADJ_SKEW		GENMASK(24, 20)
 
+#define PRG_ETH0_START_CALIBRATION	BIT(25)
+
+/* 0: falling edge, 1: rising edge */
+#define PRG_ETH0_TEST_EDGE		BIT(26)
+
+/* Select one signal t from {RXDV, RXD[3:0]} to calibrate */
+#define PRG_ETH0_SIGNAL_TO_CALIBRATE	GENMASK(29, 27)
+
 #define MUX_CLK_NUM_PARENTS		2
+
+#define PRG_ETH1			0x4
+
+/* Signal switch position in 1ns resolution */
+#define PRG_ETH1_SIGNAL_SWITCH_POSITION	GENMASK(4, 0)
+
+#define PRG_ETH1_RESULT_IS_VALID	BIT(15)
 
 struct meson8b_dwmac;
 
