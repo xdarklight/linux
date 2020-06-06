@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: "http://devicetree.org/schemas/mips/lantiq/lantiq,xway-mps.yaml#"
+$schema: "http://devicetree.org/meta-schemas/core.yaml#"
+
+title: Lantiq MPS (multi processor unit - voice) chip ID
+
+maintainers:
+  - Martin Blumenstingl <martin.blumenstingl@googlemail.com>
+
+properties:
+  compatible:
+    const: lantiq,xway-mps-chipid
+
+  reg:
+    minItems: 1
+
+required:
+  - compatible
+  - reg
+
+additionalProperties: false
+
+examples:
+  - |
+    remoteproc@107344 {
+      compatible= "lantiq,xway-mps-chipid";
+      reg = <0x107344 0x4>;
+    };
+
+...
