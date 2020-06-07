@@ -1447,6 +1447,8 @@ struct ath5k_hw {
 	/* Calibration mask */
 	u8			ah_cal_mask;
 
+	bool			use_nvmem_eeprom;
+
 	/*
 	 * Function pointers
 	 */
@@ -1529,6 +1531,7 @@ int ath5k_eeprom_init(struct ath5k_hw *ah);
 void ath5k_eeprom_detach(struct ath5k_hw *ah);
 int ath5k_eeprom_mode_from_channel(struct ath5k_hw *ah,
 		struct ieee80211_channel *channel);
+bool ath5k_hw_nvram_read(struct ath5k_hw *ah, u32 off, u16 *data);
 
 /* Protocol Control Unit Functions */
 /* Helpers */
@@ -1695,12 +1698,6 @@ static inline enum ath_bus_type ath5k_get_bus_type(struct ath5k_hw *ah)
 static inline void ath5k_read_cachesize(struct ath_common *common, int *csz)
 {
 	common->bus_ops->read_cachesize(common, csz);
-}
-
-static inline bool ath5k_hw_nvram_read(struct ath5k_hw *ah, u32 off, u16 *data)
-{
-	struct ath_common *common = ath5k_hw_common(ah);
-	return common->bus_ops->eeprom_read(common, off, data);
 }
 
 static inline u32 ath5k_hw_bitswap(u32 val, unsigned int bits)

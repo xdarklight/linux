@@ -23,6 +23,8 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
+#include <linux/nvmem-consumer.h>
+#include <linux/property.h>
 #include <linux/slab.h>
 
 #include "ath5k.h"
@@ -1744,7 +1746,16 @@ ath5k_eeprom_read_spur_chans(struct ath5k_hw *ah)
 int
 ath5k_eeprom_init(struct ath5k_hw *ah)
 {
+	struct nvmem_cell *eeprom_nvmem_cell;
 	int err;
+
+	if (device_property_read_bool(ah->dev, "qca,no-eeprom")) {
+		eeprom_nvmem_cell = devm_nvmem_cell_get(ah->dev, "eeprom");
+		if (IS_ERR(eeprom_nvmem_cell))
+			return PTR_ERR(eeprom_nvmem_cell);
+
+		ah->use_nvmem_eeprom = true;
+	}
 
 	err = ath5k_eeprom_init_header(ah);
 	if (err < 0)
@@ -1793,4 +1804,15 @@ ath5k_eeprom_mode_from_channel(struct ath5k_hw *ah,
 		ATH5K_WARN(ah, "channel is not A/B/G!");
 		return AR5K_EEPROM_MODE_11A;
 	}
+}
+
+bool
+ath5k_hw_nvram_read(struct ath5k_hw *ah, u32 off, u16 *data)
+{
+	struct ath_common *common = ath5k_hw_common(ah);
+
+	if (ah->use_nvmem_eeprom)
+		return nvmem_cell_read_u16(ah->dev, "eeprom", data);
+
+	return common->bus_ops->eeprom_read(common, off, data);
 }
