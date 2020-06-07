@@ -1532,6 +1532,7 @@ void ath5k_eeprom_detach(struct ath5k_hw *ah);
 int ath5k_eeprom_mode_from_channel(struct ath5k_hw *ah,
 		struct ieee80211_channel *channel);
 bool ath5k_hw_nvram_read(struct ath5k_hw *ah, u32 off, u16 *data);
+int ath5k_hw_nvram_get_mac_addr(struct ath5k_hw *ah, u8 *mac_addr);
 
 /* Protocol Control Unit Functions */
 /* Helpers */
