@@ -3078,7 +3078,7 @@ ath5k_init(struct ieee80211_hw *hw)
 	INIT_WORK(&ah->calib_work, ath5k_calibrate_work);
 	INIT_DELAYED_WORK(&ah->tx_complete_work, ath5k_tx_complete_poll_work);
 
-	ret = ath5k_hw_common(ah)->bus_ops->eeprom_read_mac(ah, mac);
+	ret = ath5k_hw_nvram_get_mac_addr(ah, mac);
 	if (ret) {
 		ATH5K_ERR(ah, "unable to read address from EEPROM\n");
 		goto err_queues;

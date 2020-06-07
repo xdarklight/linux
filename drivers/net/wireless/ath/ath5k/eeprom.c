@@ -1832,3 +1832,13 @@ ath5k_hw_nvram_read(struct ath5k_hw *ah, u32 off, u16 *data)
 
 	return success;
 }
+
+int
+ath5k_hw_nvram_get_mac_addr(struct ath5k_hw *ah, u8 *mac_addr)
+{
+	if (!eth_platform_get_mac_address(ah->dev, mac_addr) &&
+	    is_valid_ether_addr(mac_addr))
+		return 0;
+
+	return ath5k_hw_common(ah)->bus_ops->eeprom_read_mac(ah, mac_addr);
+}
