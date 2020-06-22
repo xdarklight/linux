@@ -411,6 +411,7 @@ struct ath5k_eeprom_info {
 
 	/* Header information */
 	u16	ee_magic;
+	bool	ee_magic_needs_swab16;
 	u16	ee_protect;
 	u16	ee_regdomain;
 	u16	ee_version;

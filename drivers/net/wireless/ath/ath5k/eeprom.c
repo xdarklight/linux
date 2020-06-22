@@ -1747,6 +1747,7 @@ int
 ath5k_eeprom_init(struct ath5k_hw *ah)
 {
 	struct nvmem_cell *eeprom_nvmem_cell;
+	u16 val;
 	int err;
 
 	if (device_property_read_bool(ah->dev, "qca,no-eeprom")) {
@@ -1755,6 +1756,15 @@ ath5k_eeprom_init(struct ath5k_hw *ah)
 			return PTR_ERR(eeprom_nvmem_cell);
 
 		ah->use_nvmem_eeprom = true;
+
+		AR5K_EEPROM_READ(AR5K_EEPROM_SIZE_UPPER, val);
+		ah->ah_capabilities.cap_eeprom.ee_magic_needs_swab16 =
+					swab16(val) == AR5K_EEPROM_MAGIC_VALUE;
+
+		ATH5K_DBG(ah, ATH5K_DEBUG_ANY,
+			  "EEPROM magic word: 0x%04x, swab16 %s needed\n",
+			  val,
+			  ah->ah_capabilities.cap_eeprom.ee_magic_needs_swab16 ? "is" : "not");
 	}
 
 	err = ath5k_eeprom_init_header(ah);
@@ -1810,9 +1820,15 @@ bool
 ath5k_hw_nvram_read(struct ath5k_hw *ah, u32 off, u16 *data)
 {
 	struct ath_common *common = ath5k_hw_common(ah);
+	bool success;
 
 	if (ah->use_nvmem_eeprom)
-		return !nvmem_cell_read_u16(ah->dev, "eeprom", data);
+		success = !nvmem_cell_read_u16(ah->dev, "eeprom", data);
+	else
+		success = common->bus_ops->eeprom_read(common, off, data);
 
-	return common->bus_ops->eeprom_read(common, off, data);
+	if (success && ah->ah_capabilities.cap_eeprom.ee_magic_needs_swab16)
+		*data = swab16(*data);
+
+	return success;
 }
