@@ -41,6 +41,24 @@ properties:
   reg:
     maxItems: 1
 
+  qca,no-eeprom:
+    type: boolean
+    description: |
+      Indicates that there is no physical EEPROM connected to the
+      wireless chip. In this case the calibration / EEPROM data has to
+      be loaded from an nvmem-cell
+
+  nvmem-cells:
+    minItems: 1
+    maxItems: 2
+
+  nvmem-cell-names:
+    minItems: 1
+    maxItems: 2
+    items:
+      - const: eeprom
+      - const: mac-address
+
 required:
   - compatible
   - reg
@@ -56,5 +74,8 @@ examples:
       wifi@e,0,0 {
         compatible = "pci168c,001d";
         reg = <0x7000 0 0 0 0>;
+        qca,no-eeprom;
+        nvmem-cells = <&ath5k_eeprom>, <&ath5k_mac_address>;
+        nvmem-cell-names = "eeprom", "mac-address";
       };
     };
