@@ -1,0 +1,60 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/net/wireless/qca,ath5k.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Qualcomm Atheros ath5k wireless devices Generic Binding
+
+maintainers:
+  - Martin Blumenstingl <martin.blumenstingl@googlemail.com>
+
+description: |
+  These are dt entries for Qualcomm Technologies, Inc. IEEE 802.11abg
+  devices connected through either a PCI or AHB bus.
+
+properties:
+  $nodename:
+    pattern: '^wifi@.*'
+
+  compatible:
+    enum:
+      - pci168c,0007 # 5210
+      - pci168c,0011 # 5311 - this is on AHB bus !
+      - pci168c,0012 # 5211
+      - pci168c,0013 # 5212
+      - pci168c,0014 # 5212 compatible
+      - pci168c,0015 # 5212 compatible
+      - pci168c,0016 # 5212 compatible
+      - pci168c,0017 # 5212 compatible
+      - pci168c,0018 # 5212 compatible
+      - pci168c,0019 # 5212 compatible
+      - pci168c,001a # 2413 Griffin-lite
+      - pci168c,001b # 5413 Eagle
+      - pci168c,001c # PCI-E cards
+      - pci168c,001d # 2417 Nala
+      - pci168c,0207 # 5210 early
+      - pci168c,0207 # 5210 early
+      - pci168c,1014 # IBM minipci 5212
+      - pci168c,ff1b # AR5BXB63
+
+  reg:
+    maxItems: 1
+
+required:
+  - compatible
+  - reg
+
+additionalProperties: false
+
+examples:
+  - |
+    pci0 {
+      #address-cells = <3>;
+      #size-cells = <2>;
+
+      wifi@e,0,0 {
+        compatible = "pci168c,001d";
+        reg = <0x7000 0 0 0 0>;
+      };
+    };
