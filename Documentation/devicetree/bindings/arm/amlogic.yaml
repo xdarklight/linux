@@ -176,6 +176,8 @@ properties:
               - amediatech,x96-air-100
               - amediatech,x96-air-1000
               - bananapi,bpi-m5
+              - cyx,a95xf3-air-100
+              - cyx,a95xf3-air-1000
               - hardkernel,odroid-c4
               - hardkernel,odroid-hc4
               - khadas,vim3l
