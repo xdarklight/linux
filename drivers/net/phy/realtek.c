@@ -7,9 +7,11 @@
  *
  * Copyright (c) 2004 Freescale Semiconductor, Inc.
  */
+#include <dt-bindings/net/realtek-rtl8211f.h>
 #include <linux/bitops.h>
 #include <linux/of.h>
 #include <linux/phy.h>
+#include <linux/property.h>
 #include <linux/module.h>
 #include <linux/delay.h>
 
@@ -37,6 +39,15 @@
 #define RTL8211F_ALDPS_PLL_OFF			BIT(1)
 #define RTL8211F_ALDPS_ENABLE			BIT(2)
 #define RTL8211F_ALDPS_XTAL_OFF			BIT(12)
+
+#define RTL8211F_LED_CONFIG_PAGE		0xd04
+#define RTL8211F_LCR				0x10
+#define RTL8211F_LCR_LED0_LINK_10		BIT(0)
+#define RTL8211F_LCR_LED0_LINK_100		BIT(1)
+#define RTL8211F_LCR_LED0_LINK_1000		BIT(3)
+#define RTL8211F_LCR_LED0_ACTIVITY		BIT(4)
+#define RTL8211F_EEELCR				0x11
+#define RTL8211F_EEELCR_LED0_EEE_ENABLE		BIT(1)
 
 #define RTL8211E_CTRL_DELAY			BIT(13)
 #define RTL8211E_TX_DELAY			BIT(12)
@@ -329,6 +340,79 @@ static int rtl8211c_config_init(struct phy_device *phydev)
 			    CTL1000_ENABLE_MASTER | CTL1000_AS_MASTER);
 }
 
+static int rtl8211f_modify_led_register(struct phy_device *phydev,
+					unsigned int led, u32 regnum, u16 mask,
+					bool set_bit)
+{
+	u8 led_reg_width = regnum == RTL8211F_LCR ? 5 : 1;
+	u16 reg_mask = mask << (led * led_reg_width);
+
+	return phy_modify_paged(phydev, RTL8211F_LED_CONFIG_PAGE, regnum,
+				reg_mask, set_bit ? reg_mask : 0);
+}
+
+static int rtl8211f_config_init_led(struct phy_device *phydev, unsigned int num)
+{
+	struct device *dev = &phydev->mdio.dev;
+	char led_property[29];
+	u32 mode;
+	int ret;
+
+	ret = sprintf(led_property, "realtek,led-%u-mode", num);
+	if (ret < 0)
+		return ret;
+
+	ret = device_property_read_u32(dev, led_property, &mode);
+	if (ret) {
+		dev_dbg(dev,
+			"Keeping LED%u configuration from pin-strapping or bootloader",
+			num);
+		return 0;
+	}
+
+	ret = rtl8211f_modify_led_register(phydev, num, RTL8211F_LCR,
+					   RTL8211F_LCR_LED0_LINK_10,
+					   mode & RTL8211F_LED_LINK_10);
+	if (ret) {
+		dev_err(dev, "Failed to update the LED%u LINK_10 bit\n", num);
+		return ret;
+	}
+
+	ret = rtl8211f_modify_led_register(phydev, num, RTL8211F_LCR,
+					   RTL8211F_LCR_LED0_LINK_100,
+					   mode & RTL8211F_LED_LINK_100);
+	if (ret) {
+		dev_err(dev, "Failed to update the LED%u LINK_100 bit\n", num);
+		return ret;
+	}
+
+	ret = rtl8211f_modify_led_register(phydev, num, RTL8211F_LCR,
+					   RTL8211F_LCR_LED0_LINK_1000,
+					   mode & RTL8211F_LED_LINK_1000);
+	if (ret) {
+		dev_err(dev, "Failed to update the LED%u LINK_1000 bit\n", num);
+		return ret;
+	}
+
+	ret = rtl8211f_modify_led_register(phydev, num, RTL8211F_LCR,
+					   RTL8211F_LCR_LED0_ACTIVITY,
+					   mode & RTL8211F_LED_ACTIVITY);
+	if (ret) {
+		dev_err(dev, "Failed to update the LED%u ACTIVITY bit\n", num);
+		return ret;
+	}
+
+	ret = rtl8211f_modify_led_register(phydev, num, RTL8211F_EEELCR,
+					   RTL8211F_EEELCR_LED0_EEE_ENABLE,
+					   mode & RTL8211F_LED_EEE);
+	if (ret) {
+		dev_err(dev, "Failed to update the LED%u EEE_ENABLE bit\n", num);
+		return ret;
+	}
+
+	return 0;
+}
+
 static int rtl8211f_config_init(struct phy_device *phydev)
 {
 	struct rtl821x_priv *priv = phydev->priv;
@@ -407,6 +491,18 @@ static int rtl8211f_config_init(struct phy_device *phydev)
 			ERR_PTR(ret));
 		return ret;
 	}
+
+	ret = rtl8211f_config_init_led(phydev, 0);
+	if (ret)
+		return ret;
+
+	ret = rtl8211f_config_init_led(phydev, 1);
+	if (ret)
+		return ret;
+
+	ret = rtl8211f_config_init_led(phydev, 2);
+	if (ret)
+		return ret;
 
 	return genphy_soft_reset(phydev);
 }
