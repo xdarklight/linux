@@ -60,6 +60,7 @@ EXPORT_SYMBOL(rtw_set_channel_mac);
 
 static int rtw_mac_pre_system_cfg(struct rtw_dev *rtwdev)
 {
+	unsigned int retry;
 	u32 value32;
 	u8 value8;
 
@@ -76,6 +77,24 @@ static int rtw_mac_pre_system_cfg(struct rtw_dev *rtwdev)
 	switch (rtw_hci_type(rtwdev)) {
 	case RTW_HCI_TYPE_PCIE:
 		rtw_write32_set(rtwdev, REG_HCI_OPT_CTRL, BIT_BT_DIG_CLK_EN);
+		break;
+	case RTW_HCI_TYPE_SDIO:
+		rtw_write8_clr(rtwdev, REG_SDIO_HSUS_CTRL, BIT(0));
+
+		for (retry = 0; retry < RTW_PWR_POLLING_CNT; retry++) {
+			if (rtw_read8(rtwdev, REG_SDIO_HSUS_CTRL) & BIT(1))
+				break;
+
+			usleep_range(10, 50);
+		}
+
+		if (retry == RTW_PWR_POLLING_CNT) {
+			rtw_err(rtwdev, "failed to poll REG_SDIO_HSUS_CTRL[1]");
+			return -ETIMEDOUT;
+		}
+
+		/* FIXME: enable SDIO3 - make this configurable! */
+		rtw_write8_set(rtwdev, REG_HCI_OPT_CTRL + 2, BIT(2));
 		break;
 	case RTW_HCI_TYPE_USB:
 		break;
@@ -227,6 +246,9 @@ static int rtw_pwr_seq_parser(struct rtw_dev *rtwdev,
 	case RTW_HCI_TYPE_USB:
 		intf_mask = BIT(1);
 		break;
+	case RTW_HCI_TYPE_SDIO:
+		intf_mask = RTW_PWR_INTF_SDIO_MSK;
+		break;
 	default:
 		return -EINVAL;
 	}
@@ -265,6 +287,8 @@ static int rtw_mac_power_switch(struct rtw_dev *rtwdev, bool pwr_on)
 
 	if (rtw_read8(rtwdev, REG_CR) == 0xea)
 		cur_pwr = false;
+	else if (rtw_hci_type(rtwdev) == RTW_HCI_TYPE_SDIO)
+		cur_pwr = false;
 	else if (rtw_hci_type(rtwdev) == RTW_HCI_TYPE_USB &&
 		 (rtw_read8(rtwdev, REG_SYS_STATUS1 + 1) & BIT(0)))
 		cur_pwr = false;
@@ -277,6 +301,8 @@ static int rtw_mac_power_switch(struct rtw_dev *rtwdev, bool pwr_on)
 	pwr_seq = pwr_on ? chip->pwr_on_seq : chip->pwr_off_seq;
 	if (rtw_pwr_seq_parser(rtwdev, pwr_seq))
 		return -EINVAL;
+
+	rtw_hci_power_switch(rtwdev, pwr_on);
 
 	return 0;
 }
@@ -453,6 +479,12 @@ static void download_firmware_reg_backup(struct rtw_dev *rtwdev,
 	tmp = (u8)((tmp & (~BIT_EN_BCN_FUNCTION)) | BIT_DIS_TSF_UDT);
 	rtw_write8(rtwdev, REG_BCN_CTRL, tmp);
 
+#if 0
+	// TODO
+	if (rtw_hci_type(rtwdev) == RTW_HCI_TYPE_SDIO)
+		rtw_read8(rtwdev, REG_SDIO_FREE_TXPG);
+#endif
+
 	WARN(bckp_idx != DLFW_RESTORE_REG_NUM, "wrong backup number\n");
 }
 
@@ -521,17 +553,21 @@ static int iddma_download_firmware(struct rtw_dev *rtwdev, u32 src, u32 dst,
 				   u32 len, u8 first)
 {
 	u32 ch0_ctrl = BIT_DDMACH0_CHKSUM_EN | BIT_DDMACH0_OWN;
-
-	if (!check_hw_ready(rtwdev, REG_DDMA_CH0CTRL, BIT_DDMACH0_OWN, 0))
+printk(KERN_ERR "%s(): 1\n", __func__);
+	if (!check_hw_ready(rtwdev, REG_DDMA_CH0CTRL, BIT_DDMACH0_OWN, 0)) {
+		printk(KERN_ERR "%s(): 2\n", __func__);
 		return -EBUSY;
-
+	}
+printk(KERN_ERR "%s(): 3\n", __func__);
 	ch0_ctrl |= len & BIT_MASK_DDMACH0_DLEN;
 	if (!first)
 		ch0_ctrl |= BIT_DDMACH0_CHKSUM_CONT;
-
-	if (iddma_enable(rtwdev, src, dst, ch0_ctrl))
+printk(KERN_ERR "%s(): 4\n", __func__);
+	if (iddma_enable(rtwdev, src, dst, ch0_ctrl)) {
+		printk(KERN_ERR "%s(): 5\n", __func__);
 		return -EBUSY;
-
+	}
+printk(KERN_ERR "%s(): 6\n", __func__);
 	return 0;
 }
 
@@ -599,23 +635,29 @@ download_firmware_to_mem(struct rtw_dev *rtwdev, const u8 *data,
 
 		ret = send_firmware_pkt(rtwdev, (u16)(src >> 7),
 					data + mem_offset, pkt_size);
-		if (ret)
+		if (ret) {
+			printk(KERN_ERR "%s(): 1\n", __func__);
 			return ret;
+		}
 
 		ret = iddma_download_firmware(rtwdev, OCPBASE_TXBUF_88XX +
 					      src + desc_size,
 					      dst + mem_offset, pkt_size,
 					      first_part);
-		if (ret)
+		if (ret) {
+			printk(KERN_ERR "%s(): 2\n", __func__);
 			return ret;
+		}
 
 		first_part = 0;
 		mem_offset += pkt_size;
 		residue_size -= pkt_size;
 	}
 
-	if (!check_fw_checksum(rtwdev, dst))
+	if (!check_fw_checksum(rtwdev, dst)) {
+		printk(KERN_ERR "%s(): 3\n", __func__);
 		return -EINVAL;
+	}
 
 	return 0;
 }
