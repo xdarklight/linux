@@ -7,6 +7,7 @@
 #include "reg.h"
 #include "fw.h"
 #include "debug.h"
+#include "sdio.h"
 
 void rtw_set_channel_mac(struct rtw_dev *rtwdev, u8 channel, u8 bw,
 			 u8 primary_ch_idx)
@@ -60,6 +61,7 @@ EXPORT_SYMBOL(rtw_set_channel_mac);
 
 static int rtw_mac_pre_system_cfg(struct rtw_dev *rtwdev)
 {
+	unsigned int retry;
 	u32 value32;
 	u8 value8;
 
@@ -76,6 +78,24 @@ static int rtw_mac_pre_system_cfg(struct rtw_dev *rtwdev)
 	switch (rtw_hci_type(rtwdev)) {
 	case RTW_HCI_TYPE_PCIE:
 		rtw_write32_set(rtwdev, REG_HCI_OPT_CTRL, BIT_BT_DIG_CLK_EN);
+		break;
+	case RTW_HCI_TYPE_SDIO:
+		rtw_write8_clr(rtwdev, REG_SDIO_HSUS_CTRL, BIT(0));
+
+		for (retry = 0; retry < RTW_PWR_POLLING_CNT; retry++) {
+			if (rtw_read8(rtwdev, REG_SDIO_HSUS_CTRL) & BIT(1))
+				break;
+
+			usleep_range(10, 50);
+		}
+
+		if (retry == RTW_PWR_POLLING_CNT) {
+			rtw_err(rtwdev, "failed to poll REG_SDIO_HSUS_CTRL[1]");
+			return -ETIMEDOUT;
+		}
+
+		/* FIXME: enable SDIO3 - make this configurable! */
+		rtw_write8_clr(rtwdev, REG_HCI_OPT_CTRL + 2, BIT(2));
 		break;
 	case RTW_HCI_TYPE_USB:
 		break;
@@ -222,6 +242,9 @@ static int rtw_pwr_seq_parser(struct rtw_dev *rtwdev,
 	case RTW_HCI_TYPE_USB:
 		intf_mask = BIT(1);
 		break;
+	case RTW_HCI_TYPE_SDIO:
+		intf_mask = RTW_PWR_INTF_SDIO_MSK;
+		break;
 	default:
 		return -EINVAL;
 	}
@@ -245,6 +268,7 @@ static int rtw_mac_power_switch(struct rtw_dev *rtwdev, bool pwr_on)
 {
 	struct rtw_chip_info *chip = rtwdev->chip;
 	const struct rtw_pwr_seq_cmd **pwr_seq;
+	u32 imr;
 	u8 rpwm;
 	bool cur_pwr;
 
@@ -260,6 +284,8 @@ static int rtw_mac_power_switch(struct rtw_dev *rtwdev, bool pwr_on)
 
 	if (rtw_read8(rtwdev, REG_CR) == 0xea)
 		cur_pwr = false;
+	else if (rtw_hci_type(rtwdev) == RTW_HCI_TYPE_SDIO)
+		cur_pwr = false;
 	else if (rtw_hci_type(rtwdev) == RTW_HCI_TYPE_USB &&
 		 (rtw_read8(rtwdev, REG_SYS_STATUS1 + 1) & BIT(0)))
 		cur_pwr = false;
@@ -269,9 +295,18 @@ static int rtw_mac_power_switch(struct rtw_dev *rtwdev, bool pwr_on)
 	if (pwr_on == cur_pwr)
 		return -EALREADY;
 
+	imr = rtw_read32(rtwdev, REG_SDIO_HIMR);
+	rtw_write32(rtwdev, REG_SDIO_HIMR, 0);
+
 	pwr_seq = pwr_on ? chip->pwr_on_seq : chip->pwr_off_seq;
-	if (rtw_pwr_seq_parser(rtwdev, pwr_seq))
+	if (rtw_pwr_seq_parser(rtwdev, pwr_seq)) {
+		rtw_write32(rtwdev, REG_SDIO_HIMR, imr);
 		return -EINVAL;
+	}
+
+	rtw_hci_power_switch(rtwdev, pwr_on);
+
+	rtw_write32(rtwdev, REG_SDIO_HIMR, imr);
 
 	return 0;
 }
@@ -1014,6 +1049,9 @@ static int txdma_queue_mapping(struct rtw_dev *rtwdev)
 		else
 			return -EINVAL;
 		break;
+	case RTW_HCI_TYPE_SDIO:
+		rqpn = &chip->rqpn_table[0];
+		break;
 	default:
 		return -EINVAL;
 	}
@@ -1172,6 +1210,9 @@ static int priority_queue_cfg(struct rtw_dev *rtwdev)
 			pg_tbl = &chip->page_table[4];
 		else
 			return -EINVAL;
+		break;
+	case RTW_HCI_TYPE_SDIO:
+		pg_tbl = &chip->page_table[0];
 		break;
 	default:
 		return -EINVAL;
