@@ -597,6 +597,19 @@ static int dwc2_driver_probe(struct platform_device *dev)
 		}
 	}
 #endif /* CONFIG_USB_DWC2_PERIPHERAL || CONFIG_USB_DWC2_DUAL_ROLE */
+
+	retval = of_platform_populate(dev->dev.of_node, NULL, NULL, &dev->dev);
+	if (retval) {
+		dev_err(hsotg->dev,
+			"Failed to create child devices/connectors for %p\n",
+			dev->dev.of_node);
+
+		if (hsotg->gadget_enabled)
+			dwc2_hsotg_remove(hsotg);
+
+		goto error_debugfs;
+	}
+
 	return 0;
 
 #if IS_ENABLED(CONFIG_USB_DWC2_PERIPHERAL) || \
