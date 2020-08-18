@@ -1,0 +1,98 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * Copyright (c) 2018 Oleg Ivanov <balbes-150@yandex.ru>
+ * Copyright (c) 2018 Martin Blumenstingl <martin.blumenstingl@googlemail.com>
+ * Copyright (c) 2020 Arnaud Mondit <arnaud.mondit@gmail.com>
+ */
+
+/dts-v1/;
+
+#include "meson8m2-mxiii.dtsi"
+
+/ {
+	model = "Minix X8-H Plus";
+	compatible = "minix,x8-h-plus", "amlogic,meson8m2";
+
+	aliases {
+		serial1 = &uart_A;
+	};
+};
+
+&ethmac {
+	status = "okay";
+
+	pinctrl-0 = <&eth_rgmii_pins>;
+	pinctrl-names = "default";
+
+	phy-handle = <&eth_phy0>;
+	phy-mode = "rgmii-id";
+
+	mdio {
+		compatible = "snps,dwmac-mdio";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		eth_phy0: ethernet-phy@0 {
+			/* Realtek RTL8211F (0x001cc916) */
+			reg = <0>;
+
+			reset-assert-us = <10000>;
+			reset-deassert-us = <30000>;
+			reset-gpios = <&gpio GPIOH_4 GPIO_ACTIVE_LOW>;
+		};
+	};
+};
+
+&sdhc {
+	status = "okay";
+
+	pinctrl-0 = <&sdxc_b_pins>;
+	pinctrl-names = "default";
+
+	bus-width = <4>;
+	max-frequency = <50000000>;
+
+	no-mmc;
+	no-sdio;
+	cap-sd-highspeed;
+	disable-wp;
+
+	cd-gpios = <&gpio CARD_6 GPIO_ACTIVE_LOW>;
+
+	vmmc-supply = <&vcc_3v3>;
+	vqmmc-supply = <&vcc_3v3>;
+};
+
+&sdio {
+	status = "okay";
+
+	pinctrl-0 = <&sd_a_pins>;
+	pinctrl-names = "default";
+
+	sdio_wireless_slot: slot@0 {
+		compatible = "mmc-slot";
+		reg = <0>;
+
+		bus-width = <4>;
+		cap-mmc-highspeed;
+		cap-sd-highspeed;
+		non-removable;
+		disable-wp;
+
+		mmc-pwrseq = <&sdio_pwrseq>;
+
+		vmmc-supply = <&vcc_3v3>;
+	};
+};
+
+&uart_A {
+	status = "okay";
+	pinctrl-0 = <&uart_a1_pins>, <&uart_a1_cts_rts_pins>;
+	pinctrl-names = "default";
+	uart-has-rtscts;
+
+    bluetooth {
+		compatible = "brcm,bcm43438-bt";
+		device-wakeup-gpios = <&gpio GPIOX_20 GPIO_ACTIVE_HIGH>;
+	};
+};
