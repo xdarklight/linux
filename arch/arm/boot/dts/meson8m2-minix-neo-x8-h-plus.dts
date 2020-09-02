@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 /*
- * Copyright (c) 2018 Oleg Ivanov <balbes-150@yandex.ru>
- * Copyright (c) 2018 Martin Blumenstingl <martin.blumenstingl@googlemail.com>
- * Copyright (c) 2020 Arnaud Mondit <arnaud.mondit@gmail.com>
+ * Copyright (c) 2020 Arnaud Mondit <a.mondit@gmail.com>
+ * Based on meson8m2-mxiii-plus.dts:
+ * - Copyright (c) 2018
+ *   Author: Oleg Ivanov <balbes-150@yandex.ru>
+ * - Copyright (c) 2018
+ *   Author: Martin Blumenstingl <martin.blumenstingl@googlemail.com>
  */
 
 /dts-v1/;
@@ -12,10 +15,6 @@
 / {
 	model = "Minix X8-H Plus";
 	compatible = "minix,x8-h-plus", "amlogic,meson8m2";
-
-	aliases {
-		serial1 = &uart_A;
-	};
 };
 
 &ethmac {
@@ -91,8 +90,11 @@
 	pinctrl-names = "default";
 	uart-has-rtscts;
 
-    bluetooth {
+	bluetooth {
 		compatible = "brcm,bcm43438-bt";
-		device-wakeup-gpios = <&gpio GPIOX_20 GPIO_ACTIVE_HIGH>;
+		max-speed = <3000000>;
+		vbat-supply = <&vcc_3v3>;
+		vddio-supply = <&vcc_3v3>;
+		shutdown-gpios = <&gpio GPIOX_20 GPIO_ACTIVE_HIGH>;
 	};
 };
