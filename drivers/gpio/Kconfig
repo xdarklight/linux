@@ -215,6 +215,15 @@ config GPIO_EIC_SPRD
 	help
 	  Say yes here to support Spreadtrum EIC device.
 
+config GPIO_EJ1X8
+	tristate "Etron Tech Inc. EJ168/EJ188/EJ198 GPIO driver"
+	depends on OF_GPIO && PCI
+	help
+	  Selecting this option will enable the GPIO pins present on
+	  the Etron Tech Inc. EJ168/EJ188/EJ198 USB xHCI controllers.
+
+	  If unsure, say N.
+
 config GPIO_EM
 	tristate "Emma Mobile GPIO"
 	depends on (ARCH_EMEV2 || COMPILE_TEST) && OF_GPIO
