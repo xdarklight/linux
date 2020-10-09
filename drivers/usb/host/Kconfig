@@ -43,6 +43,16 @@ config USB_XHCI_PCI
 	depends on USB_XHCI_PCI_RENESAS || !USB_XHCI_PCI_RENESAS
 	default y
 
+config USB_XHCI_PCI_ETRON
+	tristate "Support for GPIOs in the Etron EJ168/EJ188/EJ198 controllers"
+	depends on USB_XHCI_PCI && OF_GPIO
+	default n
+	help
+	  Say 'Y' to enable the support for the GPIO controller inside the
+	  Etron EJ168/EJ188/EJ198 xHCI controllers.
+
+	  If unsure, say 'N'.
+
 config USB_XHCI_PCI_RENESAS
 	tristate "Support for additional Renesas xHCI controller with firmware"
 	help
