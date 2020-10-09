@@ -653,6 +653,9 @@ static const struct pci_device_id pci_ids_reject[] = {
 	/* handled by xhci-pci-renesas */
 	{ PCI_DEVICE(PCI_VENDOR_ID_RENESAS, 0x0014) },
 	{ PCI_DEVICE(PCI_VENDOR_ID_RENESAS, 0x0015) },
+	/* handled by xhci-pci-etron */
+	{ PCI_DEVICE(PCI_VENDOR_ID_ETRON, PCI_DEVICE_ID_ETRON_EJ168) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_ETRON, PCI_DEVICE_ID_ETRON_EJ188) },
 	{ /* end: all zeroes */ }
 };
 
