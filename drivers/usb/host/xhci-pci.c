@@ -657,6 +657,9 @@ EXPORT_SYMBOL_NS_GPL(xhci_pci_common_probe, "xhci");
 static const struct pci_device_id pci_ids_renesas[] = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_RENESAS, 0x0014) },
 	{ PCI_DEVICE(PCI_VENDOR_ID_RENESAS, 0x0015) },
+	/* handled by xhci-pci-etron */
+	{ PCI_DEVICE(PCI_VENDOR_ID_ETRON, PCI_DEVICE_ID_ETRON_EJ168) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_ETRON, PCI_DEVICE_ID_ETRON_EJ188) },
 	{ /* end: all zeroes */ }
 };
 
