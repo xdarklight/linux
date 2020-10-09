@@ -260,6 +260,7 @@ static void xhci_pci_quirks(struct device *dev, struct xhci_hcd *xhci)
 		xhci->quirks |= XHCI_RESET_ON_RESUME;
 		xhci->quirks |= XHCI_TRUST_TX_LENGTH;
 		xhci->quirks |= XHCI_BROKEN_STREAMS;
+		xhci->quirks |= XHCI_ETRON_GPIO_QUIRK;
 	}
 	if (pdev->vendor == PCI_VENDOR_ID_RENESAS &&
 	    pdev->device == 0x0014) {
@@ -433,8 +434,16 @@ static int xhci_pci_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	if (xhci->quirks & XHCI_DEFAULT_PM_RUNTIME_ALLOW)
 		pm_runtime_allow(&dev->dev);
 
+	if (xhci->quirks & XHCI_ETRON_GPIO_QUIRK) {
+		retval = etron_xhci_pci_probe(dev);
+		if (retval)
+			goto remove_usb3_hcd;
+	}
+
 	return 0;
 
+remove_usb3_hcd:
+	usb_remove_hcd(xhci->shared_hcd);
 put_usb3_hcd:
 	usb_put_hcd(xhci->shared_hcd);
 dealloc_usb2_hcd:
