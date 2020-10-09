@@ -4,6 +4,15 @@
 #ifndef XHCI_PCI_H
 #define XHCI_PCI_H
 
+#if IS_REACHABLE(CONFIG_USB_XHCI_PCI_ETRON)
+int etron_xhci_pci_probe(struct pci_dev *pci_dev);
+#else
+static inline int etron_xhci_pci_probe(struct pci_dev *pci_dev)
+{
+	return 0;
+}
+#endif
+
 #if IS_ENABLED(CONFIG_USB_XHCI_PCI_RENESAS)
 int renesas_xhci_check_request_fw(struct pci_dev *dev,
 				  const struct pci_device_id *id);
