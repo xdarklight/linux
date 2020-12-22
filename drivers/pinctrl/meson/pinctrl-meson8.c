@@ -130,6 +130,7 @@ static const struct pinctrl_pin_desc meson8_cbus_pins[] = {
 	MESON_PIN(BOOT_16),
 	MESON_PIN(BOOT_17),
 	MESON_PIN(BOOT_18),
+	MESON_PIN(GPIO_BSD_EN),
 };
 
 static const struct pinctrl_pin_desc meson8_aobus_pins[] = {
@@ -147,7 +148,6 @@ static const struct pinctrl_pin_desc meson8_aobus_pins[] = {
 	MESON_PIN(GPIOAO_11),
 	MESON_PIN(GPIOAO_12),
 	MESON_PIN(GPIOAO_13),
-	MESON_PIN(GPIO_BSD_EN),
 	MESON_PIN(GPIO_TEST_N),
 };
 
@@ -526,6 +526,7 @@ static struct meson_pmx_group meson8_cbus_groups[] = {
 	GPIO_GROUP(BOOT_16),
 	GPIO_GROUP(BOOT_17),
 	GPIO_GROUP(BOOT_18),
+	GPIO_GROUP(GPIO_BSD_EN),
 
 	/* bank X */
 	GROUP(sd_d0_a,		8,	5),
@@ -760,7 +761,6 @@ static struct meson_pmx_group meson8_aobus_groups[] = {
 	GPIO_GROUP(GPIOAO_11),
 	GPIO_GROUP(GPIOAO_12),
 	GPIO_GROUP(GPIOAO_13),
-	GPIO_GROUP(GPIO_BSD_EN),
 	GPIO_GROUP(GPIO_TEST_N),
 
 	/* bank AO */
@@ -827,13 +827,15 @@ static const char * const gpio_periphs_groups[] = {
 	"BOOT_5", "BOOT_6", "BOOT_7", "BOOT_8", "BOOT_9",
 	"BOOT_10", "BOOT_11", "BOOT_12", "BOOT_13", "BOOT_14",
 	"BOOT_15", "BOOT_16", "BOOT_17", "BOOT_18",
+
+	"GPIO_BSD_EN",
 };
 
 static const char * const gpio_aobus_groups[] = {
 	"GPIOAO_0", "GPIOAO_1", "GPIOAO_2", "GPIOAO_3",
 	"GPIOAO_4", "GPIOAO_5", "GPIOAO_6", "GPIOAO_7",
 	"GPIOAO_8", "GPIOAO_9", "GPIOAO_10", "GPIOAO_11",
-	"GPIOAO_12", "GPIOAO_13", "GPIO_BSD_EN", "GPIO_TEST_N"
+	"GPIOAO_12", "GPIOAO_13", "GPIO_TEST_N"
 };
 
 static const char * const sd_a_groups[] = {
@@ -1072,6 +1074,14 @@ static struct meson_bank meson8_cbus_banks[] = {
 	BANK("Z",    GPIOZ_0,  GPIOZ_14,    14,   28, 1,  0,  1,  0,  3, 17,  4, 17,  5, 17),
 	BANK("CARD", CARD_0,   CARD_6,      58,   64, 2, 20,  2, 20,  0, 22,  1, 22,  2, 22),
 	BANK("BOOT", BOOT_0,   BOOT_18,     39,   57, 2,  0,  2,  0,  9,  0, 10,  0, 11,  0),
+
+	/*
+	 * BSD_EN may need some extra gpio_chip.request handling as the vendor kernel:
+	 * - clears CBUS PREG_PAD_GPIO0_O[29]
+	 * - sets SECBUS2 AO_SECURE_REG0[0]
+	 */
+	BANK("BSD_EN", GPIO_BSD_EN, GPIO_BSD_EN,
+					    -1,   -1, 0, -1,  2, 31,  1, 30,  1, 31,  0, -1),
 };
 
 static struct meson_bank meson8_aobus_banks[] = {
