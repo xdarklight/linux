@@ -332,7 +332,7 @@
 			reg-names = "mux", "pull", "gpio";
 			gpio-controller;
 			#gpio-cells = <2>;
-			gpio-ranges = <&pinctrl_aobus 0 0 16>;
+			gpio-ranges = <&pinctrl_aobus 0 0 15>;
 		};
 
 		uart_ao_a_pins: uart_ao_a {
@@ -416,7 +416,7 @@
 			reg-names = "mux", "pull", "pull-enable", "gpio";
 			gpio-controller;
 			#gpio-cells = <2>;
-			gpio-ranges = <&pinctrl_cbus 0 0 120>;
+			gpio-ranges = <&pinctrl_cbus 0 0 121>;
 		};
 
 		sd_a_pins: sd-a {
