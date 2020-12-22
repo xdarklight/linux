@@ -100,6 +100,13 @@ static const struct pinctrl_pin_desc meson8b_cbus_pins[] = {
 	MESON_PIN(DIF_3_N),
 	MESON_PIN(DIF_4_P),
 	MESON_PIN(DIF_4_N),
+
+	/*
+	 * The following pin is not mentioned in the public datasheet.
+	 * According to this datasheet it can't be used with the GPIO
+	 * interrupt controller.
+	 */
+	MESON_PIN(GPIO_BSD_EN),
 };
 
 static const struct pinctrl_pin_desc meson8b_aobus_pins[] = {
@@ -119,11 +126,10 @@ static const struct pinctrl_pin_desc meson8b_aobus_pins[] = {
 	MESON_PIN(GPIOAO_13),
 
 	/*
-	 * The following 2 pins are not mentionned in the public datasheet
-	 * According to this datasheet, they can't be used with the gpio
-	 * interrupt controller
+	 * The following pin is not mentioned in the public datasheet.
+	 * According to this datasheet it can't be used with the GPIO
+	 * interrupt controller.
 	 */
-	MESON_PIN(GPIO_BSD_EN),
 	MESON_PIN(GPIO_TEST_N),
 };
 
@@ -440,6 +446,8 @@ static struct meson_pmx_group meson8b_cbus_groups[] = {
 	GPIO_GROUP(DIF_4_P),
 	GPIO_GROUP(DIF_4_N),
 
+	GPIO_GROUP(GPIO_BSD_EN),
+
 	/* bank X */
 	GROUP(sd_d0_a,		8,	5),
 	GROUP(sd_d1_a,		8,	4),
@@ -618,7 +626,6 @@ static struct meson_pmx_group meson8b_aobus_groups[] = {
 	GPIO_GROUP(GPIOAO_11),
 	GPIO_GROUP(GPIOAO_12),
 	GPIO_GROUP(GPIOAO_13),
-	GPIO_GROUP(GPIO_BSD_EN),
 	GPIO_GROUP(GPIO_TEST_N),
 
 	/* bank AO */
@@ -678,14 +685,16 @@ static const char * const gpio_periphs_groups[] = {
 
 	"DIF_0_P", "DIF_0_N", "DIF_1_P", "DIF_1_N",
 	"DIF_2_P", "DIF_2_N", "DIF_3_P", "DIF_3_N",
-	"DIF_4_P", "DIF_4_N"
+	"DIF_4_P", "DIF_4_N",
+
+	"GPIO_BSD_EN"
 };
 
 static const char * const gpio_aobus_groups[] = {
 	"GPIOAO_0", "GPIOAO_1", "GPIOAO_2", "GPIOAO_3",
 	"GPIOAO_4", "GPIOAO_5", "GPIOAO_6", "GPIOAO_7",
 	"GPIOAO_8", "GPIOAO_9", "GPIOAO_10", "GPIOAO_11",
-	"GPIOAO_12", "GPIOAO_13", "GPIO_BSD_EN", "GPIO_TEST_N"
+	"GPIOAO_12", "GPIOAO_13", "GPIO_TEST_N"
 };
 
 static const char * const sd_a_groups[] = {
@@ -931,16 +940,24 @@ static struct meson_bank meson8b_cbus_banks[] = {
 	BANK("BOOT",	 BOOT_0,	BOOT_18,    24,  42,  2,  0,   2,  0,   9,  0,  10,  0,  11,  0),
 
 	/*
-	 * The following bank is not mentionned in the public datasheet
-	 * There is no information whether it can be used with the gpio
+	 * The following banks are not mentioned in the public datasheet
+	 * There is no information whether they can be used with the gpio
 	 * interrupt controller
 	 */
 	BANK("DIF",	 DIF_0_P,	DIF_4_N,    -1,  -1,  5,  8,   5,  8,  12, 12,  13, 12,  14, 12),
+
+	/*
+	 * BSD_EN may need some extra gpio_chip.request handling as the vendor kernel:
+	 * - clears CBUS PREG_PAD_GPIO0_O[29]
+	 * - sets SECBUS2 AO_SECURE_REG0[0]
+	 */
+	BANK("BSD_EN",	 GPIO_BSD_EN,	GPIO_BSD_EN, -1, -1,  0, -1,   2, 31,   0, 30,   0, 31,   0, -1),
 };
 
 static struct meson_bank meson8b_aobus_banks[] = {
-	/*   name    first     lastc        irq    pullen  pull    dir     out     in  */
-	BANK("AO",   GPIOAO_0, GPIO_TEST_N, 0, 13, 0,  16, 0, 0,  0,  0,  0, 16,  1,  0),
+	/*   name       first           last         irq     pullen  pull    dir     out     in  */
+	BANK("AO",	GPIOAO_0,	GPIOAO_13,    0, -1, 0, 16,  0,  0,  0,  0,  0, 16,  1,  0),
+	BANK("TEST_N",	GPIO_TEST_N,	GPIO_TEST_N, -1, -1, 0, 31,  0, 15,  0, 15,  0, 31,  1, 15),
 };
 
 static struct meson_pinctrl_data meson8b_cbus_pinctrl_data = {
