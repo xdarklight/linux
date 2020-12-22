@@ -931,11 +931,18 @@ static struct meson_bank meson8b_cbus_banks[] = {
 	BANK("BOOT",	 BOOT_0,	BOOT_18,    24,  42,  2,  0,   2,  0,   9,  0,  10,  0,  11,  0),
 
 	/*
-	 * The following bank is not mentionned in the public datasheet
+	 * The following banks is not mentionned in the public datasheet
 	 * There is no information whether it can be used with the gpio
 	 * interrupt controller
 	 */
 	BANK("DIF",	 DIF_0_P,	DIF_4_N,    -1,  -1,  5,  8,   5,  8,  12, 12,  13, 12,  14, 12),
+
+	/*
+	 * BSD_EN may need some extra gpio_chip.request handling as the vendor kernel:
+	 * - clears CBUS PREG_PAD_GPIO0_O[29]
+	 * - sets SECBUS2 AO_SECURE_REG0[0]
+	 */
+	BANK("BSD_EN",	 GPIO_BSD_EN,	GPIO_BSD_EN,-1, -1,  0, -1,   2, 31,   1, 30,  1, 31,    0, -1),
 };
 
 static struct meson_bank meson8b_aobus_banks[] = {
