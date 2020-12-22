@@ -360,7 +360,7 @@
 			reg-names = "mux", "pull", "gpio";
 			gpio-controller;
 			#gpio-cells = <2>;
-			gpio-ranges = <&pinctrl_aobus 0 0 16>;
+			gpio-ranges = <&pinctrl_aobus 0 0 15>;
 		};
 
 		i2s_am_clk_pins: i2s-am-clk-out {
@@ -476,7 +476,7 @@
 			reg-names = "mux", "pull", "pull-enable", "gpio";
 			gpio-controller;
 			#gpio-cells = <2>;
-			gpio-ranges = <&pinctrl_cbus 0 0 120>;
+			gpio-ranges = <&pinctrl_cbus 0 0 121>;
 		};
 
 		pwm_c_dv9_pins: pwm-c-dv9 {
