@@ -100,6 +100,8 @@
 #define DIF_4_P		81
 #define DIF_4_N		82
 
+#define GPIO_BSD_EN	83
+
 /* AO GPIO chip */
 #define GPIOAO_0	0
 #define GPIOAO_1	1
@@ -115,7 +117,6 @@
 #define GPIOAO_11	11
 #define GPIOAO_12	12
 #define GPIOAO_13	13
-#define GPIO_BSD_EN	14
-#define GPIO_TEST_N	15
+#define GPIO_TEST_N	14
 
 #endif /* _DT_BINDINGS_MESON8B_GPIO_H */
