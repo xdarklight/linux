@@ -227,6 +227,16 @@ struct meson_drm_soc_attr {
 };
 
 static const struct meson_drm_soc_attr meson_drm_soc_attrs[] = {
+	/* The maximum frequency of HDMI PLL on Meson8/8b/8m2 is ~3GHz */
+	{
+		.limits = {
+			.max_hdmi_phy_freq = 2976000,
+		},
+		.attrs = (const struct soc_device_attribute []) {
+			{ .soc_id = "Meson8*", },
+			{ /* sentinel */ },
+		}
+	},
 	/* S805X/S805Y HDMI PLL won't lock for HDMI PHY freq > 1,65GHz */
 	{
 		.limits = {
