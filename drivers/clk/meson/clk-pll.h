@@ -36,18 +36,6 @@ struct meson_clk_pll_data {
 	struct parm frac;
 	struct parm l;
 	struct parm rst;
-	struct parm div_mode;
-	struct parm filter_acq1;
-	struct parm filter_acq2;
-	struct parm iir_bypass_en;
-	struct parm lm_w;
-	struct parm reve;
-	struct parm sdm_pr_en;
-	struct parm tdc_cal_en;
-	struct parm tdc_cal_ig;
-	struct parm tdc_cal_off;
-	struct parm tdc_en;
-	struct parm tdc_off_c;
 	const struct reg_sequence *init_regs;
 	unsigned int init_count;
 	const struct pll_params_table *table;
@@ -58,6 +46,5 @@ struct meson_clk_pll_data {
 extern const struct clk_ops meson_clk_pll_ro_ops;
 extern const struct clk_ops meson_clk_pll_ops;
 extern const struct clk_ops meson_clk_pcie_pll_ops;
-extern const struct clk_ops meson_clk_hdmi_pll_m8_ops;
 
 #endif /* __MESON_CLK_PLL_H */
