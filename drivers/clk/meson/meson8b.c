@@ -201,6 +201,66 @@ static struct clk_regmap meson8b_hdmi_pll_dco = {
 			.shift   = 29,
 			.width   = 1,
 		},
+		.div_mode = {
+			.reg_off = HHI_VID_PLL_CNTL2,
+			.shift   = 14,
+			.width   = 1,
+		},
+		.sdm_pr_en = {
+			.reg_off = HHI_VID_PLL_CNTL2,
+			.shift   = 15,
+			.width   = 1,
+		},
+		.lm_w = {
+			.reg_off = HHI_VID_PLL_CNTL2,
+			.shift   = 28,
+			.width   = 4,
+		},
+		.filter_acq1 = {
+			.reg_off = HHI_VID_PLL_CNTL3,
+			.shift   = 0,
+			.width   = 11,
+		},
+		.filter_acq2 = {
+			.reg_off = HHI_VID_PLL_CNTL3,
+			.shift   = 11,
+			.width   = 11,
+		},
+		.tdc_en = {
+			.reg_off = HHI_VID_PLL_CNTL3,
+			.shift   = 30,
+			.width   = 1,
+		},
+		.iir_bypass_en = {
+			.reg_off = HHI_VID_PLL_CNTL3,
+			.shift   = 31,
+			.width   = 1,
+		},
+		.tdc_cal_en = {
+			.reg_off = HHI_VID_PLL_CNTL4,
+			.shift   = 13,
+			.width   = 1,
+		},
+		.tdc_cal_ig = {
+			.reg_off = HHI_VID_PLL_CNTL4,
+			.shift   = 14,
+			.width   = 2,
+		},
+		.reve = {
+			.reg_off = HHI_VID_PLL_CNTL4,
+			.shift   = 24,
+			.width   = 8,
+		},
+		.tdc_cal_off = {
+			.reg_off = HHI_VID_PLL_CNTL5,
+			.shift   = 0,
+			.width   = 3,
+		},
+		.tdc_off_c = {
+			.reg_off = HHI_VID_PLL_CNTL5,
+			.shift   = 8,
+			.width   = 3,
+		},
 		.table = hdmi_pll_params_table,
 		.init_regs = meson8b_hdmi_pll_init_regs,
 		.init_count = ARRAY_SIZE(meson8b_hdmi_pll_init_regs),
