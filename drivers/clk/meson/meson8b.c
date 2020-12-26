@@ -3781,6 +3781,11 @@ static void __init meson8b_clkc_init_common(struct device_node *np,
 		return;
 	}
 
+	/* The HDMI PLL VCO is limited to 1.2G~3.0GHz */
+	clk_hw_set_rate_range(clk_hw_onecell_data->hws[CLKID_HDMI_PLL_DCO],
+			      1200 * 1000UL * 1000UL,
+			      3000 * 1000UL * 1000UL);
+
 	ret = of_clk_add_hw_provider(np, of_clk_hw_onecell_get,
 				     clk_hw_onecell_data);
 	if (ret)
