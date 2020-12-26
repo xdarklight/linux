@@ -118,6 +118,14 @@ static struct clk_regmap meson8b_fixed_pll = {
 	},
 };
 
+static const struct reg_sequence meson8b_hdmi_pll_init_regs[] = {
+	{ .reg = HHI_VID_PLL_CNTL2,	.def = 0x59c88000 },
+	{ .reg = HHI_VID_PLL_CNTL3,	.def = 0xca49b022 },
+	{ .reg = HHI_VID_PLL_CNTL4,	.def = 0x0023b100 },
+	{ .reg = HHI_VID_PLL_CNTL5,	.def = 0x00016385 },
+	{ .reg = HHI_VID2_PLL_CNTL2,	.def = 0x0430a800 },
+};
+
 static const struct pll_params_table hdmi_pll_params_table[] = {
 	PLL_PARAMS(34, 1),
 	PLL_PARAMS(40, 1),
@@ -173,6 +181,8 @@ static struct clk_regmap meson8b_hdmi_pll_dco = {
 			.width   = 1,
 		},
 		.table = hdmi_pll_params_table,
+		.init_regs = meson8b_hdmi_pll_init_regs,
+		.init_count = ARRAY_SIZE(meson8b_hdmi_pll_init_regs),
 	},
 	.hw.init = &(struct clk_init_data){
 		/* sometimes also called "HPLL" or "HPLL PLL" */
