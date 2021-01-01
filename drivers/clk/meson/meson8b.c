@@ -672,8 +672,25 @@ static struct clk_regmap meson8b_mpll2 = {
 	},
 };
 
+static struct clk_regmap meson8b_mpeg_rtc_osc_sel = {
+	.data = &(struct clk_regmap_mux_data){
+		.offset = HHI_MPEG_CLK_CNTL,
+		.mask = 0x1,
+		.shift = 9,
+	},
+	.hw.init = &(struct clk_init_data){
+		.name = "mpeg_rtc_osc_sel",
+		.ops = &clk_regmap_mux_ro_ops,
+		.parent_data = (const struct clk_parent_data[]) {
+			{ .fw_name = "xtal", .index = -1, },
+			{ .fw_name = "rtc_32k", .index = -1, },
+		},
+		.num_parents = 2,
+	},
+};
+
 /* clk81 is often referred as "mpeg_clk" */
-static u32 meson8b_clk81_parents_val_table[] = { 6, 5, 7 };
+static u32 meson8b_clk81_parents_val_table[] = { 0, 6, 5, 7 };
 static struct clk_regmap meson8b_clk81_sel = {
 	.data = &(struct clk_regmap_mux_data){
 		.offset = HHI_MPEG_CLK_CNTL,
@@ -690,11 +707,12 @@ static struct clk_regmap meson8b_clk81_sel = {
 		 * fclk_div4, fclk_div3, fclk_div5
 		 */
 		.parent_hws = (const struct clk_hw *[]) {
+			&meson8b_mpeg_rtc_osc_sel.hw,
 			&meson8b_fclk_div3.hw,
 			&meson8b_fclk_div4.hw,
 			&meson8b_fclk_div5.hw,
 		},
-		.num_parents = 3,
+		.num_parents = 4,
 	},
 };
 
@@ -3093,6 +3111,7 @@ static struct clk_hw *meson8_hw_clks[] = {
 	[CLKID_ETH_CLK_DIV]	    = &meson8_eth_clk_div.hw,
 	[CLKID_ETH_CLK_PHASE]	    = &meson8_eth_clk_phase.hw,
 	[CLKID_ETH_CLK]		    = &meson8_eth_clk_gate.hw,
+	[CLKID_MPEG_RTC_OSC_SEL]    = &meson8b_mpeg_rtc_osc_sel.hw,
 };
 
 static struct clk_hw *meson8b_hw_clks[] = {
@@ -3308,6 +3327,7 @@ static struct clk_hw *meson8b_hw_clks[] = {
 	[CLKID_CTS_I958]	    = &meson8b_cts_i958.hw,
 	[CLKID_VID_PLL_LVDS_EN]	    = &meson8b_vid_pll_lvds_en.hw,
 	[CLKID_HDMI_PLL_DCO_IN]	    = &hdmi_pll_dco_in.hw,
+	[CLKID_MPEG_RTC_OSC_SEL]    = &meson8b_mpeg_rtc_osc_sel.hw,
 };
 
 static struct clk_hw *meson8m2_hw_clks[] = {
@@ -3525,6 +3545,7 @@ static struct clk_hw *meson8m2_hw_clks[] = {
 	[CLKID_CTS_I958]	    = &meson8b_cts_i958.hw,
 	[CLKID_VID_PLL_LVDS_EN]	    = &meson8b_vid_pll_lvds_en.hw,
 	[CLKID_HDMI_PLL_DCO_IN]	    = &hdmi_pll_dco_in.hw,
+	[CLKID_MPEG_RTC_OSC_SEL]    = &meson8b_mpeg_rtc_osc_sel.hw,
 };
 
 static const struct meson8b_clk_reset_line {
