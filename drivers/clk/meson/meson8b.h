@@ -188,8 +188,9 @@
 #define CLKID_ETH_CLK_SEL	218
 #define CLKID_ETH_CLK_DIV	219
 #define CLKID_ETH_CLK_PHASE	220
+#define CLKID_MPEG_RTC_OSC_SEL	222
 
-#define CLK_NR_CLKS		222
+#define CLK_NR_CLKS		223
 
 /*
  * include the CLKID and RESETID that have
