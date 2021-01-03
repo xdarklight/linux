@@ -17,35 +17,35 @@
 #include "../../pci.h"
 #include "pcie-designware.h"
 
-#define PORT_AFR_N_FTS_GEN12_DFT	(SZ_128 - 1)
-#define PORT_AFR_N_FTS_GEN3		180
-#define PORT_AFR_N_FTS_GEN4		196
+#define PORT_AFR_N_FTS_GEN12_DFT		(SZ_128 - 1)
+#define PORT_AFR_N_FTS_GEN3			180
+#define PORT_AFR_N_FTS_GEN4			196
 
 /* PCIe Application logic Registers */
-#define PCIE_APP_CCR			0x10
-#define PCIE_APP_CCR_LTSSM_ENABLE	BIT(0)
+#define PCIE_APP_CCR				0x10
+#define PCIE_APP_CCR_LTSSM_ENABLE		BIT(0)
 
-#define PCIE_APP_MSG_CR			0x30
-#define PCIE_APP_MSG_XMT_PM_TURNOFF	BIT(0)
+#define PCIE_APP_MSG_CR				0x30
+#define PCIE_APP_MSG_XMT_PM_TURNOFF		BIT(0)
 
-#define PCIE_APP_PMC			0x44
-#define PCIE_APP_PMC_IN_L2		BIT(20)
+#define PCIE_APP_PMC				0x44
+#define PCIE_APP_PMC_IN_L2			BIT(20)
 
-#define PCIE_APP_IRNEN			0xF4
-#define PCIE_APP_IRNCR			0xF8
-#define PCIE_APP_IRN_AER_REPORT		BIT(0)
-#define PCIE_APP_IRN_PME		BIT(2)
-#define PCIE_APP_IRN_RX_VDM_MSG		BIT(4)
-#define PCIE_APP_IRN_PM_TO_ACK		BIT(9)
-#define PCIE_APP_IRN_LINK_AUTO_BW_STAT	BIT(11)
-#define PCIE_APP_IRN_BW_MGT		BIT(12)
-#define PCIE_APP_IRN_INTA		BIT(13)
-#define PCIE_APP_IRN_INTB		BIT(14)
-#define PCIE_APP_IRN_INTC		BIT(15)
-#define PCIE_APP_IRN_INTD		BIT(16)
-#define PCIE_APP_IRN_MSG_LTR		BIT(18)
-#define PCIE_APP_IRN_SYS_ERR_RC		BIT(29)
-#define PCIE_APP_INTX_OFST		12
+#define PCIE_APP_IRNEN				0xF4
+#define PCIE_APP_IRNCR				0xF8
+#define PCIE_APP_IRN_AER_REPORT			BIT(0)
+#define PCIE_APP_IRN_PME			BIT(2)
+#define PCIE_APP_IRN_RX_VDM_MSG			BIT(4)
+#define PCIE_APP_IRN_PM_TO_ACK			BIT(9)
+#define PCIE_APP_IRN_LINK_AUTO_BW_STAT		BIT(11)
+#define PCIE_APP_IRN_BW_MGT			BIT(12)
+#define PCIE_APP_IRN_INTA			BIT(13)
+#define PCIE_APP_IRN_INTB			BIT(14)
+#define PCIE_APP_IRN_INTC			BIT(15)
+#define PCIE_APP_IRN_INTD			BIT(16)
+#define PCIE_APP_IRN_MSG_LTR			BIT(18)
+#define PCIE_APP_IRN_SYS_ERR_RC			BIT(29)
+#define PCIE_APP_INTX_OFST			12
 
 #define PCIE_APP_IRN_INT \
 	(PCIE_APP_IRN_AER_REPORT | PCIE_APP_IRN_PME | \
