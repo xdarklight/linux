@@ -25,11 +25,23 @@
 #define PCIE_APP_CCR				0x10
 #define PCIE_APP_CCR_LTSSM_ENABLE		BIT(0)
 
+/* RC Core Debug Register */
+#define PCIE_APP_RC_DR				0x14
+#define PCIE_APP_RC_DR_DLL_UP			BIT(0)
+
+/* PHY Link Status Register */
+#define PCIE_APP_PHY_SR				0x18
+#define PCIE_APP_PHY_SR_PHY_LINK_UP		BIT(0)
+
 #define PCIE_APP_MSG_CR				0x30
 #define PCIE_APP_MSG_XMT_PM_TURNOFF		BIT(0)
 
 #define PCIE_APP_PMC				0x44
 #define PCIE_APP_PMC_IN_L2			BIT(20)
+
+/* AHB Control Register, fixed bus enumeration exception */
+#define PCIE_APP_AHB_CTRL			0x78
+#define PCIE_APP_AHB_CTRL_BUS_ERROR_SUPPRESS	BIT(0)
 
 #define PCIE_APP_IRNEN				0xF4
 #define PCIE_APP_IRNCR				0xF8
@@ -46,6 +58,8 @@
 #define PCIE_APP_IRN_MSG_LTR			BIT(18)
 #define PCIE_APP_IRN_SYS_ERR_RC			BIT(29)
 #define PCIE_APP_INTX_OFST			12
+
+#define PCIE_APP_IRNICR				0xFC
 
 #define PCIE_APP_IRN_INT \
 	(PCIE_APP_IRN_AER_REPORT | PCIE_APP_IRN_PME | \
