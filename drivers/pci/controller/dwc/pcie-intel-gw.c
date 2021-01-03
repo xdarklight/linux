@@ -78,6 +78,7 @@ struct intel_pcie_soc {
 	const struct dw_pcie_ops		dw_pcie_ops;
 	const struct dw_pcie_host_ops		dw_pcie_host_ops;
 	const struct regmap_access_table	*app_regmap_rd_table;
+	bool					phy_resets_core;
 };
 
 struct intel_pcie {
@@ -304,12 +305,15 @@ static int intel_pcie_get_resources(struct platform_device *pdev,
 		return ret;
 	}
 
-	pcie->core_rst = devm_reset_control_get(dev, NULL);
-	if (IS_ERR(pcie->core_rst)) {
-		ret = PTR_ERR(pcie->core_rst);
-		if (ret != -EPROBE_DEFER)
-			dev_err(dev, "Failed to get resets: %d\n", ret);
-		return ret;
+	if (!data->phy_resets_core) {
+		pcie->core_rst = devm_reset_control_get(dev, NULL);
+		if (IS_ERR(pcie->core_rst)) {
+			ret = PTR_ERR(pcie->core_rst);
+			if (ret != -EPROBE_DEFER)
+				dev_err(dev, "Failed to get resets: %d\n",
+					ret);
+			return ret;
+		}
 	}
 
 	ret = device_property_read_u32(dev, "reset-assert-ms",
@@ -584,6 +588,7 @@ static const struct intel_pcie_soc pcie_data = {
 		.host_init = intel_pcie_rc_init,
 	},
 	.app_regmap_rd_table	= &intel_pcie_app_regmap_rd_table,
+	.phy_resets_core	= false,
 };
 
 static const struct intel_pcie_soc lantiq_pcie_data = {
@@ -597,6 +602,7 @@ static const struct intel_pcie_soc lantiq_pcie_data = {
 		.host_init = lantiq_pcie_rc_init,
 	},
 	.app_regmap_rd_table	= &lantiq_pcie_app_regmap_rd_table,
+	.phy_resets_core	= true,
 };
 
 static int intel_pcie_probe(struct platform_device *pdev)
