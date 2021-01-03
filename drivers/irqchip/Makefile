@@ -104,6 +104,7 @@ obj-$(CONFIG_TI_SCI_INTR_IRQCHIP)	+= irq-ti-sci-intr.o
 obj-$(CONFIG_TI_SCI_INTA_IRQCHIP)	+= irq-ti-sci-inta.o
 obj-$(CONFIG_TI_PRUSS_INTC)		+= irq-pruss-intc.o
 obj-$(CONFIG_LANTIQ_ICU)		+= irq-lantiq-icu.o
+obj-$(CONFIG_LANTIQ_MSI_PIC)		+= irq-lantiq-msi-pic.o
 obj-$(CONFIG_LANTIQ_XWAY_EIU)		+= irq-lantiq-xway-eiu.o
 obj-$(CONFIG_LOONGSON_LIOINTC)		+= irq-loongson-liointc.o
 obj-$(CONFIG_LOONGSON_HTPIC)		+= irq-loongson-htpic.o
