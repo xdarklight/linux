@@ -405,6 +405,10 @@ static int intel_pcie_host_setup(struct intel_pcie_port *lpp)
 	if (ret)
 		goto phy_init_err;
 
+	ret = phy_power_on(lpp->phy);
+	if (ret)
+		goto phy_power_on_err;
+
 	intel_pcie_core_rst_deassert(lpp);
 
 	ret = clk_prepare_enable(lpp->core_clk);
@@ -438,6 +442,8 @@ app_init_err:
 	clk_disable_unprepare(lpp->core_clk);
 core_clk_err:
 	intel_pcie_core_rst_assert(lpp);
+	phy_power_off(lpp->phy);
+phy_power_on_err:
 	phy_exit(lpp->phy);
 phy_init_err:
 	clk_bulk_disable_unprepare(ARRAY_SIZE(lpp->bulk_clks), lpp->bulk_clks);
@@ -450,6 +456,7 @@ static void __intel_pcie_remove(struct intel_pcie_port *lpp)
 	intel_pcie_turn_off(lpp);
 	clk_disable_unprepare(lpp->core_clk);
 	intel_pcie_core_rst_assert(lpp);
+	phy_power_off(lpp->phy);
 	phy_exit(lpp->phy);
 	clk_bulk_disable_unprepare(ARRAY_SIZE(lpp->bulk_clks), lpp->bulk_clks);
 }
@@ -476,6 +483,7 @@ static int __maybe_unused intel_pcie_suspend_noirq(struct device *dev)
 		return ret;
 
 	clk_disable_unprepare(lpp->core_clk);
+	phy_power_off(lpp->phy);
 	phy_exit(lpp->phy);
 	clk_bulk_disable_unprepare(ARRAY_SIZE(lpp->bulk_clks), lpp->bulk_clks);
 	return ret;
