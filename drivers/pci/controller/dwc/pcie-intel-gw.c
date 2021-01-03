@@ -655,6 +655,8 @@ static const struct dev_pm_ops intel_pcie_pm_ops = {
 
 static const struct of_device_id of_intel_pcie_match[] = {
 	{ .compatible = "intel,lgm-pcie", .data = &pcie_data },
+	{ .compatible = "lantiq,xrx200-pcie", .data = &lantiq_pcie_data },
+	{ .compatible = "lantiq,xrx300-pcie", .data = &lantiq_pcie_data },
 	{}
 };
 
