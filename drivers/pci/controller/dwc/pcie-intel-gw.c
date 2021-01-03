@@ -421,6 +421,63 @@ static u64 intel_pcie_cpu_addr(struct dw_pcie *pcie, u64 cpu_addr)
 	return cpu_addr + BUS_IATU_OFFSET;
 }
 
+static int lantiq_pcie_link_up(struct dw_pcie *pci)
+{
+	struct intel_pcie_port *lpp = dev_get_drvdata(pci->dev);
+	u32 val;
+	int ret;
+
+	ret = regmap_read_poll_timeout(lpp->app_regmap, PCIE_APP_PHY_SR,
+				       val, val & PCIE_APP_PHY_SR_PHY_LINK_UP,
+				       100, 300000);
+	if (ret)
+		return 0;
+
+	msleep(100);
+
+	/* Check whether the data link is up */
+	regmap_read(lpp->app_regmap, PCIE_APP_RC_DR, &val);
+	if (!(val & PCIE_APP_RC_DR_DLL_UP))
+		return 0;
+
+	val = dw_pcie_readl_dbi(pci, PCIE_PORT_DEBUG1);
+	if (val & PCIE_PORT_DEBUG1_LINK_IN_TRAINING ||
+	    !(val & PCIE_PORT_DEBUG1_LINK_UP))
+		return 0;
+
+	return 1;
+}
+
+static u32 lantiq_pcie_read_dbi(struct dw_pcie *pci, void __iomem *base,
+				u32 reg, size_t size)
+{
+	u32 val = ioread32be(base + ALIGN_DOWN(reg, 4));
+
+	if (!IS_ALIGNED(reg, 4) || size != 4) {
+		val >>= (BITS_PER_BYTE * (reg & 0x3));
+		val &= (BIT_ULL(BITS_PER_BYTE * size) - 1);
+	}
+
+	return val;
+}
+
+static void lantiq_pcie_write_dbi(struct dw_pcie *pci, void __iomem *base,
+				  u32 reg, size_t size, u32 val)
+{
+	u32 tmp;
+
+	if (!IS_ALIGNED(reg, 4) || size != 4) {
+		u32 shift = (BITS_PER_BYTE * (reg & 0x3));
+		tmp = ioread32be(base + ALIGN_DOWN(reg, 4));
+		tmp &= ~((BIT_ULL(BITS_PER_BYTE * size) - 1) << shift);
+		tmp |= val << shift;
+	} else {
+		tmp = val;
+	}
+
+	iowrite32be(tmp, base + ALIGN_DOWN(reg, 4));
+}
+
 static const struct intel_pcie_soc pcie_data = {
 	.pcie_ver		= 0x520A,
 	.dw_pcie_ops		= {
@@ -435,7 +492,9 @@ static const struct intel_pcie_soc pcie_data = {
 static const struct intel_pcie_soc lantiq_pcie_data = {
 	.pcie_ver		= 0x0,
 	.dw_pcie_ops		= {
-		.cpu_addr_fixup = intel_pcie_cpu_addr,
+		.link_up = lantiq_pcie_link_up,
+		.read_dbi = lantiq_pcie_read_dbi,
+		.write_dbi = lantiq_pcie_write_dbi,
 	},
 	.dw_pcie_host_ops	= {
 		.host_init = intel_pcie_rc_init,
