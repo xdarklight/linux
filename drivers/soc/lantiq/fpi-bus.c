@@ -22,7 +22,10 @@
 #define XBAR_FPI_BURST_EN	BIT(1)
 #define XBAR_AHB_BURST_EN	BIT(2)
 
-#define RCU_VR9_BE_AHB1S	0x00000008
+#define RCU_VR9_BE_PCIEM	BIT(0)
+#define RCU_VR9_BE_XBARM	BIT(1)
+#define RCU_VR9_BE_AHB1S	BIT(3)
+#define RCU_VR9_BE_PCIES	BIT(4)
 
 static int ltq_fpi_probe(struct platform_device *pdev)
 {
@@ -50,7 +53,10 @@ static int ltq_fpi_probe(struct platform_device *pdev)
 	}
 
 	ret = regmap_update_bits(rcu_regmap, rcu_ahb_endianness_reg_offset,
-				 RCU_VR9_BE_AHB1S, RCU_VR9_BE_AHB1S);
+				 RCU_VR9_BE_PCIEM | RCU_VR9_BE_XBARM |
+				 RCU_VR9_BE_AHB1S | RCU_VR9_BE_PCIES,
+				 RCU_VR9_BE_PCIEM | RCU_VR9_BE_AHB1S |
+				 RCU_VR9_BE_PCIES);
 	if (ret) {
 		dev_warn(&pdev->dev,
 			 "Failed to configure RCU AHB endianness\n");
