@@ -75,6 +75,7 @@
 struct intel_pcie_soc {
 	unsigned int				pcie_ver;
 	const struct dw_pcie_ops		dw_pcie_ops;
+	const struct dw_pcie_host_ops		dw_pcie_host_ops;
 };
 
 struct intel_pcie {
@@ -390,14 +391,13 @@ static u64 intel_pcie_cpu_addr(struct dw_pcie *pcie, u64 cpu_addr)
 	return cpu_addr + BUS_IATU_OFFSET;
 }
 
-static const struct dw_pcie_host_ops intel_pcie_dw_ops = {
-	.host_init =		intel_pcie_rc_init,
-};
-
 static const struct intel_pcie_soc pcie_data = {
 	.pcie_ver		= 0x520A,
 	.dw_pcie_ops		= {
 		.cpu_addr_fixup = intel_pcie_cpu_addr,
+	},
+	.dw_pcie_host_ops	= {
+		.host_init = intel_pcie_rc_init,
 	},
 };
 
@@ -433,7 +433,7 @@ static int intel_pcie_probe(struct platform_device *pdev)
 
 	pci->ops = &data->dw_pcie_ops;
 	pci->version = data->pcie_ver;
-	pp->ops = &intel_pcie_dw_ops;
+	pp->ops = &data->dw_pcie_host_ops;
 
 	ret = dw_pcie_host_init(pp);
 	if (ret) {
