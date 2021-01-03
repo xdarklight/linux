@@ -234,16 +234,16 @@ config PCIE_ROCKCHIP_DW_HOST
 	  Rockchip SoC except RK3399.
 
 config PCIE_INTEL_GW
-	bool "Intel Gateway PCIe host controller support"
-	depends on OF && (X86 || COMPILE_TEST)
+	bool "Intel/Lantiq Gateway PCIe host controller support"
+	depends on OF && (X86 || SOC_TYPE_XWAY || COMPILE_TEST)
 	depends on PCI_MSI_IRQ_DOMAIN
 	select PCIE_DW_HOST
 	select REGMAP_MMIO
 	help
-	  Say 'Y' here to enable PCIe Host controller support on Intel
-	  Gateway SoCs.
-	  The PCIe controller uses the DesignWare core plus Intel-specific
-	  hardware wrappers.
+	  Say 'Y' here to enable PCIe Host controller support on Intel and
+	  Lantiq Gateway SoCs.
+	  The PCIe controller uses the DesignWare core plus Intel and Lantiq
+	  specific hardware wrappers.
 
 config PCIE_KEEMBAY
 	bool
