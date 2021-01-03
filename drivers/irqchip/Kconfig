@@ -535,6 +535,16 @@ config EXYNOS_IRQ_COMBINER
 	  Say yes here to add support for the IRQ combiner devices embedded
 	  in Samsung Exynos chips.
 
+config LANTIQ_MSI_PIC
+	bool "Lantiq MSI Programmable Interrupt Controller"
+	depends on SOC_TYPE_XWAY || COMPILE_TEST
+	depends on PCI
+	select IRQ_DOMAIN_HIERARCHY
+	select PCI_MSI
+	help
+	  Support for the Programmable MSI Interrupt Controller on Lantiq
+	  xRX200 and xRX300 SoCs.
+
 config LOONGSON_LIOINTC
 	bool "Loongson Local I/O Interrupt Controller"
 	depends on MACH_LOONGSON64
