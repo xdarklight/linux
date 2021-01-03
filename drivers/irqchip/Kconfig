@@ -555,6 +555,15 @@ config LANTIQ_ICU
 	  Support for the Interrupt Controller Unit on Lantiq Falcon,
 	  Amazon-SE, Danube, xRX100, xRX200 and xRX300 SoCs.
 
+config LANTIQ_MSI_PIC
+	bool "Lantiq MSI Programmable Interrupt Controller"
+	depends on SOC_TYPE_XWAY || COMPILE_TEST
+	depends on PCI
+	select IRQ_DOMAIN_HIERARCHY
+	select PCI_MSI
+	help
+	  Support for the Programmable MSI Interrupt Controller on Lantiq
+	  xRX200 and xRX300 SoCs.
 
 config LANTIQ_XWAY_EIU
 	tristate "Lantiq XWAY External Interrupt Unit"
