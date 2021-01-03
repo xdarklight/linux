@@ -13,7 +13,10 @@ select:
   properties:
     compatible:
       contains:
-        const: intel,lgm-pcie
+        enum:
+          - intel,lgm-pcie
+          - lantiq,xrx200-pcie
+          - lantiq,xrx300-pcie
   required:
     - compatible
 
@@ -23,7 +26,10 @@ allOf:
 properties:
   compatible:
     items:
-      - const: intel,lgm-pcie
+      - enum:
+          - intel,lgm-pcie
+          - lantiq,xrx200-pcie
+          - lantiq,xrx300-pcie
       - const: snps,dw-pcie
 
   reg:
@@ -45,7 +51,23 @@ properties:
     maxItems: 1
 
   clocks:
-    maxItems: 1
+    minItems: 1
+    maxItems: 3
+
+  clock-names:
+    items:
+      - const: pcie
+      - const: pcie_bus
+      - const: ahb
+
+  interrupts:
+    minItems: 3
+
+  interrupt-names:
+    items:
+      - const: ir
+      - const: wake
+      - const: l3
 
   phys:
     maxItems: 1
@@ -68,6 +90,41 @@ properties:
       Delay after asserting reset to the PCIe device.
     maximum: 500
     default: 100
+
+  big-endian:
+    $ref: /schemas/types.yaml#/definitions/flag
+    description: |
+      Registers need to be accessed in big endian mode.
+
+allOf:
+  - if:
+      properties:
+        compatible:
+          contains:
+            enum:
+              - lantiq,xrx200-pcie
+              - lantiq,xrx300-pcie
+    then:
+      properties:
+        big-endian: true
+    else:
+      properties:
+        big-endian: false
+
+  - if:
+      properties:
+        compatible:
+          contains:
+            enum:
+              - lantiq,xrx200-pcie
+    then:
+      properties:
+        clocks:
+          minItems: 3
+    else:
+      properties:
+        clocks:
+          maxItems: 1
 
 required:
   - compatible
@@ -114,4 +171,45 @@ examples:
       reset-assert-ms = <500>;
       reset-gpios = <&gpio0 3 GPIO_ACTIVE_LOW>;
       num-lanes = <2>;
+    };
+  - |
+    #include <dt-bindings/gpio/gpio.h>
+    pcie@d900000 {
+      compatible = "lantiq,xrx200-pcie", "snps,dw-pcie";
+
+      #size-cells = <2>;
+      #address-cells = <3>;
+
+      reg = <0xd900000 0x1000>,
+            <0xd000000 0x800000>,
+            <0xe100900 0x100>;
+      reg-names = "dbi", "config", "app";
+
+      big-endian;
+
+      ranges = <0x2000000 0 0x1c000000 0xc000000 0 0x1000000>;
+
+      interrupts = <161>, <162>, <120>;
+      interrupt-names = "ir", "wake", "l3";
+
+      #interrupt-cells = <1>;
+      interrupt-map-mask = <0 0 0 0x7>;
+      interrupt-map = <0 0 0 1 &icu0 144>,
+                      <0 0 0 2 &icu0 145>,
+                      <0 0 0 3 &icu0 146>,
+                      <0 0 0 4 &icu0 147>;
+
+      phys = <&pcie0_phy>;
+      phy-names = "pcie";
+
+      clocks = <&clk_pcie>, <&clk_pcie_bus>, <&clk_ahb>;
+      clock-names = "pcie", "pcie_bus", "ahb";
+
+      resets = <&reset0 22 22>;
+
+      reset-gpios = <&gpio 38 GPIO_ACTIVE_LOW>;
+      num-lanes = <1>;
+
+      device_type = "pci";
+      bus-range = <0x00 0x08>;
     };
