@@ -298,6 +298,10 @@ static int intel_pcie_host_setup(struct intel_pcie *pcie)
 	if (ret)
 		return ret;
 
+	ret = phy_power_on(pcie->phy);
+	if (ret)
+		goto phy_power_on_err;
+
 	intel_pcie_core_rst_deassert(pcie);
 
 	ret = clk_prepare_enable(pcie->core_clk);
@@ -331,6 +335,8 @@ app_init_err:
 	clk_disable_unprepare(pcie->core_clk);
 clk_err:
 	intel_pcie_core_rst_assert(pcie);
+	phy_power_off(pcie->phy);
+phy_power_on_err:
 	phy_exit(pcie->phy);
 
 	return ret;
@@ -342,6 +348,7 @@ static void __intel_pcie_remove(struct intel_pcie *pcie)
 	intel_pcie_turn_off(pcie);
 	clk_disable_unprepare(pcie->core_clk);
 	intel_pcie_core_rst_assert(pcie);
+	phy_power_off(pcie->phy);
 	phy_exit(pcie->phy);
 }
 
@@ -366,6 +373,7 @@ static int __maybe_unused intel_pcie_suspend_noirq(struct device *dev)
 	if (ret)
 		return ret;
 
+	phy_power_off(pcie->phy);
 	phy_exit(pcie->phy);
 	clk_disable_unprepare(pcie->core_clk);
 	return ret;
