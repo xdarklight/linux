@@ -12,6 +12,7 @@
 #include <linux/pci_regs.h>
 #include <linux/phy/phy.h>
 #include <linux/platform_device.h>
+#include <linux/regmap.h>
 #include <linux/reset.h>
 
 #include "../../pci.h"
@@ -76,11 +77,13 @@ struct intel_pcie_soc {
 	unsigned int				pcie_ver;
 	const struct dw_pcie_ops		dw_pcie_ops;
 	const struct dw_pcie_host_ops		dw_pcie_host_ops;
+	const struct regmap_access_table	*app_regmap_rd_table;
 };
 
 struct intel_pcie_port {
 	struct dw_pcie		pci;
-	void __iomem		*app_base;
+	struct regmap_config	app_regmap_config;
+	struct regmap		*app_regmap;
 	struct gpio_desc	*reset_gpio;
 	u32			rst_intrvl;
 	struct clk		*core_clk;
@@ -88,42 +91,41 @@ struct intel_pcie_port {
 	struct phy		*phy;
 };
 
-static void pcie_update_bits(void __iomem *base, u32 ofs, u32 mask, u32 val)
-{
-	u32 old;
+static const struct regmap_range intel_pcie_app_regmap_rd_ranges[] = {
+	regmap_reg_range(PCIE_APP_CCR, PCIE_APP_PHY_SR),
+	regmap_reg_range(PCIE_APP_MSG_CR, PCIE_APP_MSG_CR),
+	regmap_reg_range(PCIE_APP_PMC, PCIE_APP_PMC),
+	regmap_reg_range(PCIE_APP_IRNEN, PCIE_APP_IRNICR),
+};
 
-	old = readl(base + ofs);
-	val = (old & ~mask) | (val & mask);
+static const struct regmap_access_table intel_pcie_app_regmap_rd_table = {
+	.yes_ranges = intel_pcie_app_regmap_rd_ranges,
+	.n_yes_ranges = ARRAY_SIZE(intel_pcie_app_regmap_rd_ranges),
+};
 
-	if (val != old)
-		writel(val, base + ofs);
-}
+static const struct regmap_range lantiq_pcie_app_regmap_rd_ranges[] = {
+	regmap_reg_range(PCIE_APP_CCR, PCIE_APP_PHY_SR),
+	regmap_reg_range(PCIE_APP_MSG_CR, PCIE_APP_MSG_CR),
+	regmap_reg_range(PCIE_APP_AHB_CTRL, PCIE_APP_AHB_CTRL),
+	regmap_reg_range(PCIE_APP_IRNEN, PCIE_APP_IRNICR),
+};
 
-static inline u32 pcie_app_rd(struct intel_pcie_port *lpp, u32 ofs)
-{
-	return readl(lpp->app_base + ofs);
-}
-
-static inline void pcie_app_wr(struct intel_pcie_port *lpp, u32 ofs, u32 val)
-{
-	writel(val, lpp->app_base + ofs);
-}
-
-static void pcie_app_wr_mask(struct intel_pcie_port *lpp, u32 ofs,
-			     u32 mask, u32 val)
-{
-	pcie_update_bits(lpp->app_base, ofs, mask, val);
-}
+static const struct regmap_access_table lantiq_pcie_app_regmap_rd_table = {
+	.yes_ranges = lantiq_pcie_app_regmap_rd_ranges,
+	.n_yes_ranges = ARRAY_SIZE(lantiq_pcie_app_regmap_rd_ranges),
+};
 
 static void intel_pcie_ltssm_enable(struct intel_pcie_port *lpp)
 {
-	pcie_app_wr_mask(lpp, PCIE_APP_CCR, PCIE_APP_CCR_LTSSM_ENABLE,
-			 PCIE_APP_CCR_LTSSM_ENABLE);
+	regmap_update_bits(lpp->app_regmap, PCIE_APP_CCR,
+			   PCIE_APP_CCR_LTSSM_ENABLE,
+			   PCIE_APP_CCR_LTSSM_ENABLE);
 }
 
 static void intel_pcie_ltssm_disable(struct intel_pcie_port *lpp)
 {
-	pcie_app_wr_mask(lpp, PCIE_APP_CCR, PCIE_APP_CCR_LTSSM_ENABLE, 0);
+	regmap_update_bits(lpp->app_regmap, PCIE_APP_CCR,
+			   PCIE_APP_CCR_LTSSM_ENABLE, 0);
 }
 
 static void intel_pcie_link_setup(struct intel_pcie_port *lpp)
@@ -206,15 +208,17 @@ static void intel_pcie_device_rst_deassert(struct intel_pcie_port *lpp)
 
 static void intel_pcie_core_irq_disable(struct intel_pcie_port *lpp)
 {
-	pcie_app_wr(lpp, PCIE_APP_IRNEN, 0);
-	pcie_app_wr(lpp, PCIE_APP_IRNCR, PCIE_APP_IRN_INT);
+	regmap_write(lpp->app_regmap, PCIE_APP_IRNEN, 0);
+	regmap_write(lpp->app_regmap, PCIE_APP_IRNCR, PCIE_APP_IRN_INT);
 }
 
-static int intel_pcie_get_resources(struct platform_device *pdev)
+static int intel_pcie_get_resources(struct platform_device *pdev,
+				    const struct intel_pcie_soc *data)
 {
 	struct intel_pcie_port *lpp = platform_get_drvdata(pdev);
 	struct dw_pcie *pci = &lpp->pci;
 	struct device *dev = pci->dev;
+	void __iomem *app_base;
 	int ret;
 
 	lpp->core_clk = devm_clk_get(dev, NULL);
@@ -238,9 +242,21 @@ static int intel_pcie_get_resources(struct platform_device *pdev)
 	if (ret)
 		lpp->rst_intrvl = RESET_INTERVAL_MS;
 
-	lpp->app_base = devm_platform_ioremap_resource_byname(pdev, "app");
-	if (IS_ERR(lpp->app_base))
-		return PTR_ERR(lpp->app_base);
+	app_base = devm_platform_ioremap_resource_byname(pdev, "app");
+	if (IS_ERR(app_base))
+		return PTR_ERR(app_base);
+
+	lpp->app_regmap_config.name = "app",
+	lpp->app_regmap_config.reg_bits = 8,
+	lpp->app_regmap_config.val_bits = 32,
+	lpp->app_regmap_config.reg_stride = 4,
+	lpp->app_regmap_config.fast_io = true,
+	lpp->app_regmap_config.max_register = PCIE_APP_IRNICR,
+	lpp->app_regmap_config.rd_table = data->app_regmap_rd_table;
+	lpp->app_regmap = devm_regmap_init_mmio(dev, app_base,
+						&lpp->app_regmap_config);
+	if (IS_ERR(lpp->app_regmap))
+		return PTR_ERR(lpp->app_regmap);
 
 	lpp->phy = devm_phy_get(dev, "pcie");
 	if (IS_ERR(lpp->phy)) {
@@ -263,13 +279,14 @@ static int intel_pcie_wait_l2(struct intel_pcie_port *lpp)
 		return 0;
 
 	/* Send PME_TURN_OFF message */
-	pcie_app_wr_mask(lpp, PCIE_APP_MSG_CR, PCIE_APP_MSG_XMT_PM_TURNOFF,
-			 PCIE_APP_MSG_XMT_PM_TURNOFF);
+	regmap_update_bits(lpp->app_regmap, PCIE_APP_MSG_CR,
+			   PCIE_APP_MSG_XMT_PM_TURNOFF,
+			   PCIE_APP_MSG_XMT_PM_TURNOFF);
 
 	/* Read PMC status and wait for falling into L2 link state */
-	ret = readl_poll_timeout(lpp->app_base + PCIE_APP_PMC, value,
-				 value & PCIE_APP_PMC_IN_L2, 20,
-				 jiffies_to_usecs(5 * HZ));
+	ret = regmap_read_poll_timeout(lpp->app_regmap, PCIE_APP_PMC,
+				       value, value & PCIE_APP_PMC_IN_L2,
+				       20, jiffies_to_usecs(5 * HZ));
 	if (ret)
 		dev_err(lpp->pci.dev, "PCIe link enter L2 timeout!\n");
 
@@ -327,8 +344,8 @@ static int intel_pcie_host_setup(struct intel_pcie_port *lpp)
 		goto app_init_err;
 
 	/* Enable integrated interrupts */
-	pcie_app_wr_mask(lpp, PCIE_APP_IRNEN, PCIE_APP_IRN_INT,
-			 PCIE_APP_IRN_INT);
+	regmap_update_bits(lpp->app_regmap, PCIE_APP_IRNEN, PCIE_APP_IRN_INT,
+			   PCIE_APP_IRN_INT);
 
 	return 0;
 
@@ -404,6 +421,18 @@ static const struct intel_pcie_soc pcie_data = {
 	.dw_pcie_host_ops	= {
 		.host_init = intel_pcie_rc_init,
 	},
+	.app_regmap_rd_table	= &intel_pcie_app_regmap_rd_table,
+};
+
+static const struct intel_pcie_soc lantiq_pcie_data = {
+	.pcie_ver		= 0x0,
+	.dw_pcie_ops		= {
+		.cpu_addr_fixup = intel_pcie_cpu_addr,
+	},
+	.dw_pcie_host_ops	= {
+		.host_init = intel_pcie_rc_init,
+	},
+	.app_regmap_rd_table	= &lantiq_pcie_app_regmap_rd_table,
 };
 
 static int intel_pcie_probe(struct platform_device *pdev)
@@ -415,6 +444,10 @@ static int intel_pcie_probe(struct platform_device *pdev)
 	struct dw_pcie *pci;
 	int ret;
 
+	data = device_get_match_data(dev);
+	if (!data)
+		return -ENODEV;
+
 	lpp = devm_kzalloc(dev, sizeof(*lpp), GFP_KERNEL);
 	if (!lpp)
 		return -ENOMEM;
@@ -424,17 +457,13 @@ static int intel_pcie_probe(struct platform_device *pdev)
 	pci->dev = dev;
 	pp = &pci->pp;
 
-	ret = intel_pcie_get_resources(pdev);
+	ret = intel_pcie_get_resources(pdev, data);
 	if (ret)
 		return ret;
 
 	ret = intel_pcie_ep_rst_init(lpp);
 	if (ret)
 		return ret;
-
-	data = device_get_match_data(dev);
-	if (!data)
-		return -ENODEV;
 
 	pci->ops = &data->dw_pcie_ops;
 	pci->version = data->pcie_ver;
