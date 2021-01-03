@@ -115,6 +115,69 @@ static const struct regmap_access_table lantiq_pcie_app_regmap_rd_table = {
 	.n_yes_ranges = ARRAY_SIZE(lantiq_pcie_app_regmap_rd_ranges),
 };
 
+static int lantiq_pcie_own_config_read32(struct pci_bus *bus,
+					 unsigned int devfn, int where,
+					 int size, u32 *val)
+{
+	struct pcie_port *pp = bus->sysdata;
+	struct dw_pcie *pci = to_dw_pcie_from_pp(pp);
+
+	if (PCI_SLOT(devfn) > 0)
+		return PCIBIOS_DEVICE_NOT_FOUND;
+
+	*val = dw_pcie_read_dbi(pci, where, size);
+
+	return PCIBIOS_SUCCESSFUL;
+}
+
+static int lantiq_pcie_own_config_write32(struct pci_bus *bus,
+					  unsigned int devfn, int where,
+					  int size, u32 val)
+{
+	struct pcie_port *pp = bus->sysdata;
+	struct dw_pcie *pci = to_dw_pcie_from_pp(pp);
+
+	if (PCI_SLOT(devfn) > 0)
+		return PCIBIOS_DEVICE_NOT_FOUND;
+
+	dw_pcie_write_dbi(pci, where, size, val);
+
+	return PCIBIOS_SUCCESSFUL;
+}
+
+static struct pci_ops lantiq_pcie_own_pci_ops = {
+	.read = lantiq_pcie_own_config_read32,
+	.write = lantiq_pcie_own_config_write32,
+};
+
+static void __iomem *lantiq_pcie_child_config_map_bus(struct pci_bus *bus,
+						      unsigned int devfn,
+						      int where)
+{
+	struct pcie_port *pp = bus->sysdata;
+	u32 addr;
+
+	/*
+	 * According to the vendor kernel this implementation matches the
+	 * description from "PCI Express Base Specification v1.1" in
+	 * "Table 7-1" on page 341.
+	 * We are: type 1, only support 8 buses
+	 */
+	addr = (bus->number & 0x7) << 20;
+
+	addr |= PCI_SLOT(devfn) << 15;
+	addr |= PCI_FUNC(devfn) << 12;
+	addr |= where & 0xfff;
+
+	return pp->va_cfg0_base + addr;
+}
+
+static struct pci_ops lantiq_pcie_child_pci_ops = {
+	.map_bus = lantiq_pcie_child_config_map_bus,
+	.read = pci_generic_config_read32,
+	.write = pci_generic_config_write32,
+};
+
 static void intel_pcie_ltssm_enable(struct intel_pcie *pcie)
 {
 	regmap_update_bits(pcie->app_regmap, PCIE_APP_CCR,
@@ -422,6 +485,14 @@ static int intel_pcie_rc_init(struct pcie_port *pp)
 	return intel_pcie_host_setup(pcie);
 }
 
+static int lantiq_pcie_rc_init(struct pcie_port *pp)
+{
+	pp->bridge->ops = &lantiq_pcie_own_pci_ops;
+	pp->bridge->child_ops = &lantiq_pcie_child_pci_ops;
+
+	return intel_pcie_rc_init(pp);
+}
+
 static u64 intel_pcie_cpu_addr(struct dw_pcie *pcie, u64 cpu_addr)
 {
 	return cpu_addr + BUS_IATU_OFFSET;
@@ -503,7 +574,7 @@ static const struct intel_pcie_soc lantiq_pcie_data = {
 		.write_dbi = lantiq_pcie_write_dbi,
 	},
 	.dw_pcie_host_ops	= {
-		.host_init = intel_pcie_rc_init,
+		.host_init = lantiq_pcie_rc_init,
 	},
 	.app_regmap_rd_table	= &lantiq_pcie_app_regmap_rd_table,
 };
