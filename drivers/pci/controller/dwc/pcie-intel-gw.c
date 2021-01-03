@@ -87,6 +87,7 @@ struct intel_pcie {
 	struct gpio_desc	*reset_gpio;
 	u32			rst_intrvl;
 	struct clk		*core_clk;
+	struct clk_bulk_data	bulk_clks[2];
 	struct reset_control	*core_rst;
 	struct phy		*phy;
 };
@@ -287,8 +288,19 @@ static int intel_pcie_get_resources(struct platform_device *pdev,
 	pcie->core_clk = devm_clk_get(dev, NULL);
 	if (IS_ERR(pcie->core_clk)) {
 		ret = PTR_ERR(pcie->core_clk);
-		if (ret != -EPROBE_DEFER)
-			dev_err(dev, "Failed to get clks: %d\n", ret);
+		dev_err_probe(dev, ret, "Failed to get the 'pcie' clock: %d\n",
+			      ret);
+		return ret;
+	}
+
+	pcie->bulk_clks[0].id = "pcie_bus";
+	pcie->bulk_clks[1].id = "ahb";
+	ret = devm_clk_bulk_get_optional(dev, ARRAY_SIZE(pcie->bulk_clks),
+					 pcie->bulk_clks);
+	if (ret) {
+		dev_err_probe(dev, ret,
+			      "Failed to the 'ahb' clock or 'pcie_bus' clocks: %d\n",
+			      ret);
 		return ret;
 	}
 
@@ -376,12 +388,20 @@ static int intel_pcie_host_setup(struct intel_pcie *pcie)
 	int ret;
 	struct dw_pcie *pci = &pcie->pci;
 
+	ret = clk_bulk_prepare_enable(ARRAY_SIZE(pcie->bulk_clks),
+				      pcie->bulk_clks);
+	if (ret) {
+		dev_err(pcie->pci.dev, "AHB/PCIE_BUS clock enable failed: %d\n",
+			ret);
+		return ret;
+	}
+
 	intel_pcie_core_rst_assert(pcie);
 	intel_pcie_device_rst_assert(pcie);
 
 	ret = phy_init(pcie->phy);
 	if (ret)
-		return ret;
+		goto phy_init_err;
 
 	ret = phy_power_on(pcie->phy);
 	if (ret)
@@ -392,7 +412,7 @@ static int intel_pcie_host_setup(struct intel_pcie *pcie)
 	ret = clk_prepare_enable(pcie->core_clk);
 	if (ret) {
 		dev_err(pcie->pci.dev, "Core clock enable failed: %d\n", ret);
-		goto clk_err;
+		goto core_clk_err;
 	}
 
 	pci->atu_base = pci->dbi_base + 0xC0000;
@@ -418,12 +438,14 @@ static int intel_pcie_host_setup(struct intel_pcie *pcie)
 
 app_init_err:
 	clk_disable_unprepare(pcie->core_clk);
-clk_err:
+core_clk_err:
 	intel_pcie_core_rst_assert(pcie);
 	phy_power_off(pcie->phy);
 phy_power_on_err:
 	phy_exit(pcie->phy);
-
+phy_init_err:
+	clk_bulk_disable_unprepare(ARRAY_SIZE(pcie->bulk_clks),
+				   pcie->bulk_clks);
 	return ret;
 }
 
@@ -435,6 +457,8 @@ static void __intel_pcie_remove(struct intel_pcie *pcie)
 	intel_pcie_core_rst_assert(pcie);
 	phy_power_off(pcie->phy);
 	phy_exit(pcie->phy);
+	clk_bulk_disable_unprepare(ARRAY_SIZE(pcie->bulk_clks),
+				   pcie->bulk_clks);
 }
 
 static int intel_pcie_remove(struct platform_device *pdev)
@@ -461,6 +485,8 @@ static int __maybe_unused intel_pcie_suspend_noirq(struct device *dev)
 	phy_power_off(pcie->phy);
 	phy_exit(pcie->phy);
 	clk_disable_unprepare(pcie->core_clk);
+	clk_bulk_disable_unprepare(ARRAY_SIZE(pcie->bulk_clks),
+				   pcie->bulk_clks);
 	return ret;
 }
 
