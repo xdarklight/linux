@@ -238,6 +238,7 @@ config PCIE_INTEL_GW
 	depends on OF && (X86 || COMPILE_TEST)
 	depends on PCI_MSI_IRQ_DOMAIN
 	select PCIE_DW_HOST
+	select REGMAP_MMIO
 	help
 	  Say 'Y' here to enable PCIe Host controller support on Intel
 	  Gateway SoCs.
