@@ -113,22 +113,6 @@ static void pcie_app_wr_mask(struct intel_pcie_port *lpp, u32 ofs,
 	pcie_update_bits(lpp->app_base, ofs, mask, val);
 }
 
-static inline u32 pcie_rc_cfg_rd(struct intel_pcie_port *lpp, u32 ofs)
-{
-	return dw_pcie_readl_dbi(&lpp->pci, ofs);
-}
-
-static inline void pcie_rc_cfg_wr(struct intel_pcie_port *lpp, u32 ofs, u32 val)
-{
-	dw_pcie_writel_dbi(&lpp->pci, ofs, val);
-}
-
-static void pcie_rc_cfg_wr_mask(struct intel_pcie_port *lpp, u32 ofs,
-				u32 mask, u32 val)
-{
-	pcie_update_bits(lpp->pci.dbi_base, ofs, mask, val);
-}
-
 static void intel_pcie_ltssm_enable(struct intel_pcie_port *lpp)
 {
 	pcie_app_wr_mask(lpp, PCIE_APP_CCR, PCIE_APP_CCR_LTSSM_ENABLE,
@@ -145,10 +129,10 @@ static void intel_pcie_link_setup(struct intel_pcie_port *lpp)
 	u32 val;
 	u8 offset = dw_pcie_find_capability(&lpp->pci, PCI_CAP_ID_EXP);
 
-	val = pcie_rc_cfg_rd(lpp, offset + PCI_EXP_LNKCTL);
+	val = dw_pcie_readl_dbi(&lpp->pci, offset + PCI_EXP_LNKCTL);
 
 	val &= ~(PCI_EXP_LNKCTL_LD | PCI_EXP_LNKCTL_ASPMC);
-	pcie_rc_cfg_wr(lpp, offset + PCI_EXP_LNKCTL, val);
+	dw_pcie_writel_dbi(&lpp->pci, offset + PCI_EXP_LNKCTL, val);
 }
 
 static void intel_pcie_init_n_fts(struct dw_pcie *pci)
@@ -292,12 +276,17 @@ static int intel_pcie_wait_l2(struct intel_pcie_port *lpp)
 
 static void intel_pcie_turn_off(struct intel_pcie_port *lpp)
 {
+	u32 value;
+
 	if (dw_pcie_link_up(&lpp->pci))
 		intel_pcie_wait_l2(lpp);
 
 	/* Put endpoint device in reset state */
 	intel_pcie_device_rst_assert(lpp);
-	pcie_rc_cfg_wr_mask(lpp, PCI_COMMAND, PCI_COMMAND_MEMORY, 0);
+
+	value = dw_pcie_readl_dbi(&lpp->pci, PCI_COMMAND);
+	value &= PCI_COMMAND_MEMORY;
+	dw_pcie_writel_dbi(&lpp->pci, PCI_COMMAND, value);
 }
 
 static int intel_pcie_host_setup(struct intel_pcie_port *lpp)
