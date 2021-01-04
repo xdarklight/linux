@@ -73,6 +73,11 @@
 #define BUS_IATU_OFFSET			SZ_256M
 #define RESET_INTERVAL_MS		100
 
+#define PCI_VENDOR_ID_INFINEON		0x15D1
+#define PCI_DEVICE_ID_INFINEON_PCIE	0x0011
+#define PCI_VENDOR_ID_LANTIQ		0x1BEF
+#define PCI_DEVICE_ID_LANTIQ_PCIE	0x0011
+
 struct intel_pcie_soc {
 	unsigned int				pcie_ver;
 	const struct dw_pcie_ops		dw_pcie_ops;
@@ -627,6 +632,15 @@ static int intel_pcie_probe(struct platform_device *pdev)
 
 	return 0;
 }
+
+static void lantiq_pcie_fixup_class(struct pci_dev *dev)
+{
+	dev->class = (PCI_CLASS_BRIDGE_PCI << 8) | (dev->class & 0xff);
+}
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INFINEON, PCI_DEVICE_ID_INFINEON_PCIE,
+			lantiq_pcie_fixup_class);
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_LANTIQ, PCI_DEVICE_ID_LANTIQ_PCIE,
+			lantiq_pcie_fixup_class);
 
 static const struct dev_pm_ops intel_pcie_pm_ops = {
 	SET_NOIRQ_SYSTEM_SLEEP_PM_OPS(intel_pcie_suspend_noirq,
