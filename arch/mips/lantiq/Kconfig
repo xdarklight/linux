@@ -20,6 +20,7 @@ config SOC_XWAY
 	bool "XWAY"
 	select SOC_TYPE_XWAY
 	select HAVE_PCI
+	select PCI_DRIVERS_GENERIC
 	select MFD_SYSCON
 	select MFD_CORE
 
