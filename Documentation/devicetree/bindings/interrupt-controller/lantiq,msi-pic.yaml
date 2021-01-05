@@ -1,0 +1,68 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: "http://devicetree.org/schemas/interrupt-controller/lantiq,msi-pic.yaml#"
+$schema: "http://devicetree.org/meta-schemas/core.yaml#"
+
+title: Lantiq MSI Programmable Interrupt Controller
+
+maintainers:
+  - Martin Blumenstingl <martin.blumenstingl@googlemail.com>
+
+allOf:
+  - $ref: /schemas/interrupt-controller.yaml#
+
+description:
+  The Lantiq MSI Programmable Interrupt Controller is used in the
+  Lantiq xRX200 and xRX300 SoCs.
+
+properties:
+  compatible:
+    enum:
+      - lantiq,xrx200-msi-pic
+      - lantiq,xrx300-msi-pic
+
+  reg:
+    maxItems: 2
+
+  reg-names:
+    items:
+      - const: pic
+      - const: msi
+
+  clocks:
+    minItems: 1
+
+  lantiq,msi-irqs:
+    $ref: "/schemas/types.yaml#/definitions/uint32-array"
+    description:
+      The interrupt lines of the SoC's interrupt-controller, one for
+      each MSI.
+    minItems: 4
+    maxItems: 8
+
+  msi-controller: true
+
+required:
+  - compatible
+  - reg
+  - reg-names
+  - clocks
+  - msi-controller
+  - lantiq,msi-irqs
+
+additionalProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/interrupt-controller/irq.h>
+    msi: interrupt-controller@1f700000 {
+      compatible = "lantiq,xrx200-msi-pic";
+      reg = <0x1f700000 0x44>, <0x1f600000 0x100000>;
+      reg-names = "pic", "msi";
+      clocks = <&msi_pci_clock>;
+      interrupt-parent = <&icu0>;
+      msi-controller;
+      lantiq,msi-irqs = <163>, <164>, <165>, <166>;
+    };
+...
