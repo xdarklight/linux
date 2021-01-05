@@ -360,7 +360,7 @@ static void clkdev_add_pci(void)
 
 	/* main pci clock */
 	if (clk) {
-		clk->cl.dev_id = "17000000.pci";
+		clk->cl.dev_id = "1e105400.pci";
 		clk->cl.con_id = NULL;
 		clk->cl.clk = clk;
 		clk->rate = CLOCK_33M;
@@ -374,7 +374,7 @@ static void clkdev_add_pci(void)
 
 	/* use internal/external bus clock */
 	if (clk_ext) {
-		clk_ext->cl.dev_id = "17000000.pci";
+		clk_ext->cl.dev_id = "1e105400.pci";
 		clk_ext->cl.con_id = "external";
 		clk_ext->cl.clk = clk_ext;
 		clk_ext->enable = pci_ext_enable;
