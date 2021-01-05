@@ -2,7 +2,7 @@
 # Copyright (C) 2010 John Crispin <john@phrozen.org>
 #
 
-obj-y := irq.o clk.o prom.o
+obj-y := irq.o clk.o ebu.o prom.o
 
 obj-$(CONFIG_EARLY_PRINTK) += early_printk.o
 
