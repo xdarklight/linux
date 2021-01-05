@@ -149,7 +149,6 @@ static u32 pmu_clk_cr_b[] = {
 
 static void __iomem *pmu_membase;
 void __iomem *ltq_cgu_membase;
-void __iomem *ltq_ebu_membase;
 
 static u32 ifccr = CGU_IFCCR;
 static u32 pcicr = CGU_PCICR;
@@ -424,41 +423,31 @@ static void clkdev_add_clkout(void)
 /* bring up all register ranges that we need for basic system control */
 void __init ltq_soc_init(void)
 {
-	struct resource res_pmu, res_cgu, res_ebu;
+	struct resource res_pmu, res_cgu;
 	struct device_node *np_pmu =
 			of_find_compatible_node(NULL, NULL, "lantiq,pmu-xway");
 	struct device_node *np_cgu =
 			of_find_compatible_node(NULL, NULL, "lantiq,cgu-xway");
-	struct device_node *np_ebu =
-			of_find_compatible_node(NULL, NULL, "lantiq,ebu-xway");
 
 	/* check if all the core register ranges are available */
-	if (!np_pmu || !np_cgu || !np_ebu)
+	if (!np_pmu || !np_cgu)
 		panic("Failed to load core nodes from devicetree");
 
 	if (of_address_to_resource(np_pmu, 0, &res_pmu) ||
-			of_address_to_resource(np_cgu, 0, &res_cgu) ||
-			of_address_to_resource(np_ebu, 0, &res_ebu))
+			of_address_to_resource(np_cgu, 0, &res_cgu))
 		panic("Failed to get core resources");
 
 	if (!request_mem_region(res_pmu.start, resource_size(&res_pmu),
 				res_pmu.name) ||
 		!request_mem_region(res_cgu.start, resource_size(&res_cgu),
-				res_cgu.name) ||
-		!request_mem_region(res_ebu.start, resource_size(&res_ebu),
-				res_ebu.name))
+				res_cgu.name))
 		pr_err("Failed to request core resources");
 
 	pmu_membase = ioremap(res_pmu.start, resource_size(&res_pmu));
 	ltq_cgu_membase = ioremap(res_cgu.start,
 						resource_size(&res_cgu));
-	ltq_ebu_membase = ioremap(res_ebu.start,
-						resource_size(&res_ebu));
-	if (!pmu_membase || !ltq_cgu_membase || !ltq_ebu_membase)
+	if (!pmu_membase || !ltq_cgu_membase)
 		panic("Failed to remap core resources");
-
-	/* make sure to unprotect the memory region where flash is located */
-	ltq_ebu_w32(ltq_ebu_r32(LTQ_EBU_BUSCON0) & ~EBU_WRDIS, LTQ_EBU_BUSCON0);
 
 	/* add our generic xway clocks */
 	clkdev_add_pmu("10000000.fpi", NULL, 0, 0, PMU_FPI);
