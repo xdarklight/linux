@@ -70,7 +70,7 @@
 #define status_r32(x)		ltq_r32(status_membase + (x))
 
 static void __iomem *sysctl_membase[3], *status_membase;
-void __iomem *ltq_sys1_membase, *ltq_ebu_membase;
+void __iomem *ltq_sys1_membase;
 
 void falcon_trigger_hrst(int level)
 {
@@ -186,23 +186,20 @@ void __init ltq_soc_init(void)
 {
 	struct device_node *np_status =
 		of_find_compatible_node(NULL, NULL, "lantiq,status-falcon");
-	struct device_node *np_ebu =
-		of_find_compatible_node(NULL, NULL, "lantiq,ebu-falcon");
 	struct device_node *np_sys1 =
 		of_find_compatible_node(NULL, NULL, "lantiq,sys1-falcon");
 	struct device_node *np_syseth =
 		of_find_compatible_node(NULL, NULL, "lantiq,syseth-falcon");
 	struct device_node *np_sysgpe =
 		of_find_compatible_node(NULL, NULL, "lantiq,sysgpe-falcon");
-	struct resource res_status, res_ebu, res_sys[3];
+	struct resource res_status, res_sys[3];
 	int i;
 
 	/* check if all the core register ranges are available */
-	if (!np_status || !np_ebu || !np_sys1 || !np_syseth || !np_sysgpe)
+	if (!np_status || !np_sys1 || !np_syseth || !np_sysgpe)
 		panic("Failed to load core nodes from devicetree");
 
 	if (of_address_to_resource(np_status, 0, &res_status) ||
-			of_address_to_resource(np_ebu, 0, &res_ebu) ||
 			of_address_to_resource(np_sys1, 0, &res_sys[0]) ||
 			of_address_to_resource(np_syseth, 0, &res_sys[1]) ||
 			of_address_to_resource(np_sysgpe, 0, &res_sys[2]))
@@ -210,8 +207,6 @@ void __init ltq_soc_init(void)
 
 	if ((request_mem_region(res_status.start, resource_size(&res_status),
 				res_status.name) < 0) ||
-		(request_mem_region(res_ebu.start, resource_size(&res_ebu),
-				res_ebu.name) < 0) ||
 		(request_mem_region(res_sys[0].start,
 				resource_size(&res_sys[0]),
 				res_sys[0].name) < 0) ||
@@ -225,10 +220,7 @@ void __init ltq_soc_init(void)
 
 	status_membase = ioremap(res_status.start,
 					resource_size(&res_status));
-	ltq_ebu_membase = ioremap(res_ebu.start,
-					resource_size(&res_ebu));
-
-	if (!status_membase || !ltq_ebu_membase)
+	if (!status_membase)
 		panic("Failed to remap core resources");
 
 	for (i = 0; i < 3; i++) {
