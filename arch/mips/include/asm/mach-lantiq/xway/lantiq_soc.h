@@ -79,13 +79,8 @@ extern __iomem void *ltq_cgu_membase;
 #define LTQ_EARLY_ASC		KSEG1ADDR(LTQ_ASC1_BASE_ADDR)
 
 /* EBU - external bus unit */
-#define LTQ_EBU_BUSCON0		0x0060
-#define LTQ_EBU_PCC_CON		0x0090
-#define LTQ_EBU_PCC_IEN		0x00A4
-#define LTQ_EBU_PCC_ISTAT	0x00A0
 #define LTQ_EBU_BUSCON1		0x0064
 #define LTQ_EBU_ADDRSEL1	0x0024
-#define EBU_WRDIS		0x80000000
 
 /* WDT */
 #define LTQ_RST_CAUSE_WDTRST	0x20

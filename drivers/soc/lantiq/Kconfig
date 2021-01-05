@@ -4,3 +4,12 @@ config LANTIQ_FPI_BUS
 	default SOC_XWAY
 	help
 	  Enable support for the FPI bus on Lantiq XWAY SoCs
+
+config LANTIQ_EBU
+	bool "Lantiq EBU"
+	depends on LANTIQ || COMPILE_TEST
+	default LANTIQ
+	select IRQ_DOMAIN
+	select REGMAP_MMIO
+	help
+	  Enable support for the External Bus Unit (EBU) on Lantiq SoCs
