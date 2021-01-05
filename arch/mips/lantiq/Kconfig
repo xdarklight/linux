@@ -48,8 +48,4 @@ config DT_EASY50712
 	select BUILTIN_DTB
 endchoice
 
-config PCI_LANTIQ
-	bool "PCI Support"
-	depends on SOC_XWAY && PCI
-
 endif
