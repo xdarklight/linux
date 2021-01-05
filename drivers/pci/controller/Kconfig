@@ -257,6 +257,13 @@ config PCIE_MEDIATEK_GEN3
 	  Say Y here if you want to enable Gen3 PCIe controller support on
 	  MediaTek SoCs.
 
+config PCI_LANTIQ
+	tristate "Lantiq XWAY PCI host controller"
+	depends on OF && HAS_IOMEM
+	help
+	  Say Y here if you want support for the PCI host controller found
+	  on Lantiq XWAY SoCs.
+
 config VMD
 	depends on PCI_MSI && X86_64 && SRCU && !UML
 	tristate "Intel Volume Management Device Driver"
