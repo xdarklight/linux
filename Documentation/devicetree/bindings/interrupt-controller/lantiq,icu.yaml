@@ -1,0 +1,81 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: "http://devicetree.org/schemas/interrupt-controller/lantiq,icu.yaml#"
+$schema: "http://devicetree.org/meta-schemas/core.yaml#"
+
+title: Lantiq ICU (Interrupt Controller Unit)
+
+maintainers:
+  - Martin Blumenstingl <martin.blumenstingl@googlemail.com>
+
+allOf:
+  - $ref: /schemas/interrupt-controller.yaml#
+
+description:
+  The Lantiq Falcon, Amazon-SE, Danube, xRX100, xRX200 and xRX300 SoCs
+  come with an "Interrupt Controller Unit" (ICU). This is is a 5 to
+  160 (5 * 32) multiplexer and connects to most peripherals on these
+  SoCs.
+
+properties:
+  compatible:
+    items:
+      - enum:
+          - lantiq,falcon-icu
+          - lantiq,ase-icu
+          - lantiq,danube-icu
+          - lantiq,xrx100-icu
+          - lantiq,xrx200-icu
+          - lantiq,xrx300-icu
+      - const: lantiq,icu
+
+  reg:
+    description: One set of registers per CPU core
+    minItems: 1
+    maxItems: 2
+
+  interrupts:
+    minItems: 5
+
+  interrupt-controller: true
+
+  '#interrupt-cells':
+    const: 1
+
+  '#address-cells':
+    const: 1
+
+required:
+  - compatible
+  - reg
+  - interrupt-parent
+  - interrupts
+  - interrupt-controller
+  - '#interrupt-cells'
+  - '#address-cells'
+
+additionalProperties: false
+
+examples:
+  - |
+    interrupt-controller@80200 {
+      compatible = "lantiq,ase-icu", "lantiq,icu";
+      reg = <0x80200 0xc8>;
+      interrupt-parent = <&cpu_irqc>;
+      interrupts = <2>, <3>, <4>, <5>, <6>;
+      interrupt-controller;
+      #interrupt-cells = <1>;
+      #address-cells = <1>;
+    };
+  - |
+    interrupt-controller@80200 {
+      compatible = "lantiq,xrx200-icu", "lantiq,icu";
+      reg = <0x80200 0xc8>, <0x80300 0xc8>;
+      interrupt-parent = <&cpu_irqc>;
+      interrupts = <2>, <3>, <4>, <5>, <6>;
+      interrupt-controller;
+      #interrupt-cells = <1>;
+      #address-cells = <1>;
+    };
+...
