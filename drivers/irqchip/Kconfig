@@ -555,6 +555,16 @@ config LANTIQ_ICU
 	  Support for the Interrupt Controller Unit on Lantiq Falcon,
 	  Amazon-SE, Danube, xRX100, xRX200 and xRX300 SoCs.
 
+
+config LANTIQ_XWAY_EIU
+	tristate "Lantiq XWAY External Interrupt Unit"
+	depends on SOC_TYPE_XWAY || COMPILE_TEST
+	depends on HAS_IOMEM
+	select IRQ_DOMAIN_HIERARCHY
+	help
+	  Support for the External (GPIO) Interrupt Controller on Lantiq
+	  Amazon-SE, Danube, xRX100, xRX200 and xRX300 SoCs.
+
 config LOONGSON_LIOINTC
 	bool "Loongson Local I/O Interrupt Controller"
 	depends on MACH_LOONGSON64
