@@ -553,6 +553,14 @@ config LANTIQ_MSI_PIC
 	  Support for the Programmable MSI Interrupt Controller on Lantiq
 	  xRX200 and xRX300 SoCs.
 
+config LANTIQ_XWAY_EIU
+	tristate "Lantiq XWAY External Interrupt Unit"
+	depends on SOC_TYPE_XWAY || COMPILE_TEST
+	select IRQ_DOMAIN_HIERARCHY
+	help
+	  Support for the External (GPIO) Interrupt Controller on Lantiq
+	  Amazon-SE, Danube, xRX100, xRX200 and xRX300 SoCs.
+
 config LOONGSON_LIOINTC
 	bool "Loongson Local I/O Interrupt Controller"
 	depends on MACH_LOONGSON64
