@@ -546,6 +546,15 @@ config EXYNOS_IRQ_COMBINER
 	  Say yes here to add support for the IRQ combiner devices embedded
 	  in Samsung Exynos chips.
 
+config LANTIQ_ICU
+	bool "Lantiq Interrupt Controller Unit"
+	depends on SOC_TYPE_XWAY || COMPILE_TEST
+	depends on HAS_IOMEM
+	select IRQ_DOMAIN
+	help
+	  Support for the Interrupt Controller Unit on Lantiq Falcon,
+	  Amazon-SE, Danube, xRX100, xRX200 and xRX300 SoCs.
+
 config LOONGSON_LIOINTC
 	bool "Loongson Local I/O Interrupt Controller"
 	depends on MACH_LOONGSON64
