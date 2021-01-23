@@ -25,15 +25,15 @@
 #define AO_REMAP_REG1					0x4
 
 #define AO_CPU_CNTL					0x0
-	#define AO_CPU_CNTL_MEM_ADDR_UPPER		GENMASK(28, 16)
-	#define AO_CPU_CNTL_HALT			BIT(9)
-	#define AO_CPU_CNTL_UNKNONWN			BIT(8)
-	#define AO_CPU_CNTL_RUN				BIT(0)
+#define AO_CPU_CNTL_MEM_ADDR_UPPER			GENMASK(28, 16)
+#define AO_CPU_CNTL_HALT				BIT(9)
+#define AO_CPU_CNTL_UNKNONWN				BIT(8)
+#define AO_CPU_CNTL_RUN					BIT(0)
 
 #define AO_CPU_STAT					0x4
 
 #define AO_SECURE_REG0					0x0
-	#define AO_SECURE_REG0_UNKNOWN			GENMASK(23, 8)
+#define AO_SECURE_REG0_UNKNOWN				GENMASK(23, 8)
 
 #define MESON_AO_RPROC_SRAM_USABLE_BITS			GENMASK(31, 20)
 #define MESON_AO_RPROC_MEMORY_OFFSET			0x10000000
@@ -54,6 +54,7 @@ static int meson_mx_ao_arc_rproc_start(struct rproc *rproc)
 {
 	struct meson_mx_ao_arc_rproc_priv *priv = rproc->priv;
 	phys_addr_t phys_addr;
+	u16 sram_addr;
 	int ret;
 
 	ret = clk_prepare_enable(priv->arc_pclk);
@@ -61,7 +62,6 @@ static int meson_mx_ao_arc_rproc_start(struct rproc *rproc)
 		return ret;
 
 	writel(0, priv->remap_base + AO_REMAP_REG0);
-	usleep_range(10, 100);
 
 	regmap_update_bits(priv->secbus2_regmap, AO_SECURE_REG0,
 			   AO_SECURE_REG0_UNKNOWN, 0);
@@ -77,9 +77,11 @@ static int meson_mx_ao_arc_rproc_start(struct rproc *rproc)
 	/* convert from 0xd9000000 to 0xc9000000 as the vendor driver does */
 	phys_addr = priv->sram_pa - MESON_AO_RPROC_MEMORY_OFFSET;
 
-	writel(FIELD_PREP(AO_CPU_CNTL_MEM_ADDR_UPPER,
-			  FIELD_GET(MESON_AO_RPROC_SRAM_USABLE_BITS, phys_addr)) |
-	       AO_CPU_CNTL_UNKNONWN | AO_CPU_CNTL_RUN,
+	sram_addr = FIELD_GET(MESON_AO_RPROC_SRAM_USABLE_BITS, phys_addr);
+
+	writel(FIELD_PREP(AO_CPU_CNTL_MEM_ADDR_UPPER, sram_addr) |
+	       AO_CPU_CNTL_UNKNONWN |
+	       AO_CPU_CNTL_RUN,
 	       priv->cpu_base + AO_CPU_CNTL);
 	usleep_range(20, 200);
 
@@ -102,7 +104,7 @@ static void *meson_mx_ao_arc_rproc_da_to_va(struct rproc *rproc, u64 da,
 {
 	struct meson_mx_ao_arc_rproc_priv *priv = rproc->priv;
 
-	if ((da + len) >= priv->sram_size)
+	if ((da + len) > priv->sram_size)
 		return NULL;
 
 	return (void *)priv->sram_va + da;
@@ -120,7 +122,6 @@ static struct rproc_ops meson_mx_ao_arc_rproc_ops = {
 static int meson_mx_ao_arc_rproc_probe(struct platform_device *pdev)
 {
 	struct meson_mx_ao_arc_rproc_priv *priv;
-	struct platform_device *secbus2_pdev;
 	struct device *dev = &pdev->dev;
 	const char *fw_name;
 	struct rproc *rproc;
