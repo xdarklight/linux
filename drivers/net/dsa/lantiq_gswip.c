@@ -652,19 +652,6 @@ static int gswip_port_enable(struct dsa_switch *ds, int port,
 	gswip_switch_mask(priv, 0, GSWIP_SDMA_PCTRL_EN,
 			  GSWIP_SDMA_PCTRLp(port));
 
-	if (!dsa_is_cpu_port(ds, port)) {
-		u32 macconf = GSWIP_MDIO_PHY_LINK_AUTO |
-			      GSWIP_MDIO_PHY_SPEED_AUTO |
-			      GSWIP_MDIO_PHY_FDUP_AUTO |
-			      GSWIP_MDIO_PHY_FCONTX_AUTO |
-			      GSWIP_MDIO_PHY_FCONRX_AUTO |
-			      (phydev->mdio.addr & GSWIP_MDIO_PHY_ADDR_MASK);
-
-		gswip_mdio_w(priv, macconf, GSWIP_MDIO_PHYp(port));
-		/* Activate MDIO auto polling */
-		gswip_mdio_mask(priv, 0, BIT(port), GSWIP_MDIO_MDC_CFG0);
-	}
-
 	return 0;
 }
 
@@ -674,14 +661,6 @@ static void gswip_port_disable(struct dsa_switch *ds, int port)
 
 	if (!dsa_is_user_port(ds, port))
 		return;
-
-	if (!dsa_is_cpu_port(ds, port)) {
-		gswip_mdio_mask(priv, GSWIP_MDIO_PHY_LINK_DOWN,
-				GSWIP_MDIO_PHY_LINK_MASK,
-				GSWIP_MDIO_PHYp(port));
-		/* Deactivate MDIO auto polling */
-		gswip_mdio_mask(priv, BIT(port), 0, GSWIP_MDIO_MDC_CFG0);
-	}
 
 	gswip_switch_mask(priv, GSWIP_FDMA_PCTRL_EN, 0,
 			  GSWIP_FDMA_PCTRLp(port));
@@ -1511,6 +1490,14 @@ static void gswip_phylink_mac_link_down(struct dsa_switch *ds, int port,
 	struct gswip_priv *priv = ds->priv;
 
 	gswip_mii_mask_cfg(priv, GSWIP_MII_CFG_EN, 0, port);
+
+	if (!dsa_is_cpu_port(ds, port)) {
+		gswip_mdio_mask(priv, GSWIP_MDIO_PHY_LINK_DOWN,
+				GSWIP_MDIO_PHY_LINK_MASK,
+				GSWIP_MDIO_PHYp(port));
+		/* Deactivate MDIO auto polling */
+		gswip_mdio_mask(priv, BIT(port), 0, GSWIP_MDIO_MDC_CFG0);
+	}
 }
 
 static void gswip_phylink_mac_link_up(struct dsa_switch *ds, int port,
@@ -1521,6 +1508,19 @@ static void gswip_phylink_mac_link_up(struct dsa_switch *ds, int port,
 				      bool tx_pause, bool rx_pause)
 {
 	struct gswip_priv *priv = ds->priv;
+
+	if (!dsa_is_cpu_port(ds, port)) {
+		u32 macconf = GSWIP_MDIO_PHY_LINK_AUTO |
+			      GSWIP_MDIO_PHY_SPEED_AUTO |
+			      GSWIP_MDIO_PHY_FDUP_AUTO |
+			      GSWIP_MDIO_PHY_FCONTX_AUTO |
+			      GSWIP_MDIO_PHY_FCONRX_AUTO |
+			      (phydev->mdio.addr & GSWIP_MDIO_PHY_ADDR_MASK);
+
+		gswip_mdio_w(priv, macconf, GSWIP_MDIO_PHYp(port));
+		/* Activate MDIO auto polling */
+		gswip_mdio_mask(priv, 0, BIT(port), GSWIP_MDIO_MDC_CFG0);
+	}
 
 	gswip_mii_mask_cfg(priv, 0, GSWIP_MII_CFG_EN, port);
 }
