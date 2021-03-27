@@ -1509,7 +1509,7 @@ static void gswip_phylink_mac_link_up(struct dsa_switch *ds, int port,
 {
 	struct gswip_priv *priv = ds->priv;
 
-	if (!dsa_is_cpu_port(ds, port)) {
+	if (!dsa_is_cpu_port(ds, port) && mode == MLO_AN_PHY) {
 		u32 macconf = GSWIP_MDIO_PHY_LINK_AUTO |
 			      GSWIP_MDIO_PHY_SPEED_AUTO |
 			      GSWIP_MDIO_PHY_FDUP_AUTO |
