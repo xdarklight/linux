@@ -1619,6 +1619,93 @@ static void gswip_phylink_mac_link_up(struct dsa_switch *ds, int port,
 	struct gswip_priv *priv = ds->priv;
 
 	if (!dsa_is_cpu_port(ds, port) && mode == MLO_AN_PHY) {
+		u32 macconf = GSWIP_MDIO_PHY_LINK_UP;
+		gswip_mdio_mask(priv, GSWIP_MDIO_PHY_LINK_MASK,
+				GSWIP_MDIO_PHY_LINK_UP, GSWIP_MDIO_PHYp(port));
+
+		switch (speed) {
+		case SPEED_10:
+			gswip_mdio_mask(priv, GSWIP_MDIO_PHY_SPEED_MASK,
+					GSWIP_MDIO_PHY_SPEED_M10,
+					GSWIP_MDIO_PHYp(port));
+			break;
+		case SPEED_100:
+			gswip_mdio_mask(priv, GSWIP_MDIO_PHY_SPEED_MASK,
+					GSWIP_MDIO_PHY_SPEED_M100,
+					GSWIP_MDIO_PHYp(port));
+			break;
+		case SPEED_1000:
+			gswip_mdio_mask(priv, GSWIP_MDIO_PHY_SPEED_MASK,
+					GSWIP_MDIO_PHY_SPEED_G1,
+					GSWIP_MDIO_PHYp(port));
+			break;
+		}
+
+		if (duplex == DUPLEX_FULL)
+			gswip_mdio_mask(priv, GSWIP_MDIO_PHY_FDUP_MASK,
+					GSWIP_MDIO_PHY_FDUP_EN,
+					GSWIP_MDIO_PHYp(port));
+		else
+			gswip_mdio_mask(priv, GSWIP_MDIO_PHY_FDUP_MASK,
+					GSWIP_MDIO_PHY_FDUP_DIS,
+					GSWIP_MDIO_PHYp(port));
+
+		if (tx_pause)
+			gswip_mdio_mask(priv, GSWIP_MDIO_PHY_FCONTX_MASK,
+					GSWIP_MDIO_PHY_FCONTX_EN,
+					GSWIP_MDIO_PHYp(port));
+		else
+			gswip_mdio_mask(priv, GSWIP_MDIO_PHY_FCONTX_MASK,
+					GSWIP_MDIO_PHY_FCONTX_DIS,
+					GSWIP_MDIO_PHYp(port));
+
+		if (rx_pause)
+			gswip_mdio_mask(priv, GSWIP_MDIO_PHY_FCONRX_MASK,
+					GSWIP_MDIO_PHY_FCONRX_EN,
+					GSWIP_MDIO_PHYp(port));
+		else
+			gswip_mdio_mask(priv, GSWIP_MDIO_PHY_FCONRX_MASK,
+					GSWIP_MDIO_PHY_FCONRX_DIS,
+					GSWIP_MDIO_PHYp(port));
+
+		if (phy_interface_mode_is_rgmii(interface))
+			gswip_switch_mask(priv, GSWIP_MAC_CTRL_0_GMII_MASK,
+					  GSWIP_MAC_CTRL_0_GMII_RGMII,
+					  GSWIP_MAC_CTRL_0p(port));
+		else
+			gswip_switch_mask(priv, GSWIP_MAC_CTRL_0_GMII_MASK,
+					  GSWIP_MAC_CTRL_0_GMII_MII,
+					  GSWIP_MAC_CTRL_0p(port));
+
+		if (duplex == DUPLEX_FULL)
+			gswip_switch_mask(priv, GSWIP_MAC_CTRL_0_FDUP_MASK,
+					  GSWIP_MAC_CTRL_0_FDUP_EN,
+					  GSWIP_MAC_CTRL_0p(port));
+		else
+			gswip_switch_mask(priv, GSWIP_MAC_CTRL_0_FDUP_MASK,
+					  GSWIP_MAC_CTRL_0_FDUP_DIS,
+					  GSWIP_MAC_CTRL_0p(port));
+
+		if (tx_pause && rx_pause)
+			gswip_switch_mask(priv, GSWIP_MAC_CTRL_0_FCON_MASK,
+					  GSWIP_MAC_CTRL_0_FCON_RXTX,
+					  GSWIP_MAC_CTRL_0p(port));
+		else if (tx_pause)
+			gswip_switch_mask(priv, GSWIP_MAC_CTRL_0_FCON_MASK,
+					  GSWIP_MAC_CTRL_0_FCON_TX,
+					  GSWIP_MAC_CTRL_0p(port));
+		else if (rx_pause)
+			gswip_switch_mask(priv, GSWIP_MAC_CTRL_0_FCON_MASK,
+					  GSWIP_MAC_CTRL_0_FCON_RX,
+					  GSWIP_MAC_CTRL_0p(port));
+		else
+			gswip_switch_mask(priv, GSWIP_MAC_CTRL_0_FCON_MASK,
+					  GSWIP_MAC_CTRL_0_FCON_NONE,
+					  GSWIP_MAC_CTRL_0p(port));
+
+		/* Deactivate MDIO auto polling for fixed links */
+		gswip_mdio_mask(priv, 0, BIT(port), GSWIP_MDIO_MDC_CFG0);
+	} else if (!dsa_is_cpu_port(ds, port) && mode == MLO_AN_PHY) {
 		gswip_mdio_w(priv, GSWIP_MDIO_PHY_LINK_AUTO |
 			     GSWIP_MDIO_PHY_SPEED_AUTO |
 			     GSWIP_MDIO_PHY_FDUP_AUTO |
