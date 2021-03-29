@@ -673,26 +673,6 @@ static int gswip_port_enable(struct dsa_switch *ds, int port,
 	gswip_switch_mask(priv, 0, GSWIP_SDMA_PCTRL_EN,
 			  GSWIP_SDMA_PCTRLp(port));
 
-	if (!dsa_is_cpu_port(ds, port)) {
-		gswip_mdio_w(priv, GSWIP_MDIO_PHY_LINK_AUTO |
-			     GSWIP_MDIO_PHY_SPEED_AUTO |
-			     GSWIP_MDIO_PHY_FDUP_AUTO |
-			     GSWIP_MDIO_PHY_FCONTX_AUTO |
-			     GSWIP_MDIO_PHY_FCONRX_AUTO |
-			     (phydev->mdio.addr & GSWIP_MDIO_PHY_ADDR_MASK),
-			     GSWIP_MDIO_PHYp(port));
-
-		gswip_switch_w(priv, GSWIP_MAC_CTRL_0_PADEN |
-			       GSWIP_MAC_CTRL_0_FCS_EN |
-			       GSWIP_MAC_CTRL_0_FCON_AUTO |
-			       GSWIP_MAC_CTRL_0_FDUP_AUTO |
-			       GSWIP_MAC_CTRL_0_GMII_AUTO,
-			       GSWIP_MAC_CTRL_0p(port));
-
-		/* Activate MDIO auto polling */
-		gswip_mdio_mask(priv, 0, BIT(port), GSWIP_MDIO_MDC_CFG0);
-	}
-
 	return 0;
 }
 
@@ -702,14 +682,6 @@ static void gswip_port_disable(struct dsa_switch *ds, int port)
 
 	if (!dsa_is_user_port(ds, port))
 		return;
-
-	if (!dsa_is_cpu_port(ds, port)) {
-		gswip_mdio_mask(priv, GSWIP_MDIO_PHY_LINK_DOWN,
-				GSWIP_MDIO_PHY_LINK_MASK,
-				GSWIP_MDIO_PHYp(port));
-		/* Deactivate MDIO auto polling */
-		gswip_mdio_mask(priv, BIT(port), 0, GSWIP_MDIO_MDC_CFG0);
-	}
 
 	gswip_switch_mask(priv, GSWIP_FDMA_PCTRL_EN, 0,
 			  GSWIP_FDMA_PCTRLp(port));
@@ -828,9 +800,23 @@ static int gswip_setup(struct dsa_switch *ds)
 	gswip_mdio_mask(priv, 0xff, 0x09, GSWIP_MDIO_MDC_CFG1);
 
 	/* Disable and isolate the xMII interface */
-	for (i = 0; i < priv->hw_info->max_ports; i++)
+	for (i = 0; i < priv->hw_info->max_ports; i++) {
 		gswip_mii_mask_cfg(priv, GSWIP_MII_CFG_EN,
 				   GSWIP_MII_CFG_ISOLATE, i);
+
+		/* Deactivate MDIO auto polling. Some PHYs as the AR8030 have
+		 * an interoperability problem with this auto polling mechanism
+		 * because their status registers think that the link is in a
+		 * different state than it actually is. For the AR8030 it has
+		 * the BMSR_ESTATEN bit set as well as ESTATUS_1000_TFULL and
+		 * ESTATUS_1000_XFULL. This makes the auto polling state
+		 * machine consider the link being negotiated with 1Gbit/s.
+		 * Since the PHY itself is a Fast Ethernet RMII PHY this leads
+		 * to the switch port being completely dead (RX and TX are both
+		 * not working).
+		 */
+		gswip_mdio_mask(priv, 0, BIT(i), GSWIP_MDIO_MDC_CFG0);
+	}
 
 	/* enable special tag insertion on cpu port */
 	gswip_switch_mask(priv, 0, GSWIP_FDMA_PCTRL_STEN,
@@ -1479,6 +1465,125 @@ unsupported:
 	return;
 }
 
+static void gswip_port_set_link(struct gswip_priv *priv, int port, bool link)
+{
+	if (link)
+		gswip_mdio_mask(priv, GSWIP_MDIO_PHY_LINK_MASK,
+				GSWIP_MDIO_PHY_LINK_UP,
+				GSWIP_MDIO_PHYp(port));
+	else
+		gswip_mdio_mask(priv, GSWIP_MDIO_PHY_LINK_MASK,
+				GSWIP_MDIO_PHY_LINK_DOWN,
+				GSWIP_MDIO_PHYp(port));
+}
+
+static void gswip_port_set_speed(struct gswip_priv *priv, int port, int speed,
+				 phy_interface_t interface)
+{
+	switch (speed) {
+	case SPEED_10:
+		gswip_mdio_mask(priv, GSWIP_MDIO_PHY_SPEED_MASK,
+				GSWIP_MDIO_PHY_SPEED_M10,
+				GSWIP_MDIO_PHYp(port));
+
+		if (interface == PHY_INTERFACE_MODE_RMII)
+			gswip_mii_mask_cfg(priv, GSWIP_MII_CFG_RATE_MASK,
+					   GSWIP_MII_CFG_RATE_M50, port);
+		else
+			gswip_mii_mask_cfg(priv, GSWIP_MII_CFG_RATE_MASK,
+					   GSWIP_MII_CFG_RATE_M2P5, port);
+
+		gswip_switch_mask(priv,GSWIP_MAC_CTRL_0_GMII_MASK,
+				  GSWIP_MAC_CTRL_0_GMII_MII,
+				  GSWIP_MAC_CTRL_0p(port));
+		break;
+
+	case SPEED_100:
+		gswip_mdio_mask(priv, GSWIP_MDIO_PHY_SPEED_MASK,
+				GSWIP_MDIO_PHY_SPEED_M100,
+				GSWIP_MDIO_PHYp(port));
+
+		if (interface == PHY_INTERFACE_MODE_RMII)
+			gswip_mii_mask_cfg(priv, GSWIP_MII_CFG_RATE_MASK,
+					   GSWIP_MII_CFG_RATE_M50, port);
+		else
+			gswip_mii_mask_cfg(priv, GSWIP_MII_CFG_RATE_MASK,
+					   GSWIP_MII_CFG_RATE_M25, port);
+
+		gswip_switch_mask(priv,GSWIP_MAC_CTRL_0_GMII_MASK,
+				  GSWIP_MAC_CTRL_0_GMII_MII,
+				  GSWIP_MAC_CTRL_0p(port));
+		break;
+
+	case SPEED_1000:
+		gswip_mdio_mask(priv, GSWIP_MDIO_PHY_SPEED_MASK,
+				GSWIP_MDIO_PHY_SPEED_G1,
+				GSWIP_MDIO_PHYp(port));
+
+		gswip_mii_mask_cfg(priv, GSWIP_MII_CFG_RATE_MASK,
+				   GSWIP_MII_CFG_RATE_M125, port);
+
+		gswip_switch_mask(priv,GSWIP_MAC_CTRL_0_GMII_MASK,
+				  GSWIP_MAC_CTRL_0_GMII_RGMII,
+				  GSWIP_MAC_CTRL_0p(port));
+		break;
+	}
+}
+
+static void gswip_port_set_duplex(struct gswip_priv *priv, int port, int duplex)
+{
+	if (duplex == DUPLEX_FULL) {
+		gswip_switch_mask(priv, GSWIP_MAC_CTRL_0_FDUP_MASK,
+				  GSWIP_MAC_CTRL_0_FDUP_EN,
+				  GSWIP_MAC_CTRL_0p(port));
+		gswip_mdio_mask(priv, GSWIP_MDIO_PHY_FDUP_MASK,
+				GSWIP_MDIO_PHY_FDUP_EN,
+				GSWIP_MDIO_PHYp(port));
+	} else {
+		gswip_switch_mask(priv, GSWIP_MAC_CTRL_0_FDUP_MASK,
+				  GSWIP_MAC_CTRL_0_FDUP_DIS,
+				  GSWIP_MAC_CTRL_0p(port));
+		gswip_mdio_mask(priv, GSWIP_MDIO_PHY_FDUP_MASK,
+				GSWIP_MDIO_PHY_FDUP_DIS,
+				GSWIP_MDIO_PHYp(port));
+	}
+}
+
+static void gswip_port_set_pause(struct gswip_priv *priv, int port, int pause)
+{
+	u32 mac_ctrl_0, mdio_phy;
+
+	switch (pause & MLO_PAUSE_TXRX_MASK) {
+	case MLO_PAUSE_TX | MLO_PAUSE_RX:
+		mac_ctrl_0 = GSWIP_MAC_CTRL_0_FCON_RXTX;
+		mdio_phy = GSWIP_MDIO_PHY_FCONTX_EN |
+			   GSWIP_MDIO_PHY_FCONRX_EN;
+		break;
+	case MLO_PAUSE_TX:
+		mac_ctrl_0 = GSWIP_MAC_CTRL_0_FCON_TX;
+		mdio_phy = GSWIP_MDIO_PHY_FCONTX_EN |
+			   GSWIP_MDIO_PHY_FCONRX_DIS;
+		break;
+	case MLO_PAUSE_RX:
+		mac_ctrl_0 = GSWIP_MAC_CTRL_0_FCON_RX;
+		mdio_phy = GSWIP_MDIO_PHY_FCONTX_DIS |
+			   GSWIP_MDIO_PHY_FCONRX_EN;
+		break;
+	case MLO_PAUSE_NONE:
+		mac_ctrl_0 = GSWIP_MAC_CTRL_0_FCON_NONE;
+		mdio_phy = GSWIP_MDIO_PHY_FCONTX_DIS |
+			   GSWIP_MDIO_PHY_FCONRX_DIS;
+		break;
+	}
+
+	gswip_switch_mask(priv, GSWIP_MAC_CTRL_0_FCON_MASK,
+			  mac_ctrl_0, GSWIP_MAC_CTRL_0p(port));
+	gswip_mdio_mask(priv,
+			GSWIP_MDIO_PHY_FCONTX_MASK |
+			GSWIP_MDIO_PHY_FCONRX_MASK,
+			mdio_phy, GSWIP_MDIO_PHYp(port));
+}
+
 static void gswip_phylink_mac_config(struct dsa_switch *ds, int port,
 				     unsigned int mode,
 				     const struct phylink_link_state *state)
@@ -1492,15 +1597,12 @@ static void gswip_phylink_mac_config(struct dsa_switch *ds, int port,
 	case PHY_INTERFACE_MODE_MII:
 	case PHY_INTERFACE_MODE_INTERNAL:
 		miicfg |= GSWIP_MII_CFG_MODE_MIIM;
-		miicfg |= GSWIP_MII_CFG_RATE_AUTO;
 		break;
 	case PHY_INTERFACE_MODE_REVMII:
 		miicfg |= GSWIP_MII_CFG_MODE_MIIP;
-		miicfg |= GSWIP_MII_CFG_RATE_AUTO;
 		break;
 	case PHY_INTERFACE_MODE_RMII:
 		miicfg |= GSWIP_MII_CFG_MODE_RMIIM;
-		miicfg |= GSWIP_MII_CFG_RATE_M50;
 		miicfg |= GSWIP_MII_CFG_RMII_CLK;
 		break;
 	case PHY_INTERFACE_MODE_RGMII:
@@ -1508,7 +1610,6 @@ static void gswip_phylink_mac_config(struct dsa_switch *ds, int port,
 	case PHY_INTERFACE_MODE_RGMII_RXID:
 	case PHY_INTERFACE_MODE_RGMII_TXID:
 		miicfg |= GSWIP_MII_CFG_MODE_RGMII;
-		miicfg |= GSWIP_MII_CFG_RATE_AUTO;
 		if (phylink_autoneg_inband(mode))
 			miicfg |= GSWIP_MII_CFG_RGMII_IBS;
 		break;
@@ -1517,10 +1618,16 @@ static void gswip_phylink_mac_config(struct dsa_switch *ds, int port,
 			"Unsupported interface: %d\n", state->interface);
 		return;
 	}
+
 	gswip_mii_mask_cfg(priv,
-			   GSWIP_MII_CFG_MODE_MASK | GSWIP_MII_CFG_RATE_MASK |
-			   GSWIP_MII_CFG_RMII_CLK | GSWIP_MII_CFG_RGMII_IBS |
-			   GSWIP_MII_CFG_LDCLKDIS, miicfg, port);
+			   GSWIP_MII_CFG_MODE_MASK | GSWIP_MII_CFG_RMII_CLK |
+			   GSWIP_MII_CFG_RGMII_IBS | GSWIP_MII_CFG_LDCLKDIS,
+			   miicfg, port);
+
+	gswip_port_set_link(priv, port, state->link);
+	gswip_port_set_speed(priv, port, state->speed, state->interface);
+	gswip_port_set_duplex(priv, port, state->duplex);
+	gswip_port_set_pause(priv, port, state->pause);
 
 	switch (state->interface) {
 	case PHY_INTERFACE_MODE_RGMII_ID:
@@ -1544,6 +1651,9 @@ static void gswip_phylink_mac_link_down(struct dsa_switch *ds, int port,
 {
 	struct gswip_priv *priv = ds->priv;
 
+	if (!dsa_is_cpu_port(ds, port))
+		gswip_port_set_link(priv, port, true);
+
 	gswip_mii_mask_cfg(priv, GSWIP_MII_CFG_EN, GSWIP_MII_CFG_ISOLATE,
 			   port);
 }
@@ -1556,6 +1666,28 @@ static void gswip_phylink_mac_link_up(struct dsa_switch *ds, int port,
 				      bool tx_pause, bool rx_pause)
 {
 	struct gswip_priv *priv = ds->priv;
+	int pause = MLO_PAUSE_NONE;
+	u32 mdio_addr = 0;
+
+	if (!dsa_is_cpu_port(ds, port)) {
+		if (phydev)
+			mdio_addr = phydev->mdio.addr & GSWIP_MDIO_PHY_ADDR_MASK;
+
+		if (tx_pause)
+			pause |= MLO_PAUSE_TX;
+
+		if (rx_pause)
+			pause |= MLO_PAUSE_RX;
+
+		gswip_port_set_link(priv, port, true);
+		gswip_port_set_speed(priv, port, speed, interface);
+		gswip_port_set_duplex(priv, port, duplex);
+		gswip_port_set_pause(priv, port, pause);
+
+		gswip_mdio_mask(priv, GSWIP_MDIO_PHY_ADDR_MASK,
+				mdio_addr & GSWIP_MDIO_PHY_ADDR_MASK,
+				GSWIP_MDIO_PHYp(port));
+	}
 
 	gswip_mii_mask_cfg(priv, GSWIP_MII_CFG_ISOLATE, GSWIP_MII_CFG_EN,
 			   port);
