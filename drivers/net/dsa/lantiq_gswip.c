@@ -94,6 +94,7 @@
 /* GSWIP MII Registers */
 #define GSWIP_MII_CFGp(p)		(0x2 * (p))
 #define  GSWIP_MII_CFG_EN		BIT(14)
+#define  GSWIP_MII_CFG_ISOLATE		BIT(13)
 #define  GSWIP_MII_CFG_LDCLKDIS		BIT(12)
 #define  GSWIP_MII_CFG_MODE_MIIP	0x0
 #define  GSWIP_MII_CFG_MODE_MIIM	0x1
@@ -779,8 +780,9 @@ static int gswip_setup(struct dsa_switch *ds)
 	gswip_mdio_mask(priv, 0xff, 0x09, GSWIP_MDIO_MDC_CFG1);
 
 	for (i = 0; i < priv->hw_info->max_ports; i++) {
-		/* Disable the xMII link */
-		gswip_mii_mask_cfg(priv, GSWIP_MII_CFG_EN, 0, i);
+		/* Disable and isolate the xMII interface */
+		gswip_mii_mask_cfg(priv, GSWIP_MII_CFG_EN,
+				   GSWIP_MII_CFG_ISOLATE, i);
 
 		/* Automatically select the xMII interface clock */
 		gswip_mii_mask_cfg(priv, GSWIP_MII_CFG_RATE_MASK,
@@ -1489,7 +1491,8 @@ static void gswip_phylink_mac_link_down(struct dsa_switch *ds, int port,
 {
 	struct gswip_priv *priv = ds->priv;
 
-	gswip_mii_mask_cfg(priv, GSWIP_MII_CFG_EN, 0, port);
+	gswip_mii_mask_cfg(priv, GSWIP_MII_CFG_EN, GSWIP_MII_CFG_ISOLATE,
+			   port);
 
 	if (!dsa_is_cpu_port(ds, port)) {
 		gswip_mdio_mask(priv, GSWIP_MDIO_PHY_LINK_DOWN,
@@ -1522,7 +1525,8 @@ static void gswip_phylink_mac_link_up(struct dsa_switch *ds, int port,
 		gswip_mdio_mask(priv, 0, BIT(port), GSWIP_MDIO_MDC_CFG0);
 	}
 
-	gswip_mii_mask_cfg(priv, 0, GSWIP_MII_CFG_EN, port);
+	gswip_mii_mask_cfg(priv, GSWIP_MII_CFG_ISOLATE, GSWIP_MII_CFG_EN,
+			   port);
 }
 
 static void gswip_get_strings(struct dsa_switch *ds, int port, u32 stringset,
