@@ -194,6 +194,23 @@
 #define GSWIP_PCE_DEFPVID(p)		(0x486 + ((p) * 0xA))
 
 #define GSWIP_MAC_FLEN			0x8C5
+#define GSWIP_MAC_CTRL_0p(p)		(0x903 + ((p) * 0xC))
+#define  GSWIP_MAC_CTRL_0_PADEN		0x0100
+#define  GSWIP_MAC_CTRL_0_FCS_EN	0x0080
+#define  GSWIP_MAC_CTRL_0_FCON_MASK	0x0070
+#define  GSWIP_MAC_CTRL_0_FCON_AUTO	0x0000
+#define  GSWIP_MAC_CTRL_0_FCON_RX	0x0010
+#define  GSWIP_MAC_CTRL_0_FCON_TX	0x0020
+#define  GSWIP_MAC_CTRL_0_FCON_RXTX	0x0030
+#define  GSWIP_MAC_CTRL_0_FCON_NONE	0x0040
+#define  GSWIP_MAC_CTRL_0_FDUP_MASK	0x000C
+#define  GSWIP_MAC_CTRL_0_FDUP_AUTO	0x0000
+#define  GSWIP_MAC_CTRL_0_FDUP_EN	0x0004
+#define  GSWIP_MAC_CTRL_0_FDUP_DIS	0x000C
+#define  GSWIP_MAC_CTRL_0_GMII_MASK	0x0003
+#define  GSWIP_MAC_CTRL_0_GMII_AUTO	0x0000
+#define  GSWIP_MAC_CTRL_0_GMII_MII	0x0001
+#define  GSWIP_MAC_CTRL_0_GMII_RGMII	0x0002
 #define GSWIP_MAC_CTRL_2p(p)		(0x905 + ((p) * 0xC))
 #define GSWIP_MAC_CTRL_2_MLEN		BIT(3) /* Maximum Untagged Frame Lnegth */
 
@@ -657,14 +674,21 @@ static int gswip_port_enable(struct dsa_switch *ds, int port,
 			  GSWIP_SDMA_PCTRLp(port));
 
 	if (!dsa_is_cpu_port(ds, port)) {
-		u32 macconf = GSWIP_MDIO_PHY_LINK_AUTO |
-			      GSWIP_MDIO_PHY_SPEED_AUTO |
-			      GSWIP_MDIO_PHY_FDUP_AUTO |
-			      GSWIP_MDIO_PHY_FCONTX_AUTO |
-			      GSWIP_MDIO_PHY_FCONRX_AUTO |
-			      (phydev->mdio.addr & GSWIP_MDIO_PHY_ADDR_MASK);
+		gswip_mdio_w(priv, GSWIP_MDIO_PHY_LINK_AUTO |
+			     GSWIP_MDIO_PHY_SPEED_AUTO |
+			     GSWIP_MDIO_PHY_FDUP_AUTO |
+			     GSWIP_MDIO_PHY_FCONTX_AUTO |
+			     GSWIP_MDIO_PHY_FCONRX_AUTO |
+			     (phydev->mdio.addr & GSWIP_MDIO_PHY_ADDR_MASK),
+			     GSWIP_MDIO_PHYp(port));
 
-		gswip_mdio_w(priv, macconf, GSWIP_MDIO_PHYp(port));
+		gswip_switch_w(priv, GSWIP_MAC_CTRL_0_PADEN |
+			       GSWIP_MAC_CTRL_0_FCS_EN |
+			       GSWIP_MAC_CTRL_0_FCON_AUTO |
+			       GSWIP_MAC_CTRL_0_FDUP_AUTO |
+			       GSWIP_MAC_CTRL_0_GMII_AUTO,
+			       GSWIP_MAC_CTRL_0p(port));
+
 		/* Activate MDIO auto polling */
 		gswip_mdio_mask(priv, 0, BIT(port), GSWIP_MDIO_MDC_CFG0);
 	}
