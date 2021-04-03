@@ -90,6 +90,21 @@
 					 GSWIP_MDIO_PHY_LINK_MASK | \
 					 GSWIP_MDIO_PHY_SPEED_MASK | \
 					 GSWIP_MDIO_PHY_FDUP_MASK)
+#define GSWIP_MDIO_STATp(p)		(0x16 + (p))
+#define  GSWIP_MDIO_STAT_RXACT		BIT(10)
+#define  GSWIP_MDIO_STAT_TXACT		BIT(9)
+#define  GSWIP_MDIO_STAT_CLK_STOP_CAPAB	BIT(8)
+#define  GSWIP_MDIO_STAT_EEE_CAPABLE	BIT(7)
+#define  GSWIP_MDIO_STAT_PACT		BIT(6)
+#define  GSWIP_MDIO_STAT_LSTAT		BIT(5)
+#define  GSWIP_MDIO_STAT_SPEED_M10	0x00
+#define  GSWIP_MDIO_STAT_SPEED_M100	0x08
+#define  GSWIP_MDIO_STAT_SPEED_1G	0x10
+#define  GSWIP_MDIO_STAT_SPEED_RESERVED	0x18
+#define  GSWIP_MDIO_STAT_SPEED_MASK	0x18
+#define  GSWIP_MDIO_STAT_FDUP		BIT(2)
+#define  GSWIP_MDIO_STAT_RXPAUEN	BIT(1)
+#define  GSWIP_MDIO_STAT_TXPAUEN	BIT(0)
 
 /* GSWIP MII Registers */
 #define GSWIP_MII_CFGp(p)		(0x2 * (p))
@@ -194,6 +209,19 @@
 #define GSWIP_PCE_DEFPVID(p)		(0x486 + ((p) * 0xA))
 
 #define GSWIP_MAC_FLEN			0x8C5
+#define GSWIP_MAC_PSTATp(p)		(0x900 + ((p) * 0xC))
+#define  GSWIP_MAC_PSTAT_PACT		BIT(11)
+#define  GSWIP_MAC_PSTAT_GBIT		BIT(10)
+#define  GSWIP_MAC_PSTAT_MBIT		BIT(9)
+#define  GSWIP_MAC_PSTAT_FDUP		BIT(8)
+#define  GSWIP_MAC_PSTAT_RXPAU		BIT(7)
+#define  GSWIP_MAC_PSTAT_TXPAU		BIT(6)
+#define  GSWIP_MAC_PSTAT_RXPAUEN	BIT(5)
+#define  GSWIP_MAC_PSTAT_TXPAUEN	BIT(4)
+#define  GSWIP_MAC_PSTAT_LSTAT		BIT(3)
+#define  GSWIP_MAC_PSTAT_CRS		BIT(2)
+#define  GSWIP_MAC_PSTAT_TXLPI		BIT(1)
+#define  GSWIP_MAC_PSTAT_RXLPI		BIT(0)
 #define GSWIP_MAC_CTRL_0p(p)		(0x903 + ((p) * 0xC))
 #define  GSWIP_MAC_CTRL_0_PADEN		0x0100
 #define  GSWIP_MAC_CTRL_0_FCS_EN	0x0080
@@ -687,6 +715,60 @@ static void gswip_port_disable(struct dsa_switch *ds, int port)
 			  GSWIP_FDMA_PCTRLp(port));
 	gswip_switch_mask(priv, GSWIP_SDMA_PCTRL_EN, 0,
 			  GSWIP_SDMA_PCTRLp(port));
+}
+
+static int gswip_get_regs_len(struct dsa_switch *ds, int port)
+{
+	return 17 * sizeof(u32);
+}
+
+static void gswip_get_regs(struct dsa_switch *ds, int port,
+			   struct ethtool_regs *regs, void *_p)
+{
+	struct gswip_priv *priv = ds->priv;
+	u32 *p = _p;
+
+	regs->version = gswip_switch_r(priv, GSWIP_VERSION);
+
+	memset(p, 0xff, 17 * sizeof(u32));
+
+	p[0] = gswip_mdio_r(priv, GSWIP_MDIO_GLOB);
+	p[1] = gswip_mdio_r(priv, GSWIP_MDIO_CTRL);
+	p[2] = gswip_mdio_r(priv, GSWIP_MDIO_MDC_CFG0);
+	p[3] = gswip_mdio_r(priv, GSWIP_MDIO_MDC_CFG1);
+
+	if (!dsa_is_cpu_port(priv->ds, port)) {
+		p[4] = gswip_mdio_r(priv, GSWIP_MDIO_PHYp(port));
+		p[5] = gswip_mdio_r(priv, GSWIP_MDIO_STATp(port));
+		p[6] = gswip_mii_r(priv, GSWIP_MII_CFGp(port));
+	}
+
+	switch (port) {
+	case 0:
+		p[7] = gswip_mii_r(priv, GSWIP_MII_PCDU0);
+		break;
+	case 1:
+		p[7] = gswip_mii_r(priv, GSWIP_MII_PCDU1);
+		break;
+	case 5:
+		p[7] = gswip_mii_r(priv, GSWIP_MII_PCDU5);
+		break;
+	default:
+		break;
+	}
+
+	p[8] = gswip_switch_r(priv, GSWIP_PCE_PCTRL_0p(port));
+	p[9] = gswip_switch_r(priv, GSWIP_PCE_VCTRL(port));
+	p[10] = gswip_switch_r(priv, GSWIP_PCE_DEFPVID(port));
+	p[11] = gswip_switch_r(priv, GSWIP_MAC_FLEN);
+
+	if (!dsa_is_cpu_port(priv->ds, port))
+		p[12] = gswip_switch_r(priv, GSWIP_MAC_PSTATp(port));
+
+	p[13] = gswip_switch_r(priv, GSWIP_MAC_CTRL_0p(port));
+	p[14] = gswip_switch_r(priv, GSWIP_MAC_CTRL_2p(port));
+	p[15] = gswip_switch_r(priv, GSWIP_FDMA_PCTRLp(port));
+	p[16] = gswip_switch_r(priv, GSWIP_SDMA_PCTRLp(port));
 }
 
 static int gswip_pce_load_microcode(struct gswip_priv *priv)
@@ -1766,6 +1848,8 @@ static const struct dsa_switch_ops gswip_switch_ops = {
 	.setup			= gswip_setup,
 	.port_enable		= gswip_port_enable,
 	.port_disable		= gswip_port_disable,
+	.get_regs_len		= gswip_get_regs_len,
+	.get_regs		= gswip_get_regs,
 	.port_bridge_join	= gswip_port_bridge_join,
 	.port_bridge_leave	= gswip_port_bridge_leave,
 	.port_fast_age		= gswip_port_fast_age,
