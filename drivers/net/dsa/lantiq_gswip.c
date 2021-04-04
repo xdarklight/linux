@@ -719,7 +719,7 @@ static void gswip_port_disable(struct dsa_switch *ds, int port)
 
 static int gswip_get_regs_len(struct dsa_switch *ds, int port)
 {
-	return 16 * sizeof(u32);
+	return 17 * sizeof(u32);
 }
 
 static void gswip_get_regs(struct dsa_switch *ds, int port,
@@ -730,7 +730,7 @@ static void gswip_get_regs(struct dsa_switch *ds, int port,
 
 	regs->version = gswip_switch_r(priv, GSWIP_VERSION);
 
-	memset(p, 0xff, 16 * sizeof(u32));
+	memset(p, 0xff, 17 * sizeof(u32));
 
 	p[0] = gswip_mdio_r(priv, GSWIP_MDIO_GLOB);
 	p[1] = gswip_mdio_r(priv, GSWIP_MDIO_CTRL);
@@ -740,34 +740,35 @@ static void gswip_get_regs(struct dsa_switch *ds, int port,
 	if (!dsa_is_cpu_port(priv->ds, port)) {
 		p[4] = gswip_mdio_r(priv, GSWIP_MDIO_PHYp(port));
 		p[5] = gswip_mdio_r(priv, GSWIP_MDIO_STATp(port));
+		p[6] = gswip_mii_r(priv, GSWIP_MII_CFGp(port));
 	}
 
 	switch (port) {
 	case 0:
-		p[6] = gswip_mii_r(priv, GSWIP_MII_PCDU0);
+		p[7] = gswip_mii_r(priv, GSWIP_MII_PCDU0);
 		break;
 	case 1:
-		p[6] = gswip_mii_r(priv, GSWIP_MII_PCDU1);
+		p[7] = gswip_mii_r(priv, GSWIP_MII_PCDU1);
 		break;
 	case 5:
-		p[6] = gswip_mii_r(priv, GSWIP_MII_PCDU5);
+		p[7] = gswip_mii_r(priv, GSWIP_MII_PCDU5);
 		break;
 	default:
 		break;
 	}
 
-	p[7] = gswip_switch_r(priv, GSWIP_PCE_PCTRL_0p(port));
-	p[8] = gswip_switch_r(priv, GSWIP_PCE_VCTRL(port));
-	p[9] = gswip_switch_r(priv, GSWIP_PCE_DEFPVID(port));
-	p[10] = gswip_switch_r(priv, GSWIP_MAC_FLEN);
+	p[8] = gswip_switch_r(priv, GSWIP_PCE_PCTRL_0p(port));
+	p[9] = gswip_switch_r(priv, GSWIP_PCE_VCTRL(port));
+	p[10] = gswip_switch_r(priv, GSWIP_PCE_DEFPVID(port));
+	p[11] = gswip_switch_r(priv, GSWIP_MAC_FLEN);
 
 	if (!dsa_is_cpu_port(priv->ds, port))
-		p[11] = gswip_switch_r(priv, GSWIP_MAC_PSTATp(port));
+		p[12] = gswip_switch_r(priv, GSWIP_MAC_PSTATp(port));
 
-	p[12] = gswip_switch_r(priv, GSWIP_MAC_CTRL_0p(port));
-	p[13] = gswip_switch_r(priv, GSWIP_MAC_CTRL_2p(port));
-	p[14] = gswip_switch_r(priv, GSWIP_FDMA_PCTRLp(port));
-	p[15] = gswip_switch_r(priv, GSWIP_SDMA_PCTRLp(port));
+	p[13] = gswip_switch_r(priv, GSWIP_MAC_CTRL_0p(port));
+	p[14] = gswip_switch_r(priv, GSWIP_MAC_CTRL_2p(port));
+	p[15] = gswip_switch_r(priv, GSWIP_FDMA_PCTRLp(port));
+	p[16] = gswip_switch_r(priv, GSWIP_SDMA_PCTRLp(port));
 }
 
 static int gswip_pce_load_microcode(struct gswip_priv *priv)
