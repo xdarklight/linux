@@ -23,6 +23,7 @@
 #define XRX200_DMA_DATA_LEN	0x600
 #define XRX200_DMA_RX		0
 #define XRX200_DMA_TX		1
+#define XRX200_DMA_TX_2		3
 
 /* cpu port mac */
 #define PMAC_RX_IPG		0x0024
@@ -66,6 +67,7 @@ struct xrx200_priv {
 	struct clk *clk;
 
 	struct xrx200_chan chan_tx;
+	struct xrx200_chan chan_tx2;
 	struct xrx200_chan chan_rx;
 
 	struct net_device *net_dev;
@@ -112,16 +114,23 @@ static void xrx200_flush_dma(struct xrx200_chan *ch)
 	}
 }
 
+static void xrx200_open_dma_chan(struct xrx200_chan *chan)
+{
+	napi_enable(&chan->napi);
+	ltq_dma_open(&chan->dma);
+}
+
 static int xrx200_open(struct net_device *net_dev)
 {
 	struct xrx200_priv *priv = netdev_priv(net_dev);
 
-	napi_enable(&priv->chan_tx.napi);
-	ltq_dma_open(&priv->chan_tx.dma);
+	xrx200_open_dma_chan(&priv->chan_tx);
 	ltq_dma_enable_irq(&priv->chan_tx.dma);
 
-	napi_enable(&priv->chan_rx.napi);
-	ltq_dma_open(&priv->chan_rx.dma);
+	xrx200_open_dma_chan(&priv->chan_tx2);
+	ltq_dma_enable_irq(&priv->chan_tx2.dma);
+
+	xrx200_open_dma_chan(&priv->chan_rx);
 	/* The boot loader does not always deactivate the receiving of frames
 	 * on the ports and then some packets queue up in the PPE buffers.
 	 * They already passed the PMAC so they do not have the tags
@@ -132,9 +141,16 @@ static int xrx200_open(struct net_device *net_dev)
 	xrx200_flush_dma(&priv->chan_rx);
 	ltq_dma_enable_irq(&priv->chan_rx.dma);
 
+	netif_set_real_num_tx_queues(net_dev, 2);
 	netif_wake_queue(net_dev);
 
 	return 0;
+}
+
+static void xrx200_dma_close(struct xrx200_chan *chan)
+{
+	napi_disable(&chan->napi);
+	ltq_dma_close(&chan->dma);
 }
 
 static int xrx200_close(struct net_device *net_dev)
@@ -143,11 +159,9 @@ static int xrx200_close(struct net_device *net_dev)
 
 	netif_stop_queue(net_dev);
 
-	napi_disable(&priv->chan_rx.napi);
-	ltq_dma_close(&priv->chan_rx.dma);
-
-	napi_disable(&priv->chan_tx.napi);
-	ltq_dma_close(&priv->chan_tx.dma);
+	xrx200_dma_close(&priv->chan_rx);
+	xrx200_dma_close(&priv->chan_tx);
+	xrx200_dma_close(&priv->chan_tx2);
 
 	return 0;
 }
@@ -285,7 +299,8 @@ static netdev_tx_t xrx200_start_xmit(struct sk_buff *skb,
 				     struct net_device *net_dev)
 {
 	struct xrx200_priv *priv = netdev_priv(net_dev);
-	struct xrx200_chan *ch = &priv->chan_tx;
+	u32 queue = skb_get_queue_mapping(skb);
+	struct xrx200_chan *ch = queue ? &priv->chan_tx2 : &priv->chan_tx;
 	struct ltq_dma_desc *desc = &ch->dma.desc_base[ch->dma.desc];
 	u32 byte_offset;
 	dma_addr_t mapping;
@@ -361,6 +376,7 @@ static int xrx200_dma_init(struct xrx200_priv *priv)
 {
 	struct xrx200_chan *ch_rx = &priv->chan_rx;
 	struct xrx200_chan *ch_tx = &priv->chan_tx;
+	struct xrx200_chan *ch_tx2 = &priv->chan_tx2;
 	int ret = 0;
 	int i;
 
@@ -399,7 +415,23 @@ static int xrx200_dma_init(struct xrx200_priv *priv)
 		goto tx_free;
 	}
 
+	ch_tx2->dma.nr = XRX200_DMA_TX_2;
+	ch_tx2->dma.dev = priv->dev;
+	ch_tx2->priv = priv;
+
+	ltq_dma_alloc_tx(&ch_tx2->dma);
+	ret = devm_request_irq(priv->dev, ch_tx2->dma.irq, xrx200_dma_irq, 0,
+			       "xrx200_net_tx2", &priv->chan_tx2);
+	if (ret) {
+		dev_err(priv->dev, "failed to request TX2 irq %d\n",
+			ch_tx2->dma.irq);
+		goto tx2_free;
+	}
+
 	return ret;
+
+tx2_free:
+	ltq_dma_free(&ch_tx2->dma);
 
 tx_free:
 	ltq_dma_free(&ch_tx->dma);
@@ -421,6 +453,7 @@ static void xrx200_hw_cleanup(struct xrx200_priv *priv)
 	int i;
 
 	ltq_dma_free(&priv->chan_tx.dma);
+	ltq_dma_free(&priv->chan_tx2.dma);
 	ltq_dma_free(&priv->chan_rx.dma);
 
 	/* free the allocated RX ring */
@@ -471,6 +504,9 @@ static int xrx200_probe(struct platform_device *pdev)
 	priv->chan_tx.dma.irq = platform_get_irq_byname(pdev, "tx");
 	if (priv->chan_tx.dma.irq < 0)
 		return -ENOENT;
+	priv->chan_tx2.dma.irq = platform_get_irq_byname(pdev, "tx2");
+	if (priv->chan_tx2.dma.irq < 0)
+		return -ENOENT;
 
 	/* get the clock */
 	priv->clk = devm_clk_get(dev, NULL);
@@ -507,6 +543,7 @@ static int xrx200_probe(struct platform_device *pdev)
 	/* setup NAPI */
 	netif_napi_add(net_dev, &priv->chan_rx.napi, xrx200_poll_rx, 32);
 	netif_tx_napi_add(net_dev, &priv->chan_tx.napi, xrx200_tx_housekeeping, 32);
+	netif_tx_napi_add(net_dev, &priv->chan_tx2.napi, xrx200_tx_housekeeping, 32);
 
 	platform_set_drvdata(pdev, priv);
 
@@ -533,6 +570,7 @@ static int xrx200_remove(struct platform_device *pdev)
 	/* free stack related instances */
 	netif_stop_queue(net_dev);
 	netif_napi_del(&priv->chan_tx.napi);
+	netif_napi_del(&priv->chan_tx2.napi);
 	netif_napi_del(&priv->chan_rx.napi);
 
 	/* remove the actual device */
