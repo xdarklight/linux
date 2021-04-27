@@ -193,8 +193,9 @@
 #define CLKID_VCLK_EN		214
 #define CLKID_VCLK2_EN		215
 #define CLKID_VID_PLL_LVDS_EN	216
+#define CLKID_HDMI_PLL_DCO_IN   217
 
-#define CLK_NR_CLKS		217
+#define CLK_NR_CLKS		218
 
 /*
  * include the CLKID and RESETID that have
