@@ -248,8 +248,8 @@ static unsigned long skl_clk_recalc_rate(struct clk_hw *hw,
 }
 
 /* Not supported by clk driver. Implemented to satisfy clk fw */
-static long skl_clk_round_rate(struct clk_hw *hw, unsigned long rate,
-			       unsigned long *parent_rate)
+static s64 skl_clk_round_rate(struct clk_hw *hw, unsigned long rate,
+			      unsigned long *parent_rate)
 {
 	return rate;
 }

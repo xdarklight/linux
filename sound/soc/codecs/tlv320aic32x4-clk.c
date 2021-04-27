@@ -204,9 +204,9 @@ static unsigned long clk_aic32x4_pll_recalc_rate(struct clk_hw *hw,
 	return clk_aic32x4_pll_calc_rate(&settings, parent_rate);
 }
 
-static long clk_aic32x4_pll_round_rate(struct clk_hw *hw,
-			unsigned long rate,
-			unsigned long *parent_rate)
+static s64 clk_aic32x4_pll_round_rate(struct clk_hw *hw,
+				      unsigned long rate,
+				      unsigned long *parent_rate)
 {
 	struct clk_aic32x4_pll_muldiv settings;
 	int ret;

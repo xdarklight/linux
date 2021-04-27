@@ -660,7 +660,7 @@ void devm_clk_put(struct device *dev, struct clk *clk);
  *
  * Returns rounded clock rate in Hz, or negative errno.
  */
-long clk_round_rate(struct clk *clk, unsigned long rate);
+s64 clk_round_rate(struct clk *clk, unsigned long rate);
 
 /**
  * clk_set_rate - set the clock rate for a clock source
@@ -892,7 +892,7 @@ static inline int clk_set_rate_exclusive(struct clk *clk, unsigned long rate)
 	return 0;
 }
 
-static inline long clk_round_rate(struct clk *clk, unsigned long rate)
+static inline s64 clk_round_rate(struct clk *clk, unsigned long rate)
 {
 	return 0;
 }

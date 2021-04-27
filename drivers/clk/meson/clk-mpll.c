@@ -87,9 +87,8 @@ static unsigned long mpll_recalc_rate(struct clk_hw *hw,
 	return rate < 0 ? 0 : rate;
 }
 
-static long mpll_round_rate(struct clk_hw *hw,
-			    unsigned long rate,
-			    unsigned long *parent_rate)
+static s64 mpll_round_rate(struct clk_hw *hw, unsigned long rate,
+			   unsigned long *parent_rate)
 {
 	struct clk_regmap *clk = to_clk_regmap(hw);
 	struct meson_clk_mpll_data *mpll = meson_clk_mpll_data(clk);

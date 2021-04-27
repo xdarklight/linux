@@ -331,8 +331,8 @@ static int stm32_i2s_set_parent_clock(struct stm32_i2s_data *i2s,
 	return ret;
 }
 
-static long stm32_i2smclk_round_rate(struct clk_hw *hw, unsigned long rate,
-				     unsigned long *prate)
+static s64 stm32_i2smclk_round_rate(struct clk_hw *hw, unsigned long rate,
+				    unsigned long *prate)
 {
 	struct stm32_i2smclk_data *mclk = to_mclk_data(hw);
 	struct stm32_i2s_data *i2s = mclk->i2s_data;

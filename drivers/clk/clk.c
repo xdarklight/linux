@@ -1322,7 +1322,7 @@ late_initcall_sync(clk_disable_unused);
 static int clk_core_determine_round_nolock(struct clk_core *core,
 					   struct clk_rate_request *req)
 {
-	long rate;
+	s64 rate;
 
 	lockdep_assert_held(&prepare_lock);
 
@@ -1455,7 +1455,7 @@ EXPORT_SYMBOL_GPL(clk_hw_round_rate);
  * use which is then returned.  If clk doesn't support round_rate operation
  * then the parent rate is returned.
  */
-long clk_round_rate(struct clk *clk, unsigned long rate)
+s64 clk_round_rate(struct clk *clk, unsigned long rate)
 {
 	struct clk_rate_request req;
 	int ret;

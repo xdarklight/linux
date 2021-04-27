@@ -89,8 +89,8 @@ static void clk_fd_general_approximation(struct clk_hw *hw, unsigned long rate,
 			m, n);
 }
 
-static long clk_fd_round_rate(struct clk_hw *hw, unsigned long rate,
-			      unsigned long *parent_rate)
+static s64 clk_fd_round_rate(struct clk_hw *hw, unsigned long rate,
+			     unsigned long *parent_rate)
 {
 	struct clk_fractional_divider *fd = to_clk_fd(hw);
 	unsigned long m, n;

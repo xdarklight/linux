@@ -343,10 +343,10 @@ static int clk_divider_bestdiv(struct clk_hw *hw, struct clk_hw *parent,
 	return bestdiv;
 }
 
-long divider_round_rate_parent(struct clk_hw *hw, struct clk_hw *parent,
-			       unsigned long rate, unsigned long *prate,
-			       const struct clk_div_table *table,
-			       u8 width, unsigned long flags)
+s64 divider_round_rate_parent(struct clk_hw *hw, struct clk_hw *parent,
+			      unsigned long rate, unsigned long *prate,
+			      const struct clk_div_table *table,
+			      u8 width, unsigned long flags)
 {
 	int div;
 
@@ -356,10 +356,10 @@ long divider_round_rate_parent(struct clk_hw *hw, struct clk_hw *parent,
 }
 EXPORT_SYMBOL_GPL(divider_round_rate_parent);
 
-long divider_ro_round_rate_parent(struct clk_hw *hw, struct clk_hw *parent,
-				  unsigned long rate, unsigned long *prate,
-				  const struct clk_div_table *table, u8 width,
-				  unsigned long flags, unsigned int val)
+s64 divider_ro_round_rate_parent(struct clk_hw *hw, struct clk_hw *parent,
+				 unsigned long rate, unsigned long *prate,
+				 const struct clk_div_table *table, u8 width,
+				 unsigned long flags, unsigned int val)
 {
 	int div;
 
@@ -378,8 +378,8 @@ long divider_ro_round_rate_parent(struct clk_hw *hw, struct clk_hw *parent,
 EXPORT_SYMBOL_GPL(divider_ro_round_rate_parent);
 
 
-static long clk_divider_round_rate(struct clk_hw *hw, unsigned long rate,
-				unsigned long *prate)
+static s64 clk_divider_round_rate(struct clk_hw *hw, unsigned long rate,
+				  unsigned long *prate)
 {
 	struct clk_divider *divider = to_clk_divider(hw);
 
