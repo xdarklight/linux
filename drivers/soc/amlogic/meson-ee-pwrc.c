@@ -353,9 +353,25 @@ static int meson_ee_pwrc_off(struct generic_pm_domain *domain)
 
 	if (pwrc_domain->num_clks) {
 		msleep(20);
-		clk_bulk_disable_unprepare(pwrc_domain->num_clks,
-					   pwrc_domain->clks);
+
+		/*
+		 * We are only allowed to turn off the clocks here if we
+		 * have previously enabled them ourselves. In other words:
+		 * for an "unused" power domain (which is not used by any
+		 * power domain consumer) we have not enabled the clocks
+		 * previously so we keep them in the state they are.
+		 * This is relevant for the VPU power domain which may
+		 * have been enabled by u-boot. If the display driver in
+		 * Linux is disabled then we need to keep the clocks in
+		 * the state as u-boot set them, otherwise the board will
+		 * hang.
+		 */
+		if (pwrc_domain->enabled)
+			clk_bulk_disable_unprepare(pwrc_domain->num_clks,
+						   pwrc_domain->clks);
 	}
+
+	pwrc_domain->enabled = false;
 
 	return 0;
 }
@@ -392,8 +408,14 @@ static int meson_ee_pwrc_on(struct generic_pm_domain *domain)
 	if (ret)
 		return ret;
 
-	return clk_bulk_prepare_enable(pwrc_domain->num_clks,
-				       pwrc_domain->clks);
+	ret = clk_bulk_prepare_enable(pwrc_domain->num_clks,
+				      pwrc_domain->clks);
+	if (ret)
+		return ret;
+
+	pwrc_domain->enabled = true;
+
+	return 0;
 }
 
 static int meson_ee_pwrc_init_domain(struct platform_device *pdev,
@@ -434,33 +456,11 @@ static int meson_ee_pwrc_init_domain(struct platform_device *pdev,
 	dom->base.power_on = meson_ee_pwrc_on;
 	dom->base.power_off = meson_ee_pwrc_off;
 
-	/*
-         * TOFIX: This is a special case for the VPU power domain, which can
-	 * be enabled previously by the bootloader. In this case the VPU
-         * pipeline may be functional but no driver maybe never attach
-         * to this power domain, and if the domain is disabled it could
-         * cause system errors. This is why the pm_domain_always_on_gov
-         * is used here.
-         * For the same reason, the clocks should be enabled in case
-         * we need to power the domain off, otherwise the internal clocks
-         * prepare/enable counters won't be in sync.
-         */
-	if (dom->num_clks && dom->desc.get_power && !dom->desc.get_power(dom)) {
-		ret = clk_bulk_prepare_enable(dom->num_clks, dom->clks);
-		if (ret)
-			return ret;
-
-		dom->base.flags = GENPD_FLAG_ALWAYS_ON;
-		ret = pm_genpd_init(&dom->base, NULL, false);
-		if (ret)
-			return ret;
-	} else {
-		ret = pm_genpd_init(&dom->base, NULL,
-				    (dom->desc.get_power ?
-				     dom->desc.get_power(dom) : true));
-		if (ret)
-			return ret;
-	}
+	ret = pm_genpd_init(&dom->base, NULL,
+			    (dom->desc.get_power ?
+			     dom->desc.get_power(dom) : true));
+	if (ret)
+		return ret;
 
 	return 0;
 }
@@ -528,19 +528,6 @@ static int meson_ee_pwrc_probe(struct platform_device *pdev)
 	return of_genpd_add_provider_onecell(pdev->dev.of_node, &pwrc->xlate);
 }
 
-static void meson_ee_pwrc_shutdown(struct platform_device *pdev)
-{
-	struct meson_ee_pwrc *pwrc = platform_get_drvdata(pdev);
-	int i;
-
-	for (i = 0 ; i < pwrc->xlate.num_domains ; ++i) {
-		struct meson_ee_pwrc_domain *dom = &pwrc->domains[i];
-
-		if (dom->desc.get_power && !dom->desc.get_power(dom))
-			meson_ee_pwrc_off(&dom->base);
-	}
-}
-
 static struct meson_ee_pwrc_domain_data meson_ee_g12a_pwrc_data = {
 	.count = ARRAY_SIZE(g12a_pwrc_domains),
 	.domains = g12a_pwrc_domains,
@@ -606,7 +593,6 @@ MODULE_DEVICE_TABLE(of, meson_ee_pwrc_match_table);
 
 static struct platform_driver meson_ee_pwrc_driver = {
 	.probe = meson_ee_pwrc_probe,
-	.shutdown = meson_ee_pwrc_shutdown,
 	.driver = {
 		.name		= "meson_ee_pwrc",
 		.of_match_table	= meson_ee_pwrc_match_table,
