@@ -9,6 +9,7 @@
 #include <linux/bitops.h>
 #include <linux/clk.h>
 #include <linux/delay.h>
+#include <linux/firmware/meson/meson_mx_trustzone.h>
 #include <linux/io.h>
 #include <linux/iopoll.h>
 #include <linux/module.h>
@@ -166,6 +167,28 @@ static int meson_mx_efuse_read(void *context, unsigned int offset,
 	return err;
 }
 
+static int meson_mx_efuse_read_trustzone_firmware(void *context,
+						  unsigned int offset,
+						  void *buf, size_t bytes)
+{
+	struct meson_mx_efuse *efuse = context;
+	unsigned int tmp;
+	int i, ret;
+
+	for (i = 0; i < bytes; i += efuse->config.word_size) {
+		ret = meson_mx_trustzone_firmware_efuse_read(offset + i,
+							     sizeof(tmp),
+							     &tmp);
+		if (ret)
+			return ret;
+
+		memcpy(buf + i, &tmp,
+		       min_t(size_t, bytes - i, efuse->config.word_size));
+	}
+
+	return 0;
+}
+
 static const struct meson_mx_efuse_platform_data meson6_efuse_data = {
 	.name = "meson6-efuse",
 	.word_size = 1,
@@ -215,7 +238,11 @@ static int meson_mx_efuse_probe(struct platform_device *pdev)
 	efuse->config.word_size = drvdata->word_size;
 	efuse->config.size = SZ_512;
 	efuse->config.read_only = true;
-	efuse->config.reg_read = meson_mx_efuse_read;
+
+	if (meson_mx_trustzone_firmware_available())
+		efuse->config.reg_read = meson_mx_efuse_read_trustzone_firmware;
+	else
+		efuse->config.reg_read = meson_mx_efuse_read;
 
 	efuse->core_clk = devm_clk_get(&pdev->dev, "core");
 	if (IS_ERR(efuse->core_clk)) {
