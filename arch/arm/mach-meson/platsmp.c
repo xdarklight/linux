@@ -16,6 +16,7 @@
 
 #include <asm/cacheflush.h>
 #include <asm/cp15.h>
+#include <asm/firmware.h>
 #include <asm/smp_scu.h>
 #include <asm/smp_plat.h>
 
@@ -291,6 +292,31 @@ out:
 	return 0;
 }
 
+static int meson8_smp_trustzone_firmware_boot_secondary(unsigned int cpu,
+							struct task_struct *idle)
+{
+	unsigned int addr = __pa_symbol(secondary_startup);
+	int ret;
+
+	ret = call_firmware_op(set_cpu_boot_addr, cpu, addr);
+	if (ret) {
+		pr_err("Failed to set aux core boot address for CPU%u using TrustZone secure firmware\n",
+			cpu);
+		return ret;
+	}
+
+	ret = call_firmware_op(cpu_boot, cpu);
+	if (ret) {
+		pr_err("Failed to modify core control for CPU%u using TrustZone secure firmware\n",
+			cpu);
+		return ret;
+	}
+
+	udelay(10);
+
+	return 0;
+}
+
 #ifdef CONFIG_HOTPLUG_CPU
 static void meson8_smp_cpu_die(unsigned int cpu)
 {
@@ -428,5 +454,12 @@ static struct smp_operations meson8b_smp_ops __initdata = {
 #endif
 };
 
+static struct smp_operations meson8_smp_trustzone_firmware_ops __initdata = {
+	.smp_boot_secondary	= meson8_smp_trustzone_firmware_boot_secondary,
+};
+
 CPU_METHOD_OF_DECLARE(meson8_smp, "amlogic,meson8-smp", &meson8_smp_ops);
 CPU_METHOD_OF_DECLARE(meson8b_smp, "amlogic,meson8b-smp", &meson8b_smp_ops);
+CPU_METHOD_OF_DECLARE(meson8_trustzone_firmware_smp,
+		      "amlogic,meson8-trustzone-firmware-smp",
+		      &meson8_smp_trustzone_firmware_ops);
