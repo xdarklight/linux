@@ -141,12 +141,14 @@ bool meson_mx_trustzone_firmware_available(void)
 {
 	return meson_has_secure_firmware;
 }
+EXPORT_SYMBOL_GPL(meson_mx_trustzone_firmware_available);
 
 int meson_mx_trustzone_firmware_auxcoreboot_addr(unsigned int cpu, unsigned int addr)
 {
 	return meson_mx_trustzone_firmware_mon(MESON_TRUSTZONE_MON_CORE_BOOTADDR_INDEX,
 					       cpu, addr);
 }
+EXPORT_SYMBOL_GPL(meson_mx_trustzone_firmware_auxcoreboot_addr);
 
 int meson_mx_trustzone_firmware_modify_corectrl(unsigned int cpu, bool power_on)
 {
@@ -167,6 +169,7 @@ int meson_mx_trustzone_firmware_modify_corectrl(unsigned int cpu, bool power_on)
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(meson_mx_trustzone_firmware_modify_corectrl);
 
 int meson_mx_trustzone_firmware_efuse_read(unsigned int offset,
 					   unsigned int bytes, void *buf)
@@ -191,12 +194,14 @@ int meson_mx_trustzone_firmware_efuse_read(unsigned int offset,
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(meson_mx_trustzone_firmware_efuse_read);
 
 unsigned int meson_mx_trustzone_read_soc_rev1(void)
 {
 	return meson_mx_trustzone_firmware_mon(MESON_TRUSTZONE_MON_CORE_RD_SOC_REV1,
 					       0, 0);
 }
+EXPORT_SYMBOL_GPL(meson_mx_trustzone_read_soc_rev1);
 
 void __init meson_mx_trustzone_firmware_init(void)
 {
