@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: GPL-2.0+
  */
 
+#include <linux/firmware/meson/meson_mx_trustzone.h>
 #include <linux/io.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
@@ -118,10 +119,12 @@ static int __init meson_mx_socinfo_init(void)
 	if (IS_ERR(assist_regmap))
 		return PTR_ERR(assist_regmap);
 
-	bootrom_regmap =
-		syscon_regmap_lookup_by_compatible("amlogic,meson-mx-bootrom");
-	if (IS_ERR(bootrom_regmap))
-		return PTR_ERR(bootrom_regmap);
+	if (!meson_mx_trustzone_firmware_available()) {
+		bootrom_regmap =
+			syscon_regmap_lookup_by_compatible("amlogic,meson-mx-bootrom");
+		if (IS_ERR(bootrom_regmap))
+			return PTR_ERR(bootrom_regmap);
+	}
 
 	np = of_find_matching_node(NULL, meson_mx_socinfo_analog_top_ids);
 	if (np) {
@@ -141,10 +144,14 @@ static int __init meson_mx_socinfo_init(void)
 	if (ret < 0)
 		return ret;
 
-	ret = regmap_read(bootrom_regmap, MESON_MX_BOOTROM_MISC_VER,
-			  &misc_ver);
-	if (ret < 0)
-		return ret;
+	if (meson_mx_trustzone_firmware_available()) {
+		misc_ver = meson_mx_trustzone_read_soc_rev1();
+	} else {
+		ret = regmap_read(bootrom_regmap, MESON_MX_BOOTROM_MISC_VER,
+				  &misc_ver);
+		if (ret < 0)
+			return ret;
+	}
 
 	soc_dev_attr = kzalloc(sizeof(*soc_dev_attr), GFP_KERNEL);
 	if (!soc_dev_attr)
