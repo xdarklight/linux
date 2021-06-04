@@ -193,6 +193,14 @@
 			reg = <0x4f00000 0x100000>;
 			no-map;
 		};
+
+		linux,cma {
+			compatible = "shared-dma-pool";
+			reusable;
+			size = <0x10000000>;
+			alignment = <0x400000>;
+			linux,cma-default;
+		};
 	};
 
 	thermal-zones {
