@@ -124,6 +124,8 @@
 				compatible = "amlogic,meson-mx-usb2-phy";
 				#phy-cells = <0>;
 				reg = <0x8800 0x20>;
+				gpio-controller;
+				#gpio-cells = <2>;
 				status = "disabled";
 			};
 
