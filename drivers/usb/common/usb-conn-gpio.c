@@ -23,6 +23,7 @@
 
 #define USB_GPIO_DEB_MS		20	/* ms */
 #define USB_GPIO_DEB_US		((USB_GPIO_DEB_MS) * 1000)	/* us */
+#define USB_GPIO_POLL_MS	1000
 
 #define USB_CONN_IRQF	\
 	(IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING | IRQF_ONESHOT)
@@ -43,6 +44,12 @@ struct usb_conn_info {
 	struct power_supply_desc desc;
 	struct power_supply *charger;
 };
+
+static void usb_conn_queue_dwork(struct usb_conn_info *info,
+				 unsigned long delay)
+{
+	queue_delayed_work(system_power_efficient_wq, &info->dw_det, delay);
+}
 
 /*
  * "DEVICE" = VBUS and "HOST" = !ID, so we have:
@@ -111,12 +118,10 @@ static void usb_conn_detect_cable(struct work_struct *work)
 			regulator_is_enabled(info->vbus) ? "enabled" : "disabled");
 
 	power_supply_changed(info->charger);
-}
 
-static void usb_conn_queue_dwork(struct usb_conn_info *info,
-				 unsigned long delay)
-{
-	queue_delayed_work(system_power_efficient_wq, &info->dw_det, delay);
+	/* We need to poll if one of the GPIOs cannot generate an IRQ. */
+	if (info->id_irq < 0 || info->vbus_irq < 0)
+		usb_conn_queue_dwork(info, msecs_to_jiffies(USB_GPIO_POLL_MS));
 }
 
 static irqreturn_t usb_conn_isr(int irq, void *dev_id)
@@ -239,34 +244,34 @@ static int usb_conn_probe(struct platform_device *pdev)
 	if (info->id_gpiod) {
 		info->id_irq = gpiod_to_irq(info->id_gpiod);
 		if (info->id_irq < 0) {
-			dev_err(dev, "failed to get ID IRQ\n");
-			ret = info->id_irq;
-			goto put_role_sw;
-		}
-
-		ret = devm_request_threaded_irq(dev, info->id_irq, NULL,
-						usb_conn_isr, USB_CONN_IRQF,
-						pdev->name, info);
-		if (ret < 0) {
-			dev_err(dev, "failed to request ID IRQ\n");
-			goto put_role_sw;
+			dev_info(dev,
+				 "failed to get ID IRQ - falling back to polling\n");
+		} else {
+			ret = devm_request_threaded_irq(dev, info->id_irq,
+							NULL, usb_conn_isr,
+							USB_CONN_IRQF,
+							pdev->name, info);
+			if (ret < 0) {
+				dev_err(dev, "failed to request ID IRQ\n");
+				goto put_role_sw;
+			}
 		}
 	}
 
 	if (info->vbus_gpiod) {
 		info->vbus_irq = gpiod_to_irq(info->vbus_gpiod);
 		if (info->vbus_irq < 0) {
-			dev_err(dev, "failed to get VBUS IRQ\n");
-			ret = info->vbus_irq;
-			goto put_role_sw;
-		}
-
-		ret = devm_request_threaded_irq(dev, info->vbus_irq, NULL,
-						usb_conn_isr, USB_CONN_IRQF,
-						pdev->name, info);
-		if (ret < 0) {
-			dev_err(dev, "failed to request VBUS IRQ\n");
-			goto put_role_sw;
+			dev_info(dev,
+				 "failed to get VBUS IRQ - falling back to polling\n");
+		} else {
+			ret = devm_request_threaded_irq(dev, info->vbus_irq,
+							NULL, usb_conn_isr,
+							USB_CONN_IRQF,
+							pdev->name, info);
+			if (ret < 0) {
+				dev_err(dev, "failed to request VBUS IRQ\n");
+				goto put_role_sw;
+			}
 		}
 	}
 
