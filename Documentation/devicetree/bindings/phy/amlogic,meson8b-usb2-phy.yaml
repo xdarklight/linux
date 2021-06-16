@@ -6,6 +6,12 @@ $schema: http://devicetree.org/meta-schemas/core.yaml#
 
 title: Amlogic Meson8, Meson8b, Meson8m2 and GXBB USB2 PHY
 
+description: |
+  Amlogic Meson8, Meson8b, Meson8m2 and GXBB embed two USB2 PHYs.
+  Typically the USB "ID" signal (used for dual role operation) is
+  routed to the first PHY. In that case the value can be read out
+  as a GPIO.
+
 maintainers:
   - Martin Blumenstingl <martin.blumenstingl@googlemail.com>
 
@@ -30,6 +36,11 @@ properties:
     items:
       - const: usb_general
       - const: usb
+
+  '#gpio-cells':
+    const: 2
+
+  gpio-controller: true
 
   resets:
     minItems: 1
