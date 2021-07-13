@@ -136,18 +136,30 @@
 struct sdio_func;
 struct sdio_device_id;
 
+struct rtw_sdio_work_data {
+	struct work_struct work;
+	struct rtw_dev *rtwdev;
+};
+
 struct rtw_sdio {
 	struct sdio_func *sdio_func;
 
 	u32 irq_mask;
 	u8 rx_addr;
 	bool sdio3_bus_mode;
-
 	bool is_powered_on;
-	bool in_irq;
+
+	void *irq_thread;
 
 	struct mutex indirect_mutex;
-	struct mutex irq_mutex;
+
+	struct workqueue_struct *txwq, *rxwq;
+
+	struct sk_buff_head tx_queue[RTK_MAX_TX_QUEUE_NUM];
+	struct rtw_sdio_work_data *tx_handler_data;
+
+	struct sk_buff_head rx_queue;
+	struct rtw_sdio_work_data *rx_handler_data;
 };
 
 extern const struct dev_pm_ops rtw_sdio_pm_ops;
