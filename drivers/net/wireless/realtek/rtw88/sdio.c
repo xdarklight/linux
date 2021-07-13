@@ -23,6 +23,12 @@ static bool rtw_sdio_is_bus_addr(u32 addr)
 	return (addr & RTW_SDIO_BUS_MSK) != 0;
 }
 
+static bool rtw_sdio_bus_claim_needed(struct rtw_sdio *rtwsdio)
+{
+	return rtwsdio->irq_thread == NULL ||
+	       rtwsdio->irq_thread != current;
+}
+
 static u32 rtw_sdio_to_bus_offset(struct rtw_dev *rtwdev, u32 addr)
 {
 	switch (addr & RTW_SDIO_BUS_MSK) {
@@ -301,7 +307,7 @@ static int rtw_sdio_read(struct rtw_dev *rtwdev, u32 addr, void *buf,
 			 size_t count)
 {
 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
-	bool per_byte, direct;
+	bool per_byte, direct, bus_claim;
 	int ret;
 
 	direct = rtw_sdio_is_bus_addr(addr);
@@ -312,7 +318,9 @@ static int rtw_sdio_read(struct rtw_dev *rtwdev, u32 addr, void *buf,
 			   !rtwsdio->is_powered_on;
 	}
 
-	if (!rtwsdio->in_irq)
+	bus_claim = rtw_sdio_bus_claim_needed(rtwsdio);
+
+	if (bus_claim)
 		sdio_claim_host(rtwsdio->sdio_func);
 
 	if (!direct)
@@ -322,7 +330,7 @@ static int rtw_sdio_read(struct rtw_dev *rtwdev, u32 addr, void *buf,
 	else
 		ret = rtw_sdio_read_block(rtwdev, addr, buf, count);
 
-	if (!rtwsdio->in_irq)
+	if (bus_claim)
 		sdio_release_host(rtwsdio->sdio_func);
 
 	return ret;
@@ -332,7 +340,7 @@ static int rtw_sdio_write(struct rtw_dev *rtwdev, u32 addr, void *buf,
 			  size_t count)
 {
 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
-	bool per_byte;
+	bool per_byte, bus_claim;
 	int ret;
 
 	if (!rtw_sdio_is_bus_addr(addr))
@@ -344,7 +352,9 @@ static int rtw_sdio_write(struct rtw_dev *rtwdev, u32 addr, void *buf,
 		   (count & 3) ||
 		   !rtwsdio->is_powered_on;
 
-	if (!rtwsdio->in_irq)
+	bus_claim = rtw_sdio_bus_claim_needed(rtwsdio);
+
+	if (bus_claim)
 		sdio_claim_host(rtwsdio->sdio_func);
 
 	if (per_byte)
@@ -352,7 +362,7 @@ static int rtw_sdio_write(struct rtw_dev *rtwdev, u32 addr, void *buf,
 	else
 		ret = rtw_sdio_write_block(rtwdev, addr, buf, count);
 
-	if (!rtwsdio->in_irq)
+	if (bus_claim)
 		sdio_release_host(rtwsdio->sdio_func);
 
 	return ret;
@@ -469,14 +479,15 @@ static void rtw_sdio_read_port(struct rtw_dev *rtwdev, u8 *buf, size_t count)
 			   count);
 }
 
-static int rtw_sdio_write_port(struct rtw_dev *rtwdev, u8 *buf, size_t count)
+static int rtw_sdio_write_port(struct rtw_dev *rtwdev, u8 *buf, size_t count, u8 queue)
 {
 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+	bool bus_claim;
 	size_t txsize;
 	u32 txaddr;
 	int ret;
 
-	txaddr = rtw_sdio_get_tx_addr(rtwdev, RTW_TX_QUEUE_BCN);
+	txaddr = rtw_sdio_get_tx_addr(rtwdev, queue);
 	if (!txaddr)
 		return -EINVAL;
 
@@ -484,11 +495,12 @@ static int rtw_sdio_write_port(struct rtw_dev *rtwdev, u8 *buf, size_t count)
 
 	txsize = rtw_sdio_cmd53_align_size(ALIGN(count, 4));
 
-	if (!rtwsdio->in_irq)
+	bus_claim = rtw_sdio_bus_claim_needed(rtwsdio);
+
+	if (bus_claim)
 		sdio_claim_host(rtwsdio->sdio_func);
-	ret = sdio_memcpy_toio(rtwsdio->sdio_func,
-			       rtw_sdio_mask_addr(txaddr), buf, txsize);
-	if (!rtwsdio->in_irq)
+	ret = rtw_sdio_write_block(rtwdev, txaddr, buf, txsize);
+	if (bus_claim)
 		sdio_release_host(rtwsdio->sdio_func);
 
 	if (ret)
@@ -506,7 +518,6 @@ static void rtw_sdio_init(struct rtw_dev *rtwdev)
 	rtwsdio->irq_mask = REG_SDIO_HIMR_RX_REQUEST | REG_SDIO_HIMR_CPWM1;
 
 	mutex_init(&rtwsdio->indirect_mutex);
-	mutex_init(&rtwsdio->irq_mutex);
 }
 
 static void rtw_sdio_enable_interrupt(struct rtw_dev *rtwdev)
@@ -549,7 +560,7 @@ static u8 rtw_hw_queue_mapping(struct sk_buff *skb)
 	return queue;
 }
 
-static u8 rtw_pci_get_tx_qsel(struct sk_buff *skb, u8 queue)
+static u8 rtw_sdio_get_tx_qsel(struct sk_buff *skb, u8 queue)
 {
 	switch (queue) {
 	case RTW_TX_QUEUE_BCN:
@@ -567,7 +578,9 @@ static u8 rtw_pci_get_tx_qsel(struct sk_buff *skb, u8 queue)
 
 static void rtw_sdio_tx_kick_off(struct rtw_dev *rtwdev)
 {
-	rtw_err(rtwdev, "%s: not implemented yet", __func__);
+	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+
+	queue_work(rtwsdio->txwq, &rtwsdio->tx_handler_data->work);
 }
 
 static int rtw_sdio_setup(struct rtw_dev *rtwdev)
@@ -578,22 +591,14 @@ static int rtw_sdio_setup(struct rtw_dev *rtwdev)
 
 static int rtw_sdio_start(struct rtw_dev *rtwdev)
 {
-	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
-
-	mutex_lock(&rtwsdio->irq_mutex);
 	rtw_sdio_enable_interrupt(rtwdev);
-	mutex_unlock(&rtwsdio->irq_mutex);
 
 	return 0;
 }
 
 static void rtw_sdio_stop(struct rtw_dev *rtwdev)
 {
-	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
-
-	mutex_lock(&rtwsdio->irq_mutex);
 	rtw_sdio_disable_interrupt(rtwdev);
-	mutex_unlock(&rtwsdio->irq_mutex);
 }
 
 static void rtw_sdio_deep_ps(struct rtw_dev *rtwdev, bool enter)
@@ -635,11 +640,11 @@ static int rtw_sdio_write_data(struct rtw_dev *rtwdev,
 
 	pkt_desc = skb_push(skb, chip->tx_pkt_desc_sz);
 	memset(pkt_desc, 0, chip->tx_pkt_desc_sz);
-	pkt_info->qsel = queue;
+	pkt_info->qsel = rtw_sdio_get_tx_qsel(skb, queue);
 	rtw_tx_fill_tx_desc(pkt_info, skb);
 	fill_txdesc_checksum_common(skb->data);
 
-	ret = rtw_sdio_write_port(rtwdev, skb->data, skb->len);
+	ret = rtw_sdio_write_port(rtwdev, skb->data, skb->len, queue);
 	dev_kfree_skb_any(skb);
 
 	return ret;
@@ -655,7 +660,7 @@ static int rtw_sdio_write_data_rsvd_page(struct rtw_dev *rtwdev, u8 *buf,
 	if (!skb)
 		return -ENOMEM;
 
-	return rtw_sdio_write_data(rtwdev, &pkt_info, skb, TX_DESC_QSEL_BEACON);
+	return rtw_sdio_write_data(rtwdev, &pkt_info, skb, RTW_TX_QUEUE_BCN);
 }
 
 static int rtw_sdio_write_data_h2c(struct rtw_dev *rtwdev, u8 *buf, u32 size)
@@ -667,17 +672,27 @@ static int rtw_sdio_write_data_h2c(struct rtw_dev *rtwdev, u8 *buf, u32 size)
 	if (!skb)
 		return -ENOMEM;
 
-	return rtw_sdio_write_data(rtwdev, &pkt_info, skb, TX_DESC_QSEL_H2C);
+	return rtw_sdio_write_data(rtwdev, &pkt_info, skb, RTW_TX_QUEUE_H2C);
 }
 
 static int rtw_sdio_tx_write(struct rtw_dev *rtwdev,
 			     struct rtw_tx_pkt_info *pkt_info,
 			     struct sk_buff *skb)
 {
+	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+	struct rtw_chip_info *chip = rtwdev->chip;
 	u8 queue = rtw_hw_queue_mapping(skb);
-	u8 qsel = rtw_pci_get_tx_qsel(skb, queue);
+	u8 *pkt_desc;
 
-	return rtw_sdio_write_data(rtwdev, pkt_info, skb, qsel);
+	pkt_desc = skb_push(skb, chip->tx_pkt_desc_sz);
+	memset(pkt_desc, 0, chip->tx_pkt_desc_sz);
+	pkt_info->qsel = rtw_sdio_get_tx_qsel(skb, queue);
+	rtw_tx_fill_tx_desc(pkt_info, skb);
+	fill_txdesc_checksum_common(skb->data);
+
+	skb_queue_tail(&rtwsdio->tx_queue[queue], skb);
+
+	return 0;
 }
 
 static void rtw_sdio_tx_err_isr(struct rtw_dev *rtwdev)
@@ -739,8 +754,7 @@ static void rtw_sdio_handle_interrupt(struct sdio_func *sdio_func)
 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
 	u32 hisr;
 
-	mutex_lock(&rtwsdio->irq_mutex);
-	rtwsdio->in_irq = true;
+	rtwsdio->irq_thread = current;
 
 	hisr = rtw_read32(rtwdev, REG_SDIO_HISR);
 
@@ -753,8 +767,7 @@ static void rtw_sdio_handle_interrupt(struct sdio_func *sdio_func)
 
 	rtw_write32(rtwdev, REG_SDIO_HISR, hisr);
 
-	rtwsdio->in_irq = false;
-	mutex_lock(&rtwsdio->irq_mutex);
+	rtwsdio->irq_thread = NULL;
 }
 
 static int __maybe_unused rtw_sdio_suspend(struct device *dev)
@@ -852,9 +865,140 @@ static int rtw_sdio_request_irq(struct rtw_dev *rtwdev, struct sdio_func *sdio_f
 	return 0;
 }
 
+static void rtw_sdio_tx_send_skb(struct rtw_dev *rtwdev,
+				 struct sk_buff *skb,
+				 u8 queue)
+{
+	struct sk_buff *buf;
+
+	if (skb->len & 3) {
+		buf = dev_alloc_skb(ALIGN(skb->len, 4));
+		memcpy(buf->data, skb->data, skb->len);
+		dev_kfree_skb_any(skb);
+	} else {
+		buf = skb;
+	}
+
+	rtw_sdio_write_port(rtwdev, buf->data, buf->len, queue);
+	dev_kfree_skb_any(buf);
+}
+
+static void rtw_sdio_tx_handler(struct work_struct *work)
+{
+	struct rtw_sdio_work_data *work_data =
+		container_of(work, struct rtw_sdio_work_data, work);
+	struct rtw_dev *rtwdev = work_data->rtwdev;
+	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+	struct sk_buff *skb;
+	int index, limit;
+
+	for (index = RTK_MAX_TX_QUEUE_NUM - 1; index >= 0; index--) {
+		for (limit = 0; limit < 200; limit++) {
+			skb = skb_dequeue(&rtwsdio->tx_queue[index]);
+			if (!skb)
+				break;
+
+			rtw_sdio_tx_send_skb(rtwdev, skb, index);
+		}
+	}
+}
+
 static void rtw_sdio_free_irq(struct rtw_dev *rtwdev, struct sdio_func *sdio_func)
 {
 	sdio_release_irq(sdio_func);
+}
+
+static void rtw_sdio_tx_queue_init(struct rtw_sdio *rtwsdio)
+{
+	int i;
+
+	for (i = 0; i < RTK_MAX_TX_QUEUE_NUM; i++)
+		skb_queue_head_init(&rtwsdio->tx_queue[i]);
+}
+
+static void rtw_sdio_tx_queue_purge(struct rtw_sdio *rtwsdio)
+{
+	int i;
+
+	for (i = 0; i < RTK_MAX_TX_QUEUE_NUM; i++)
+		skb_queue_purge(&rtwsdio->tx_queue[i]);
+}
+
+static void rtw_sdio_rx_queue_purge(struct rtw_sdio *rtwsdio)
+{
+	skb_queue_purge(&rtwsdio->rx_queue);
+}
+
+static int rtw_sdio_init_rx(struct rtw_dev *rtwdev)
+{
+	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+
+	rtwsdio->rxwq = create_singlethread_workqueue("rtw88_sdio: rx wq");
+	if (!rtwsdio->rxwq) {
+		rtw_err(rtwdev, "failed to create RX work queue\n");
+		return -ENOMEM;
+	}
+
+	skb_queue_head_init(&rtwsdio->rx_queue);
+	rtwsdio->rx_handler_data = kmalloc(sizeof(*rtwsdio->rx_handler_data),
+					  GFP_KERNEL);
+	if (!rtwsdio->rx_handler_data)
+		goto err_destroy_wq;
+
+	rtwsdio->rx_handler_data->rtwdev = rtwdev;
+	//INIT_WORK(&rtwsdio->rx_handler_data->work, rtw_sdio_rx_handler);
+
+	return 0;
+
+err_destroy_wq:
+	destroy_workqueue(rtwsdio->rxwq);
+	return -ENOMEM;
+}
+
+static void rtw_sdio_deinit_rx(struct rtw_dev *rtwdev)
+{
+	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+
+	rtw_sdio_rx_queue_purge(rtwsdio);
+	flush_workqueue(rtwsdio->rxwq);
+	destroy_workqueue(rtwsdio->rxwq);
+	kfree(rtwsdio->rx_handler_data);
+}
+
+static int rtw_sdio_init_tx(struct rtw_dev *rtwdev)
+{
+	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+
+	rtwsdio->txwq = create_singlethread_workqueue("rtw88_sdio: tx wq");
+	if (!rtwsdio->txwq) {
+		rtw_err(rtwdev, "failed to create TX work queue\n");
+		return -ENOMEM;
+	}
+
+	rtw_sdio_tx_queue_init(rtwsdio);
+	rtwsdio->tx_handler_data = kmalloc(sizeof(*rtwsdio->tx_handler_data),
+					  GFP_KERNEL);
+	if (!rtwsdio->tx_handler_data)
+		goto err_destroy_wq;
+
+	rtwsdio->tx_handler_data->rtwdev = rtwdev;
+	INIT_WORK(&rtwsdio->tx_handler_data->work, rtw_sdio_tx_handler);
+
+	return 0;
+
+err_destroy_wq:
+	destroy_workqueue(rtwsdio->txwq);
+	return -ENOMEM;
+}
+
+static void rtw_sdio_deinit_tx(struct rtw_dev *rtwdev)
+{
+	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+
+	rtw_sdio_tx_queue_purge(rtwsdio);
+	flush_workqueue(rtwsdio->txwq);
+	destroy_workqueue(rtwsdio->txwq);
+	kfree(rtwsdio->tx_handler_data);
 }
 
 int rtw_sdio_probe(struct sdio_func *sdio_func,
@@ -895,16 +1039,28 @@ int rtw_sdio_probe(struct sdio_func *sdio_func,
 
 	rtw_sdio_init(rtwdev);
 
+	ret = rtw_sdio_init_tx(rtwdev);
+	if (ret) {
+		rtw_err(rtwdev, "failed to init SDIO TX\n");
+		goto err_sdio_declaim;
+	}
+
+	ret = rtw_sdio_init_rx(rtwdev);
+	if (ret) {
+		rtw_err(rtwdev, "failed to init SDIO RX\n");
+		goto err_destroy_txwq;
+	}
+
 	ret = rtw_chip_info_setup(rtwdev);
 	if (ret) {
 		rtw_err(rtwdev, "failed to setup chip information");
-		goto err_pci_declaim;
+		goto err_destroy_rxwq;
 	}
 
 	ret = rtw_register_hw(rtwdev, hw);
 	if (ret) {
 		rtw_err(rtwdev, "failed to register hw");
-		goto err_pci_declaim;
+		goto err_destroy_rxwq;
 	}
 
 	ret = rtw_sdio_request_irq(rtwdev, sdio_func);
@@ -915,7 +1071,11 @@ int rtw_sdio_probe(struct sdio_func *sdio_func,
 
 err_unregister_hw:
 	rtw_unregister_hw(rtwdev, hw);
-err_pci_declaim:
+err_destroy_rxwq:
+	rtw_sdio_deinit_rx(rtwdev);
+err_destroy_txwq:
+	rtw_sdio_deinit_tx(rtwdev);
+err_sdio_declaim:
 	rtw_sdio_declaim(rtwdev, sdio_func);
 err_deinit_core:
 	rtw_core_deinit(rtwdev);
@@ -940,6 +1100,8 @@ void rtw_sdio_remove(struct sdio_func *sdio_func)
 	rtw_sdio_disable_interrupt(rtwdev);
 	rtw_sdio_declaim(rtwdev, sdio_func);
 	rtw_sdio_free_irq(rtwdev, sdio_func);
+	rtw_sdio_deinit_tx(rtwdev);
+	rtw_sdio_deinit_rx(rtwdev);
 	rtw_core_deinit(rtwdev);
 	ieee80211_free_hw(hw);
 }
