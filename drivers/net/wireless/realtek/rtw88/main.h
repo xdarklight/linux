@@ -1843,7 +1843,7 @@ struct rtw_dev {
 	struct mutex mutex;
 
 	/* read/write rf register */
-	spinlock_t rf_lock;
+	struct mutex rf_lock;
 
 	/* watch dog every 2 sec */
 	struct delayed_work watch_dog_work;
