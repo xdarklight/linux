@@ -499,7 +499,8 @@ static int rtw_sdio_write_port(struct rtw_dev *rtwdev, u8 *buf, size_t count, u8
 
 	if (bus_claim)
 		sdio_claim_host(rtwsdio->sdio_func);
-	ret = rtw_sdio_write_block(rtwdev, txaddr, buf, txsize);
+	ret = sdio_memcpy_toio(rtwsdio->sdio_func,
+			       rtw_sdio_mask_addr(txaddr), buf, txsize);
 	if (bus_claim)
 		sdio_release_host(rtwsdio->sdio_func);
 
