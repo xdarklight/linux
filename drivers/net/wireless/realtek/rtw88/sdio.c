@@ -447,7 +447,6 @@ static u32 rtw_sdio_get_tx_addr(struct rtw_dev *rtwdev, u8 queue)
 	case RTW_TX_QUEUE_BCN:
 	case RTW_TX_QUEUE_H2C:
 	case RTW_TX_QUEUE_HI0:
-	case RTW_TX_QUEUE_MGMT:
 		return FIELD_PREP(REG_SDIO_CMD_ADDR_MSK,
 				  REG_SDIO_CMD_ADDR_TXFF_HIGH);
 	case RTW_TX_QUEUE_VI:
@@ -458,6 +457,9 @@ static u32 rtw_sdio_get_tx_addr(struct rtw_dev *rtwdev, u8 queue)
 	case RTW_TX_QUEUE_BK:
 		return FIELD_PREP(REG_SDIO_CMD_ADDR_MSK,
 				  REG_SDIO_CMD_ADDR_TXFF_LOW);
+	case RTW_TX_QUEUE_MGMT:
+		return FIELD_PREP(REG_SDIO_CMD_ADDR_MSK,
+				  REG_SDIO_CMD_ADDR_TXFF_EXTRA);
 	default:
 		rtw_warn(rtwdev, "Unsupported queue for TX addr: 0x%02x\n",
 			 queue);
@@ -465,18 +467,27 @@ static u32 rtw_sdio_get_tx_addr(struct rtw_dev *rtwdev, u8 queue)
 	}
 };
 
-static void rtw_sdio_read_port(struct rtw_dev *rtwdev, u8 *buf, size_t count)
+static int rtw_sdio_read_port(struct rtw_dev *rtwdev, u8 *buf, size_t count)
 {
 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+	u32 rxaddr = rtwsdio->rx_addr++;
+	int ret;
 
-	printk("rtw_sdio_read_port\n");
+	rtw_err(rtwdev, "%s(%lu), rxaddr = 0x%02x\n", __func__, count, rtwsdio->rx_addr);
 
-	//WARN((rtwsdio->rx_addr & 3) || (count & 3), "port unaligned read");
+	WARN(rtw_sdio_bus_claim_needed(rtwsdio),
+	     "%s() called without IRQ context - SDIO claim is missing",
+	     __func__);
 
 	// TODO: CMD53 only so far...
-	sdio_memcpy_fromio(rtwsdio->sdio_func, buf,
-			   RTW_SDIO_ADDR_RX_RX0FF_GEN(rtwsdio->rx_addr++),
-			   count);
+	ret = sdio_memcpy_fromio(rtwsdio->sdio_func, buf,
+				 RTW_SDIO_ADDR_RX_RX0FF_GEN(rxaddr), count);
+	if (ret)
+		rtw_warn(rtwdev,
+			 "Failed to read %lu byte(s) from SDIO port 0x%08x",
+			 count, rxaddr);
+
+	return ret;
 }
 
 static int rtw_sdio_write_port(struct rtw_dev *rtwdev, u8 *buf, size_t count, u8 queue)
@@ -713,10 +724,16 @@ static void rtw_sdio_rxfifo_recv(struct rtw_dev *rtwdev, u32 rx_len)
 	u32 pkt_offset;
 	u32 pkt_desc_sz = chip->rx_pkt_desc_sz;
 	u8 *rx_desc;
+	int ret;
 
 	skb = dev_alloc_skb(bufsz);
 
-	rtw_sdio_read_port(rtwdev, skb->data, bufsz);
+	ret = rtw_sdio_read_port(rtwdev, skb->data, bufsz);
+	if (ret) {
+		dev_kfree_skb_any(skb);
+		return;
+	}
+
 	rx_desc = skb->data;
 	chip->ops->query_rx_desc(rtwdev, rx_desc, &pkt_stat,
 					&rx_status);
@@ -737,14 +754,18 @@ static void rtw_sdio_rxfifo_recv(struct rtw_dev *rtwdev, u32 rx_len)
 
 static void rtw_sdio_rx_isr(struct rtw_dev *rtwdev)
 {
-	u16 rx_len;
+	u32 rx_len;
 
-	rx_len = rtw_read16(rtwdev, REG_SDIO_RX0_REQ_LEN);
+	while (true) {
+		if (rtwdev->chip->id == RTW_CHIP_TYPE_8822C)
+			rx_len = rtw_read32(rtwdev, REG_SDIO_RX0_REQ_LEN);
+		else
+			rx_len = rtw_read16(rtwdev, REG_SDIO_RX0_REQ_LEN);
 
-	while (rx_len) {
+		if (!rx_len)
+			break;
+
 		rtw_sdio_rxfifo_recv(rtwdev, rx_len);
-
-		rx_len = rtw_read16(rtwdev, REG_SDIO_RX0_REQ_LEN);
 	}
 }
 
