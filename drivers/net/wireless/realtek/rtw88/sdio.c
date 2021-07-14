@@ -738,6 +738,8 @@ static void rtw_sdio_rxfifo_recv(struct rtw_dev *rtwdev, u32 rx_len)
 	bufsz = rtw_sdio_cmd53_align_size(rx_len);
 
 	skb = dev_alloc_skb(bufsz);
+	if (!skb)
+		return;
 
 	ret = rtw_sdio_read_port(rtwdev, skb->data, bufsz);
 	if (ret) {
