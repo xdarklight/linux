@@ -429,7 +429,7 @@ static void rtw_wow_fw_media_status(struct rtw_dev *rtwdev, bool connect)
 	data.rtwdev = rtwdev;
 	data.connect = connect;
 
-	rtw_iterate_stas_atomic(rtwdev, rtw_wow_fw_media_status_iter, &data);
+	rtw_iterate_stas(rtwdev, rtw_wow_fw_media_status_iter, &data);
 }
 
 static void rtw_wow_config_pno_rsvd_page(struct rtw_dev *rtwdev,
