@@ -120,6 +120,20 @@
 	linux,rc-map-name = "rc-x96max";
 };
 
+&sd_emmc_a {
+	sd-uhs-sdr104;
+	max-frequency = <200000000>;
+
+	rtl8822cs: sdio-wifi@1 {
+		reg = <1>;
+	};
+};
+
+&sd_emmc_b {
+	/* CRC errors are observed at 50MHz */
+	max-frequency = <35000000>;
+};
+
 &tdmif_b {
 	status = "okay";
 };
