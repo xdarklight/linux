@@ -435,6 +435,8 @@ static void rtw_sdio_write32(struct rtw_dev *rtwdev, u32 addr, u32 val)
 
 static size_t rtw_sdio_cmd53_align_size(size_t len)
 {
+	len = ALIGN(len, 4);
+
 	if (len < RTW_SDIO_BLOCK_SIZE)
 		return len;
 
@@ -473,8 +475,6 @@ static int rtw_sdio_read_port(struct rtw_dev *rtwdev, u8 *buf, size_t count)
 	u32 rxaddr = rtwsdio->rx_addr++;
 	int ret;
 
-	rtw_err(rtwdev, "%s(%lu), rxaddr = 0x%02x\n", __func__, count, rtwsdio->rx_addr);
-
 	WARN(rtw_sdio_bus_claim_needed(rtwsdio),
 	     "%s() called without IRQ context - SDIO claim is missing",
 	     __func__);
@@ -496,6 +496,7 @@ static int rtw_sdio_write_port(struct rtw_dev *rtwdev, u8 *buf, size_t count, u8
 	bool bus_claim;
 	size_t txsize;
 	u32 txaddr;
+	void *ptr;
 	int ret;
 
 	txaddr = rtw_sdio_get_tx_addr(rtwdev, queue);
@@ -504,14 +505,20 @@ static int rtw_sdio_write_port(struct rtw_dev *rtwdev, u8 *buf, size_t count, u8
 
 	txaddr += DIV_ROUND_UP(count, 4);
 
-	txsize = rtw_sdio_cmd53_align_size(ALIGN(count, 4));
+	txsize = rtw_sdio_cmd53_align_size(count);
+
+	ptr = kmalloc(txsize, GFP_KERNEL | GFP_DMA);
+	if (!ptr)
+		return -ENOMEM;
+
+	memcpy(ptr, buf, count);
 
 	bus_claim = rtw_sdio_bus_claim_needed(rtwsdio);
 
 	if (bus_claim)
 		sdio_claim_host(rtwsdio->sdio_func);
 	ret = sdio_memcpy_toio(rtwsdio->sdio_func,
-			       rtw_sdio_mask_addr(txaddr), buf, txsize);
+			       rtw_sdio_mask_addr(txaddr), ptr, txsize);
 	if (bus_claim)
 		sdio_release_host(rtwsdio->sdio_func);
 
@@ -519,6 +526,8 @@ static int rtw_sdio_write_port(struct rtw_dev *rtwdev, u8 *buf, size_t count, u8
 		rtw_warn(rtwdev,
 			 "Failed to write %lu byte(s) to SDIO port 0x%08x",
 			 txsize, txaddr);
+
+	kfree(ptr);
 
 	return ret;
 }
@@ -716,15 +725,17 @@ static void rtw_sdio_tx_err_isr(struct rtw_dev *rtwdev)
 
 static void rtw_sdio_rxfifo_recv(struct rtw_dev *rtwdev, u32 rx_len)
 {
-	size_t bufsz = rtw_sdio_cmd53_align_size(rx_len);
 	struct rtw_chip_info *chip = rtwdev->chip;
-	struct rtw_rx_pkt_stat pkt_stat;
+	u32 pkt_desc_sz = chip->rx_pkt_desc_sz;
 	struct ieee80211_rx_status rx_status;
+	struct rtw_rx_pkt_stat pkt_stat;
 	struct sk_buff *skb;
 	u32 pkt_offset;
-	u32 pkt_desc_sz = chip->rx_pkt_desc_sz;
+	size_t bufsz;
 	u8 *rx_desc;
 	int ret;
+
+	bufsz = rtw_sdio_cmd53_align_size(rx_len);
 
 	skb = dev_alloc_skb(bufsz);
 
@@ -736,9 +747,9 @@ static void rtw_sdio_rxfifo_recv(struct rtw_dev *rtwdev, u32 rx_len)
 
 	rx_desc = skb->data;
 	chip->ops->query_rx_desc(rtwdev, rx_desc, &pkt_stat,
-					&rx_status);
+				 &rx_status);
 	pkt_offset = pkt_desc_sz + pkt_stat.drv_info_sz +
-			pkt_stat.shift;
+		     pkt_stat.shift;
 
 	if (pkt_stat.is_c2h) {
 		skb_put(skb, pkt_stat.pkt_len + pkt_offset);
@@ -757,10 +768,10 @@ static void rtw_sdio_rx_isr(struct rtw_dev *rtwdev)
 	u32 rx_len;
 
 	while (true) {
-		if (rtwdev->chip->id == RTW_CHIP_TYPE_8822C)
-			rx_len = rtw_read32(rtwdev, REG_SDIO_RX0_REQ_LEN);
-		else
+		if (rtw_chip_wcpu_11n(rtwdev))
 			rx_len = rtw_read16(rtwdev, REG_SDIO_RX0_REQ_LEN);
+		else
+			rx_len = rtw_read32(rtwdev, REG_SDIO_RX0_REQ_LEN);
 
 		if (!rx_len)
 			break;
@@ -891,18 +902,8 @@ static void rtw_sdio_tx_send_skb(struct rtw_dev *rtwdev,
 				 struct sk_buff *skb,
 				 u8 queue)
 {
-	struct sk_buff *buf;
-
-	if (skb->len & 3) {
-		buf = dev_alloc_skb(ALIGN(skb->len, 4));
-		memcpy(buf->data, skb->data, skb->len);
-		dev_kfree_skb_any(skb);
-	} else {
-		buf = skb;
-	}
-
-	rtw_sdio_write_port(rtwdev, buf->data, buf->len, queue);
-	dev_kfree_skb_any(buf);
+	rtw_sdio_write_port(rtwdev, skb->data, skb->len, queue);
+	dev_kfree_skb_any(skb);
 }
 
 static void rtw_sdio_tx_handler(struct work_struct *work)

@@ -483,11 +483,6 @@ static void download_firmware_reg_backup(struct rtw_dev *rtwdev,
 	tmp = (u8)((tmp & (~BIT_EN_BCN_FUNCTION)) | BIT_DIS_TSF_UDT);
 	rtw_write8(rtwdev, REG_BCN_CTRL, tmp);
 
-	if (rtw_hci_type(rtwdev) == RTW_HCI_TYPE_SDIO) {
-		rtw_read32(rtwdev, REG_SDIO_FREE_TXPG);
-		rtw_write8(rtwdev, REG_SDIO_TX_CTRL, 0);
-	}
-
 	WARN(bckp_idx != DLFW_RESTORE_REG_NUM, "wrong backup number\n");
 }
 
