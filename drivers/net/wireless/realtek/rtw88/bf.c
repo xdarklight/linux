@@ -39,6 +39,7 @@ void rtw_bf_assoc(struct rtw_dev *rtwdev, struct ieee80211_vif *vif,
 	struct ieee80211_sta_vht_cap *vht_cap;
 	struct ieee80211_sta_vht_cap *ic_vht_cap;
 	const u8 *bssid = bss_conf->bssid;
+	bool config_bfee = false;
 	u32 sound_dim;
 	u8 i;
 
@@ -70,7 +71,7 @@ void rtw_bf_assoc(struct rtw_dev *rtwdev, struct ieee80211_vif *vif,
 		bfee->aid = bss_conf->aid;
 		bfinfo->bfer_mu_cnt++;
 
-		rtw_chip_config_bfee(rtwdev, rtwvif, bfee, true);
+		config_bfee = true;
 	} else if ((ic_vht_cap->cap & IEEE80211_VHT_CAP_SU_BEAMFORMEE_CAPABLE) &&
 		   (vht_cap->cap & IEEE80211_VHT_CAP_SU_BEAMFORMER_CAPABLE)) {
 		if (bfinfo->bfer_su_cnt >= chip->bfer_su_max_num) {
@@ -96,11 +97,14 @@ void rtw_bf_assoc(struct rtw_dev *rtwdev, struct ieee80211_vif *vif,
 			}
 		}
 
-		rtw_chip_config_bfee(rtwdev, rtwvif, bfee, true);
+		config_bfee = true;
 	}
 
 out_unlock:
 	rcu_read_unlock();
+
+	if (config_bfee)
+		rtw_chip_config_bfee(rtwdev, rtwvif, bfee, true);
 }
 
 void rtw_bf_init_bfer_entry_mu(struct rtw_dev *rtwdev,
