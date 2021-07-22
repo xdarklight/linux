@@ -479,6 +479,22 @@
 			gpio-ranges = <&pinctrl_cbus 0 0 120>;
 		};
 
+		pwm_c_dv9_pins: pwm-c-dv9 {
+			mux {
+				groups = "pwm_c_dv9";
+				function = "pwm_c";
+				bias-disable;
+			};
+		};
+
+		pwm_d_pins: pwm-d {
+			mux {
+				groups = "pwm_d";
+				function = "pwm_d";
+				bias-disable;
+			};
+		};
+
 		sd_a_pins: sd-a {
 			mux {
 				groups = "sd_d0_a", "sd_d1_a", "sd_d2_a",
