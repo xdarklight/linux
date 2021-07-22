@@ -481,10 +481,26 @@
 			gpio-ranges = <&pinctrl_cbus 0 0 120>;
 		};
 
+
 		i2c_b_pins: i2c-b {
 			mux {
 				groups = "i2c_sda_b", "i2c_sck_b";
 				function = "i2c_b";
+			};
+		};
+
+		pwm_c_dv9_pins: pwm-c-dv9 {
+			mux {
+				groups = "pwm_c_dv9";
+				function = "pwm_c";
+				bias-disable;
+			};
+		};
+
+		pwm_d_pins: pwm-d {
+			mux {
+				groups = "pwm_d";
+				function = "pwm_d";
 				bias-disable;
 			};
 		};
