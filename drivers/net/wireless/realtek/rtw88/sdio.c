@@ -489,13 +489,6 @@ static u8 rtw_sdio_get_tx_qsel(struct sk_buff *skb, u8 queue)
 	}
 };
 
-static void rtw_sdio_tx_kick_off(struct rtw_dev *rtwdev)
-{
-	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
-
-	queue_work(rtwsdio->txwq, &rtwsdio->tx_handler_data->work);
-}
-
 static int rtw_sdio_setup(struct rtw_dev *rtwdev)
 {
 	/* nothing to do */
@@ -514,9 +507,59 @@ static void rtw_sdio_stop(struct rtw_dev *rtwdev)
 	rtw_sdio_disable_interrupt(rtwdev);
 }
 
+static void rtw_sdio_deep_ps_enter(struct rtw_dev *rtwdev)
+{
+	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+	bool tx_empty = true;
+	u8 queue;
+
+	/* Deep PS state is not allowed to TX-DMA */
+	for (queue = 0; queue < RTK_MAX_TX_QUEUE_NUM; queue++) {
+		/* BCN queue is rsvd page, does not have DMA interrupt
+		 * H2C queue is managed by firmware
+		 */
+		if (queue == RTW_TX_QUEUE_BCN ||
+		    queue == RTW_TX_QUEUE_H2C)
+			continue;
+
+		/* check if there is any skb DMAing */
+		if (skb_queue_len(&rtwsdio->tx_queue[queue])) {
+			tx_empty = false;
+			break;
+		}
+	}
+
+	if (!tx_empty) {
+		rtw_dbg(rtwdev, RTW_DBG_PS,
+			"TX path not empty, cannot enter deep power save state\n");
+		return;
+	}
+
+	set_bit(RTW_FLAG_LEISURE_PS_DEEP, rtwdev->flags);
+	rtw_power_mode_change(rtwdev, true);
+}
+
+static void rtw_sdio_deep_ps_leave(struct rtw_dev *rtwdev)
+{
+	if (test_and_clear_bit(RTW_FLAG_LEISURE_PS_DEEP, rtwdev->flags))
+		rtw_power_mode_change(rtwdev, false);
+}
+
 static void rtw_sdio_deep_ps(struct rtw_dev *rtwdev, bool enter)
 {
-	/* nothing to do */
+	if (enter && !test_bit(RTW_FLAG_LEISURE_PS_DEEP, rtwdev->flags))
+		rtw_sdio_deep_ps_enter(rtwdev);
+
+	if (!enter && test_bit(RTW_FLAG_LEISURE_PS_DEEP, rtwdev->flags))
+		rtw_sdio_deep_ps_leave(rtwdev);
+}
+
+static void rtw_sdio_tx_kick_off(struct rtw_dev *rtwdev)
+{
+	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+
+	rtw_sdio_deep_ps_leave(rtwdev);
+	queue_work(rtwsdio->txwq, &rtwsdio->tx_handler_data->work);
 }
 
 static void rtw_sdio_link_ps(struct rtw_dev *rtwdev, bool enter)
