@@ -10,7 +10,6 @@
 #include <linux/property.h>
 #include <linux/genalloc.h>
 #include <linux/io.h>
-#include <linux/ioport.h>
 #include <linux/mfd/syscon.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
@@ -60,15 +59,16 @@ static int meson_mx_ao_arc_rproc_start(struct rproc *rproc)
 {
 	struct meson_mx_ao_arc_rproc_priv *priv = rproc->priv;
 	phys_addr_t translated_sram_addr;
+	u32 tmp;
 	int ret;
 
 	ret = clk_prepare_enable(priv->arc_pclk);
 	if (ret)
 		return ret;
 
-	writel(FIELD_PREP(AO_REMAP_REG0_REMAP_AHB_SRAM_BITS_17_14_FOR_ARM_CPU,
-			  priv->sram_pa >> 14),
-	       priv->remap_base + AO_REMAP_REG0);
+	tmp = FIELD_PREP(AO_REMAP_REG0_REMAP_AHB_SRAM_BITS_17_14_FOR_ARM_CPU,
+			 priv->sram_pa >> 14);
+	writel(tmp, priv->remap_base + AO_REMAP_REG0);
 
 	/*
 	 * The SRAM content as seen by the ARC core always starts at 0x0
@@ -99,11 +99,11 @@ static int meson_mx_ao_arc_rproc_start(struct rproc *rproc)
 	 */
 	translated_sram_addr = priv->sram_pa - MESON_AO_RPROC_MEMORY_OFFSET;
 
-	writel(FIELD_PREP(AO_CPU_CNTL_AHB_SRAM_BITS_31_20,
-			  translated_sram_addr >> 20) |
-	       AO_CPU_CNTL_UNKNONWN |
-	       AO_CPU_CNTL_RUN,
-	       priv->cpu_base + AO_CPU_CNTL);
+	tmp = FIELD_PREP(AO_CPU_CNTL_AHB_SRAM_BITS_31_20,
+			 translated_sram_addr >> 20);
+	tmp |= AO_CPU_CNTL_UNKNONWN | AO_CPU_CNTL_RUN;
+	writel(tmp, priv->cpu_base + AO_CPU_CNTL);
+
 	usleep_range(20, 200);
 
 	return 0;
@@ -125,6 +125,7 @@ static void *meson_mx_ao_arc_rproc_da_to_va(struct rproc *rproc, u64 da,
 {
 	struct meson_mx_ao_arc_rproc_priv *priv = rproc->priv;
 
+	/* The memory from the ARC core's perspective always starts at 0x0. */
 	if ((da + len) > priv->sram_size)
 		return NULL;
 

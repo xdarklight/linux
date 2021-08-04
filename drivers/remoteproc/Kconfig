@@ -136,7 +136,7 @@ config MESON_MX_AO_ARC_REMOTEPROC
 	  Say m or y here to have support for the AO ARC remote processor
 	  on Amlogic Meson6/Meson8/Meson8b/Meson8m2 SoCs. This is
 	  typically used for system suspend.
-	  If unusre say N.
+	  If unsure say N.
 
 config PRU_REMOTEPROC
 	tristate "TI PRU remoteproc support"
