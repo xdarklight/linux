@@ -645,16 +645,18 @@
 };
 
 &hhi {
-	clkc: clock-controller {
+	clkc: clock-controller@0 {
 		compatible = "amlogic,meson8-clkc";
+		reg = <0x0 0x39c>;
 		clocks = <&xtal>, <&ddr_clkc DDR_CLKID_DDR_PLL>;
 		clock-names = "xtal", "ddr_pll";
 		#clock-cells = <1>;
 		#reset-cells = <1>;
 	};
 
-	pwrc: power-controller {
+	pwrc: power-controller@100 {
 		compatible = "amlogic,meson8-pwrc";
+		reg = <0x100 0x10>;
 		#power-domain-cells = <1>;
 		amlogic,ao-sysctrl = <&pmu>;
 		clocks = <&clkc CLKID_VPU>;
