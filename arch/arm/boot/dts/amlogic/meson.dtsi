@@ -35,6 +35,9 @@
 					     "simple-mfd",
 					     "syscon";
 				reg = <0x4000 0x400>;
+				#address-cells = <1>;
+				#size-cells = <1>;
+				ranges = <0x0 0x4000 0x400>;
 			};
 
 			aiu: audio-controller@5400 {
