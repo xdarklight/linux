@@ -112,7 +112,6 @@ static int phy_meson8_hdmi_tx_probe(struct platform_device *pdev)
 	struct phy_provider *phy_provider;
 	struct resource *res;
 	struct phy *phy;
-	int ret;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res)
@@ -146,8 +145,6 @@ static int phy_meson8_hdmi_tx_probe(struct platform_device *pdev)
 
 static const struct of_device_id phy_meson8_hdmi_tx_of_match[] = {
 	{ .compatible = "amlogic,meson8-hdmi-tx-phy" },
-	{ .compatible = "amlogic,meson8b-hdmi-tx-phy" },
-	{ .compatible = "amlogic,meson8m2-hdmi-tx-phy" },
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, phy_meson8_hdmi_tx_of_match);
