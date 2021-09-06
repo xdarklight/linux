@@ -23,6 +23,7 @@
 #include <linux/clk.h>
 #include <linux/clk-provider.h>
 #include <linux/regulator/consumer.h>
+#include <linux/regmap.h>
 #include <linux/reset.h>
 #include <linux/interrupt.h>
 #include <linux/bitfield.h>
@@ -152,6 +153,8 @@ struct meson_host {
 	struct	mmc_command	*cmd;
 
 	void __iomem *regs;
+	struct regmap *regmap;
+
 	struct clk *core_clk;
 	struct clk *mux_clk;
 	struct clk *mmc_clk;
@@ -165,7 +168,6 @@ struct meson_host {
 
 	unsigned int bounce_buf_size;
 	void *bounce_buf;
-	void __iomem *bounce_iomem_buf;
 	dma_addr_t bounce_dma_addr;
 	struct sd_emmc_desc *descs;
 	dma_addr_t descs_dma_addr;
@@ -746,7 +748,7 @@ static void meson_mmc_desc_chain_transfer(struct mmc_host *mmc, u32 cmd_cfg)
 	writel(start, host->regs + SD_EMMC_START);
 }
 
-/* local sg copy to buffer version with _to/fromio usage for dram_access_quirk */
+/* local sg copy for dram_access_quirk */
 static void meson_mmc_copy_buffer(struct meson_host *host, struct mmc_data *data,
 				  size_t buflen, bool to_buffer)
 {
@@ -766,20 +768,22 @@ static void meson_mmc_copy_buffer(struct meson_host *host, struct mmc_data *data
 	while ((offset < buflen) && sg_miter_next(&miter)) {
 		unsigned int len;
 
+		if (((unsigned long int)miter.addr % 4))
+			dev_err(host->dev, "non word aligned sg");
+
 		len = min(miter.length, buflen - offset);
 
-		/* When dram_access_quirk, the bounce buffer is a iomem mapping */
-		if (host->dram_access_quirk) {
-			if (to_buffer)
-				memcpy_toio(host->bounce_iomem_buf + offset, miter.addr, len);
-			else
-				memcpy_fromio(miter.addr, host->bounce_iomem_buf + offset, len);
-		} else {
-			if (to_buffer)
-				memcpy(host->bounce_buf + offset, miter.addr, len);
-			else
-				memcpy(miter.addr, host->bounce_buf + offset, len);
-		}
+		if ((len % 4))
+			dev_err(host->dev, "non word multiple sg");
+
+		if (to_buffer)
+			regmap_bulk_write(host->regmap,
+					  SD_EMMC_SRAM_DATA_BUF_OFF + offset,
+					  miter.addr, len / 4);
+		else
+			regmap_bulk_read(host->regmap,
+					 SD_EMMC_SRAM_DATA_BUF_OFF + offset,
+					 miter.addr, len / 4);
 
 		offset += len;
 	}
@@ -830,7 +834,11 @@ static void meson_mmc_start_cmd(struct mmc_host *mmc, struct mmc_command *cmd)
 		if (data->flags & MMC_DATA_WRITE) {
 			cmd_cfg |= CMD_CFG_DATA_WR;
 			WARN_ON(xfer_bytes > host->bounce_buf_size);
-			meson_mmc_copy_buffer(host, data, xfer_bytes, true);
+			if (host->dram_access_quirk)
+				meson_mmc_copy_buffer(host, data, xfer_bytes, true);
+			else
+				sg_copy_to_buffer(data->sg, data->sg_len,
+						  host->bounce_buf, xfer_bytes);
 			dma_wmb();
 		}
 
@@ -999,7 +1007,11 @@ static irqreturn_t meson_mmc_irq_thread(int irq, void *dev_id)
 	if (meson_mmc_bounce_buf_read(data)) {
 		xfer_bytes = data->blksz * data->blocks;
 		WARN_ON(xfer_bytes > host->bounce_buf_size);
-		meson_mmc_copy_buffer(host, data, xfer_bytes, false);
+		if (host->dram_access_quirk)
+			meson_mmc_copy_buffer(host, data, xfer_bytes, false);
+		else
+			sg_copy_from_buffer(data->sg, data->sg_len,
+					    host->bounce_buf, xfer_bytes);
 	}
 
 	next_cmd = meson_mmc_get_next_command(cmd);
@@ -1086,6 +1098,13 @@ static const struct mmc_host_ops meson_mmc_ops = {
 	.start_signal_voltage_switch = meson_mmc_voltage_switch,
 };
 
+static const struct regmap_config meson_gx_mmc_sram_regmap_config = {
+	.reg_bits = 16,
+	.val_bits = 32,
+	.reg_stride = 4,
+	.max_register = 0x7ff,
+};
+
 static int meson_mmc_probe(struct platform_device *pdev)
 {
 	struct resource *res;
@@ -1162,6 +1181,11 @@ static int meson_mmc_probe(struct platform_device *pdev)
 		goto free_host;
 	}
 
+	host->regmap = devm_regmap_init_mmio(&pdev->dev, host->regs,
+					     &meson_gx_mmc_sram_regmap_config);
+	if (IS_ERR(host->regmap))
+		return PTR_ERR(host->regmap);
+
 	ret = clk_prepare_enable(host->core_clk);
 	if (ret)
 		goto free_host;
@@ -1219,7 +1243,6 @@ static int meson_mmc_probe(struct platform_device *pdev)
 		 * instead of the DDR memory
 		 */
 		host->bounce_buf_size = SD_EMMC_SRAM_DATA_BUF_LEN;
-		host->bounce_iomem_buf = host->regs + SD_EMMC_SRAM_DATA_BUF_OFF;
 		host->bounce_dma_addr = res->start + SD_EMMC_SRAM_DATA_BUF_OFF;
 	} else {
 		/* data bounce buffer */
