@@ -273,10 +273,15 @@ static int meson_encoder_hdmi_atomic_check(struct drm_bridge *bridge,
 					struct drm_connector_state *conn_state)
 {
 	struct meson_encoder_hdmi *encoder_hdmi = bridge_to_meson_encoder_hdmi(bridge);
+	struct drm_connector_state *old_conn_state =
+		drm_atomic_get_old_connector_state(conn_state->state, conn_state->connector);
 
 	encoder_hdmi->output_bus_fmt = bridge_state->output_bus_cfg.format;
 
 	DRM_DEBUG_DRIVER("output_bus_fmt %lx\n", encoder_hdmi->output_bus_fmt);
+
+	if (!drm_connector_atomic_hdr_metadata_equal(old_conn_state, conn_state))
+		crtc_state->mode_changed = true;
 
 	return 0;
 }
@@ -360,6 +365,22 @@ int meson_encoder_hdmi_init(struct meson_drm *priv)
 	 * We should have now in place:
 	 * encoder->[hdmi encoder bridge]->[dw-hdmi bridge]->[display connector bridge]->[display connector]
 	 */
+
+	/*
+	 * drm_connector_attach_max_bpc_property() requires the
+	 * connector to have a state.
+	 */
+	drm_atomic_helper_connector_reset(meson_encoder_hdmi->connector);
+
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_GXL) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_GXM) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A))
+		drm_connector_attach_hdr_output_metadata_property(meson_encoder_hdmi->connector);
+
+	drm_connector_attach_max_bpc_property(meson_encoder_hdmi->connector, 8, 8);
+
+	/* Handle this here until handled by drm_bridge_connector_init() */
+	meson_encoder_hdmi->connector->ycbcr_420_allowed = true;
 
 	DRM_DEBUG_DRIVER("HDMI encoder initialized\n");
 
