@@ -772,8 +772,8 @@ static inline void mtk_nfc_write_fdm(struct nand_chip *chip)
 	}
 }
 
-static int mtk_nfc_do_write_page(struct mtd_info *mtd, struct nand_chip *chip,
-				 const u8 *buf, int page, int len)
+static int mtk_nfc_do_write_page(struct nand_chip *chip, const u8 *buf,
+				 int len)
 {
 	struct mtk_nfc *nfc = nand_get_controller_data(chip);
 	struct device *dev = nfc->dev;
@@ -864,7 +864,7 @@ static int mtk_nfc_write_page(struct mtd_info *mtd, struct nand_chip *chip,
 	}
 
 	len = mtd->writesize + (raw ? mtd->oobsize : 0);
-	ret = mtk_nfc_do_write_page(mtd, chip, bufpoi, page, len);
+	ret = mtk_nfc_do_write_page(chip, bufpoi, len);
 
 	if (!raw)
 		mtk_ecc_disable(nfc->ecc);
