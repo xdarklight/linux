@@ -193,13 +193,13 @@ static void meson_encoder_hdmi_atomic_enable(struct drm_bridge *bridge,
 					     struct drm_atomic_state *state)
 {
 	struct meson_encoder_hdmi *encoder_hdmi = bridge_to_meson_encoder_hdmi(bridge);
-	unsigned int ycrcb_map = VPU_HDMI_OUTPUT_CBYCR;
 	struct meson_drm *priv = encoder_hdmi->priv;
 	struct drm_connector_state *conn_state;
 	const struct drm_display_mode *mode;
 	struct drm_crtc_state *crtc_state;
 	struct drm_connector *connector;
 	bool yuv420_mode = false;
+	unsigned int ycrcb_map;
 	int vic;
 
 	connector = drm_atomic_get_new_connector_for_encoder(state, bridge->encoder);
@@ -220,11 +220,21 @@ static void meson_encoder_hdmi_atomic_enable(struct drm_bridge *bridge,
 
 	dev_dbg(priv->dev, "\"%s\" vic %d\n", mode->name, vic);
 
-	if (encoder_hdmi->output_bus_fmt == MEDIA_BUS_FMT_UYYVYY8_0_5X24) {
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8B) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8M2)) {
+		if (encoder_hdmi->output_bus_fmt == MEDIA_BUS_FMT_RGB888_1X24)
+			ycrcb_map = VPU_HDMI_OUTPUT_YCBCR;
+		else
+			ycrcb_map = VPU_HDMI_OUTPUT_CRYCB;
+	} else if (encoder_hdmi->output_bus_fmt == MEDIA_BUS_FMT_UYYVYY8_0_5X24) {
 		ycrcb_map = VPU_HDMI_OUTPUT_CRYCB;
 		yuv420_mode = true;
-	} else if (encoder_hdmi->output_bus_fmt == MEDIA_BUS_FMT_UYVY8_1X16)
+	} else if (encoder_hdmi->output_bus_fmt == MEDIA_BUS_FMT_UYVY8_1X16) {
 		ycrcb_map = VPU_HDMI_OUTPUT_CRYCB;
+	} else {
+		ycrcb_map = VPU_HDMI_OUTPUT_CBYCR;
+	}
 
 	/* VENC + VENC-DVI Mode setup */
 	meson_venc_hdmi_mode_set(priv, vic, ycrcb_map, yuv420_mode, mode);
@@ -232,17 +242,21 @@ static void meson_encoder_hdmi_atomic_enable(struct drm_bridge *bridge,
 	/* VCLK Set clock */
 	meson_encoder_hdmi_set_vclk(encoder_hdmi, mode);
 
-	if (encoder_hdmi->output_bus_fmt == MEDIA_BUS_FMT_UYYVYY8_0_5X24)
-		/* Setup YUV420 to HDMI-TX, no 10bit diphering */
-		writel_relaxed(2 | (2 << 2),
-			       priv->io_base + _REG(VPU_HDMI_FMT_CTRL));
-	else if (encoder_hdmi->output_bus_fmt == MEDIA_BUS_FMT_UYVY8_1X16)
-		/* Setup YUV422 to HDMI-TX, no 10bit diphering */
-		writel_relaxed(1 | (2 << 2),
-				priv->io_base + _REG(VPU_HDMI_FMT_CTRL));
-	else
-		/* Setup YUV444 to HDMI-TX, no 10bit diphering */
-		writel_relaxed(0, priv->io_base + _REG(VPU_HDMI_FMT_CTRL));
+	if (!meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8) &&
+	    !meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8B) &&
+	    !meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8M2)) {
+		if (encoder_hdmi->output_bus_fmt == MEDIA_BUS_FMT_UYYVYY8_0_5X24)
+			/* Setup YUV420 to HDMI-TX, no 10bit diphering */
+			writel_relaxed(2 | (2 << 2),
+				       priv->io_base + _REG(VPU_HDMI_FMT_CTRL));
+		else if (encoder_hdmi->output_bus_fmt == MEDIA_BUS_FMT_UYVY8_1X16)
+			/* Setup YUV422 to HDMI-TX, no 10bit diphering */
+			writel_relaxed(1 | (2 << 2),
+				       priv->io_base + _REG(VPU_HDMI_FMT_CTRL));
+		else
+			/* Setup YUV444 to HDMI-TX, no 10bit diphering */
+			writel_relaxed(0, priv->io_base + _REG(VPU_HDMI_FMT_CTRL));
+	}
 
 	dev_dbg(priv->dev, "%s\n", priv->venc.hdmi_use_enci ? "VENCI" : "VENCP");
 
@@ -265,7 +279,11 @@ static void meson_encoder_hdmi_atomic_disable(struct drm_bridge *bridge,
 	writel_relaxed(0, priv->io_base + _REG(ENCP_VIDEO_EN));
 }
 
-static const u32 meson_encoder_hdmi_out_bus_fmts[] = {
+static const u32 meson8_encoder_hdmi_out_bus_fmts[] = {
+	MEDIA_BUS_FMT_YUV8_1X24,
+};
+
+static const u32 meson_gx_encoder_hdmi_out_bus_fmts[] = {
 	MEDIA_BUS_FMT_YUV8_1X24,
 	MEDIA_BUS_FMT_UYVY8_1X16,
 	MEDIA_BUS_FMT_UYYVYY8_0_5X24,
@@ -279,13 +297,27 @@ meson_encoder_hdmi_get_inp_bus_fmts(struct drm_bridge *bridge,
 					u32 output_fmt,
 					unsigned int *num_input_fmts)
 {
+	struct meson_encoder_hdmi *encoder_hdmi = bridge_to_meson_encoder_hdmi(bridge);
+	struct meson_drm *priv = encoder_hdmi->priv;
+	unsigned int num_out_bus_fmts;
+	const u32 *out_bus_fmts;
 	u32 *input_fmts = NULL;
 	int i;
 
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8B) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8M2)) {
+		num_out_bus_fmts = ARRAY_SIZE(meson8_encoder_hdmi_out_bus_fmts);
+		out_bus_fmts = meson8_encoder_hdmi_out_bus_fmts;
+	} else {
+		num_out_bus_fmts = ARRAY_SIZE(meson_gx_encoder_hdmi_out_bus_fmts);
+		out_bus_fmts = meson_gx_encoder_hdmi_out_bus_fmts;
+	}
+
 	*num_input_fmts = 0;
 
-	for (i = 0 ; i < ARRAY_SIZE(meson_encoder_hdmi_out_bus_fmts) ; ++i) {
-		if (output_fmt == meson_encoder_hdmi_out_bus_fmts[i]) {
+	for (i = 0 ; i < num_out_bus_fmts ; ++i) {
+		if (output_fmt == out_bus_fmts[i]) {
 			*num_input_fmts = 1;
 			input_fmts = kcalloc(*num_input_fmts,
 					     sizeof(*input_fmts),
