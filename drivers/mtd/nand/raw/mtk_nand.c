@@ -1475,7 +1475,7 @@ static int mtk_nfc_nand_chips_init(struct device *dev, struct mtk_nfc *nfc)
 
 static const struct mtk_nfc_caps mtk_nfc_caps_mt2701 = {
 	.spare_size = spare_size_mt2701,
-	.num_spare_size = 16,
+	.num_spare_size = ARRAY_SIZE(spare_size_mt2701),
 	.pageformat_spare_shift = 4,
 	.nfi_clk_div = 1,
 	.max_sector = 16,
@@ -1484,7 +1484,7 @@ static const struct mtk_nfc_caps mtk_nfc_caps_mt2701 = {
 
 static const struct mtk_nfc_caps mtk_nfc_caps_mt2712 = {
 	.spare_size = spare_size_mt2712,
-	.num_spare_size = 19,
+	.num_spare_size = ARRAY_SIZE(spare_size_mt2712),
 	.pageformat_spare_shift = 16,
 	.nfi_clk_div = 2,
 	.max_sector = 16,
@@ -1493,7 +1493,7 @@ static const struct mtk_nfc_caps mtk_nfc_caps_mt2712 = {
 
 static const struct mtk_nfc_caps mtk_nfc_caps_mt7622 = {
 	.spare_size = spare_size_mt7622,
-	.num_spare_size = 4,
+	.num_spare_size = ARRAY_SIZE(spare_size_mt7622),
 	.pageformat_spare_shift = 4,
 	.nfi_clk_div = 1,
 	.max_sector = 8,
