@@ -187,13 +187,13 @@ static void meson_encoder_hdmi_atomic_enable(struct drm_bridge *bridge,
 {
 	struct meson_encoder_hdmi *encoder_hdmi = bridge_to_meson_encoder_hdmi(bridge);
 	struct drm_atomic_state *state = bridge_state->base.state;
-	unsigned int ycrcb_map = VPU_HDMI_OUTPUT_CBYCR;
 	struct meson_drm *priv = encoder_hdmi->priv;
 	struct drm_connector_state *conn_state;
 	const struct drm_display_mode *mode;
 	struct drm_crtc_state *crtc_state;
 	struct drm_connector *connector;
 	bool yuv420_mode = false;
+	unsigned int ycrcb_map;
 	int vic;
 
 	connector = drm_atomic_get_new_connector_for_encoder(state, bridge->encoder);
@@ -214,9 +214,18 @@ static void meson_encoder_hdmi_atomic_enable(struct drm_bridge *bridge,
 
 	dev_dbg(priv->dev, "\"%s\" vic %d\n", mode->name, vic);
 
-	if (encoder_hdmi->output_bus_fmt == MEDIA_BUS_FMT_UYYVYY8_0_5X24) {
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8B) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8M2)) {
+		if (encoder_hdmi->output_bus_fmt == MEDIA_BUS_FMT_RGB888_1X24)
+			ycrcb_map = VPU_HDMI_OUTPUT_YCBCR;
+		else
+			ycrcb_map = VPU_HDMI_OUTPUT_CRYCB;
+	} else if (encoder_hdmi->output_bus_fmt == MEDIA_BUS_FMT_UYYVYY8_0_5X24) {
 		ycrcb_map = VPU_HDMI_OUTPUT_CRYCB;
 		yuv420_mode = true;
+	} else {
+		ycrcb_map = VPU_HDMI_OUTPUT_CBYCR;
 	}
 
 	/* VENC + VENC-DVI Mode setup */
