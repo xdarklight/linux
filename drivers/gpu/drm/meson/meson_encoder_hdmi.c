@@ -484,8 +484,11 @@ int meson_encoder_hdmi_probe(struct meson_drm *priv)
 
 	drm_connector_attach_max_bpc_property(meson_encoder_hdmi->connector, 8, 8);
 
-	/* Handle this here until handled by drm_bridge_connector_init() */
-	meson_encoder_hdmi->connector->ycbcr_420_allowed = true;
+	if (!meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8) &&
+	    !meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8B) &&
+	    !meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8M2))
+		/* Handle this here until handled by drm_bridge_connector_init() */
+		meson_encoder_hdmi->connector->ycbcr_420_allowed = true;
 
 	pdev = of_find_device_by_node(remote);
 	of_node_put(remote);
