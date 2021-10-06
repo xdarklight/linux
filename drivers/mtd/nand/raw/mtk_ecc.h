@@ -35,7 +35,10 @@ struct mtk_ecc_config {
 
 int mtk_ecc_encode(struct mtk_ecc *, struct mtk_ecc_config *, u8 *, u32);
 void mtk_ecc_get_stats(struct mtk_ecc *, struct mtk_ecc_stats *, int);
+void mtk_ecc_correct_sector(struct mtk_ecc *, struct mtk_ecc_stats *, u32,
+			    u8 *, u32, u8 *, u8);
 int mtk_ecc_wait_done(struct mtk_ecc *, enum mtk_ecc_operation);
+int mtk_ecc_wait_sector_done(struct mtk_ecc *, enum mtk_ecc_operation, u8);
 int mtk_ecc_enable(struct mtk_ecc *, struct mtk_ecc_config *);
 void mtk_ecc_disable(struct mtk_ecc *);
 void mtk_ecc_adjust_strength(struct mtk_ecc *ecc, u32 *p);
