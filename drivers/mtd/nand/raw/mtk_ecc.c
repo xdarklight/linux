@@ -9,6 +9,8 @@
 #include <linux/platform_device.h>
 #include <linux/dma-mapping.h>
 #include <linux/interrupt.h>
+#include <linux/bitfield.h>
+#include <linux/bits.h>
 #include <linux/clk.h>
 #include <linux/module.h>
 #include <linux/iopoll.h>
@@ -35,6 +37,11 @@
 #define		DEC_CNFG_CORRECT	(0x3 << 12)
 #define ECC_DECIDLE		(0x10C)
 #define ECC_DECENUM0		(0x114)
+#define ECC_DECEL0		(0x11C)
+#define		DEC_EL_ODD_MASK		GENMASK(31, 16)
+#define		DEC_EL_EVEN_MASK	GENMASK(15, 0)
+#define		DEC_EL_BYTE_POS_SHIFT	(3)
+#define		DEC_EL_BIT_POS_MASK	GENMASK(3, 0)
 
 #define ECC_TIMEOUT		(500000)
 
@@ -49,6 +56,7 @@ struct mtk_ecc_caps {
 	u8 ecc_mode_shift;
 	u32 parity_bits;
 	int pg_irq_sel;
+	bool has_dma_support;
 };
 
 struct mtk_ecc {
@@ -73,6 +81,10 @@ static const u8 ecc_strength_mt2701[] = {
 static const u8 ecc_strength_mt2712[] = {
 	4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 28, 32, 36,
 	40, 44, 48, 52, 56, 60, 68, 72, 80
+};
+
+static const u8 ecc_strength_mt7621[] = {
+	4, 6, 8, 10, 12
 };
 
 static const u8 ecc_strength_mt7622[] = {
@@ -104,6 +116,15 @@ static int mt2712_ecc_regs[] = {
 	[ECC_DECDONE] =         0x124,
 	[ECC_DECIRQ_EN] =       0x200,
 	[ECC_DECIRQ_STA] =      0x204,
+};
+
+static int mt7621_ecc_regs[] = {
+	[ECC_ENCPAR00] =        -1,
+	[ECC_ENCIRQ_EN] =       -1,
+	[ECC_ENCIRQ_STA] =      -1,
+	[ECC_DECDONE] =         0x118,
+	[ECC_DECIRQ_EN] =       -1,
+	[ECC_DECIRQ_STA] =      -1,
 };
 
 static int mt7622_ecc_regs[] = {
@@ -209,20 +230,37 @@ static int mtk_ecc_config(struct mtk_ecc *ecc, struct mtk_ecc_config *config)
 	return 0;
 }
 
+static u32 mtc_ecc_get_num_error_bits(struct mtk_ecc *ecc, u32 offset,
+				      u8 sector)
+{
+	u32 err, width;
+
+	width = ALIGN(fls(ecc->caps->err_mask), 4);
+
+	err = readl(ecc->regs + ECC_DECENUM0 + offset);
+	err >>= (sector % 4) * width;
+	err &= ecc->caps->err_mask;
+
+	return err;
+}
+
 void mtk_ecc_get_stats(struct mtk_ecc *ecc, struct mtk_ecc_stats *stats,
 		       int sectors)
 {
 	u32 offset, i, err;
 	u32 bitflips = 0;
 
+	if (!ecc->caps->has_dma_support) {
+		dev_err(ecc->dev, "%s requires DMA support\n", __func__);
+		return;
+	}
+
 	stats->corrected = 0;
 	stats->failed = 0;
 
 	for (i = 0; i < sectors; i++) {
 		offset = (i >> 2) << 2;
-		err = readl(ecc->regs + ECC_DECENUM0 + offset);
-		err = err >> ((i % 4) * 8);
-		err &= ecc->caps->err_mask;
+		err = mtc_ecc_get_num_error_bits(ecc, offset, 0);
 		if (err == ecc->caps->err_mask) {
 			/* uncorrectable errors */
 			stats->failed++;
@@ -236,6 +274,55 @@ void mtk_ecc_get_stats(struct mtk_ecc *ecc, struct mtk_ecc_stats *stats,
 	stats->bitflips = bitflips;
 }
 EXPORT_SYMBOL(mtk_ecc_get_stats);
+
+void mtk_ecc_check_and_correct(struct mtk_ecc *ecc,
+			       struct mtk_ecc_stats *stats, int ecc_size,
+			       u8 *sector_buf, u8 *fdm_buf, u8 sector)
+{
+	u32 i, num_error_bits, fdm_end_bits;
+	u32 bitflips = 0;
+
+	stats->corrected = 0;
+	stats->failed = 0;
+
+	num_error_bits = mtc_ecc_get_num_error_bits(ecc, 0, sector);
+	if (num_error_bits == ecc->caps->err_mask) {
+		/* uncorrectable errors */
+		stats->failed++;
+		return;
+	}
+
+	for (i = 0; i < num_error_bits; i++) {
+		u32 error_byte_pos, error_bit_loc, error_bit_mask;
+		u32 error_locations, sector_error_location;
+
+		error_locations = readl(ecc->regs + ECC_DECEL0 + (i / 2));
+
+		if (i & 1)
+			sector_error_location = FIELD_GET(DEC_EL_ODD_MASK,
+							  error_locations);
+		else
+			sector_error_location = FIELD_GET(DEC_EL_EVEN_MASK,
+							  error_locations);
+
+		error_byte_pos = sector_error_location >> DEC_EL_BYTE_POS_SHIFT;
+		error_bit_loc = FIELD_GET(DEC_EL_BIT_POS_MASK,
+					  sector_error_location);
+		error_bit_mask = 1 << error_bit_loc;
+
+		if (error_bit_loc < (ecc_size << DEC_EL_BYTE_POS_SHIFT)) {
+			sector_buf[error_byte_pos] ^= error_bit_mask;
+		} else if (error_bit_loc < fdm_end_bits) {
+			fdm_buf[error_byte_pos - ecc_size] ^= error_bit_mask;
+		}
+
+		bitflips++;
+	}
+
+	stats->corrected += num_error_bits;
+	stats->bitflips = bitflips;
+}
+EXPORT_SYMBOL(mtk_ecc_check_and_correct);
 
 void mtk_ecc_release(struct mtk_ecc *ecc)
 {
@@ -309,7 +396,8 @@ int mtk_ecc_enable(struct mtk_ecc *ecc, struct mtk_ecc_config *config)
 		return ret;
 	}
 
-	if (config->mode != ECC_NFI_MODE || op != ECC_ENCODE) {
+	if (ecc->caps->has_dma_support &&
+	    (config->mode != ECC_NFI_MODE || op != ECC_ENCODE)) {
 		init_completion(&ecc->done);
 		reg_val = ECC_IRQ_EN;
 		/*
@@ -343,15 +431,18 @@ void mtk_ecc_disable(struct mtk_ecc *ecc)
 
 	/* disable it */
 	mtk_ecc_wait_idle(ecc, op);
-	if (op == ECC_DECODE) {
+	if (op == ECC_DECODE)
 		/*
 		 * Clear decode IRQ status in case there is a timeout to wait
 		 * decode IRQ.
 		 */
 		readw(ecc->regs + ecc->caps->ecc_regs[ECC_DECDONE]);
-		writew(0, ecc->regs + ecc->caps->ecc_regs[ECC_DECIRQ_EN]);
-	} else {
-		writew(0, ecc->regs + ecc->caps->ecc_regs[ECC_ENCIRQ_EN]);
+
+	if (ecc->caps->has_dma_support) {
+		if (op == ECC_DECODE)
+			writew(0, ecc->regs + ecc->caps->ecc_regs[ECC_DECIRQ_EN]);
+		else
+			writew(0, ecc->regs + ecc->caps->ecc_regs[ECC_ENCIRQ_EN]);
 	}
 
 	writew(ECC_OP_DISABLE, ecc->regs + ECC_CTL_REG(op));
@@ -364,7 +455,14 @@ int mtk_ecc_wait_done(struct mtk_ecc *ecc, enum mtk_ecc_operation op)
 {
 	int ret;
 
-	ret = wait_for_completion_timeout(&ecc->done, msecs_to_jiffies(500));
+	if (!ecc->caps->has_dma_support) {
+		dev_err(ecc->dev,
+			"Cannot wait for DMA based ECC done without DMA support\n");
+		return -EINVAL;
+	}
+
+	ret = wait_for_completion_timeout(&ecc->done,
+					  usecs_to_jiffies(ECC_TIMEOUT));
 	if (!ret) {
 		dev_err(ecc->dev, "%s timeout - interrupt did not arrive)\n",
 			(op == ECC_ENCODE) ? "encoder" : "decoder");
@@ -375,12 +473,38 @@ int mtk_ecc_wait_done(struct mtk_ecc *ecc, enum mtk_ecc_operation op)
 }
 EXPORT_SYMBOL(mtk_ecc_wait_done);
 
+int mtk_ecc_wait_sector_done(struct mtk_ecc *ecc, enum mtk_ecc_operation op,
+			     u8 sector)
+{
+	void __iomem *eccdone = ecc->regs + ecc->caps->ecc_regs[ECC_DECDONE];
+	u32 val;
+	int ret;
+
+	ret = readw_poll_timeout_atomic(eccdone, val,
+					val & (1 << sector), 10,
+					ECC_TIMEOUT);
+	if (ret) {
+		dev_err(ecc->dev,
+			"%s timeout while waiting for sector %d ECC done\n",
+			(op == ECC_ENCODE) ? "encoder" : "decoder", sector);
+		return ret;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(mtk_ecc_wait_sector_done);
+
 int mtk_ecc_encode(struct mtk_ecc *ecc, struct mtk_ecc_config *config,
 		   u8 *data, u32 bytes)
 {
 	dma_addr_t addr;
 	u32 len;
 	int ret;
+
+	if (!ecc->caps->has_dma_support) {
+		dev_err(ecc->dev, "Cannot encode data without DMA support\n");
+		return -EINVAL;
+	}
 
 	addr = dma_map_single(ecc->dev, data, bytes, DMA_TO_DEVICE);
 	ret = dma_mapping_error(ecc->dev, addr);
@@ -455,6 +579,7 @@ static const struct mtk_ecc_caps mtk_ecc_caps_mt2701 = {
 	.ecc_mode_shift = 5,
 	.parity_bits = 14,
 	.pg_irq_sel = 0,
+	.has_dma_support = true,
 };
 
 static const struct mtk_ecc_caps mtk_ecc_caps_mt2712 = {
@@ -465,6 +590,18 @@ static const struct mtk_ecc_caps mtk_ecc_caps_mt2712 = {
 	.ecc_mode_shift = 5,
 	.parity_bits = 14,
 	.pg_irq_sel = 1,
+	.has_dma_support = true,
+};
+
+static const struct mtk_ecc_caps mtk_ecc_caps_mt7621 = {
+	.err_mask = 0xf,
+	.ecc_strength = ecc_strength_mt7621,
+	.num_ecc_strength = ARRAY_SIZE(ecc_strength_mt7621),
+	.ecc_regs = mt7621_ecc_regs,
+	.ecc_mode_shift = 4,
+	.parity_bits = 13,
+	.pg_irq_sel = 0,
+	.has_dma_support = false,
 };
 
 static const struct mtk_ecc_caps mtk_ecc_caps_mt7622 = {
@@ -475,6 +612,7 @@ static const struct mtk_ecc_caps mtk_ecc_caps_mt7622 = {
 	.ecc_mode_shift = 4,
 	.parity_bits = 13,
 	.pg_irq_sel = 0,
+	.has_dma_support = true,
 };
 
 static const struct of_device_id mtk_ecc_dt_match[] = {
@@ -484,6 +622,10 @@ static const struct of_device_id mtk_ecc_dt_match[] = {
 	}, {
 		.compatible = "mediatek,mt2712-ecc",
 		.data = &mtk_ecc_caps_mt2712,
+	}, {
+		.compatible = "mediatek,mt7621-ecc",
+		.data = &mtk_ecc_caps_mt7621,
+	}, {
 	}, {
 		.compatible = "mediatek,mt7622-ecc",
 		.data = &mtk_ecc_caps_mt7622,
@@ -524,20 +666,23 @@ static int mtk_ecc_probe(struct platform_device *pdev)
 		return PTR_ERR(ecc->clk);
 	}
 
-	irq = platform_get_irq(pdev, 0);
-	if (irq < 0)
-		return irq;
+	if (ecc->caps->has_dma_support) {
+		irq = platform_get_irq(pdev, 0);
+		if (irq < 0)
+			return irq;
 
-	ret = dma_set_mask(dev, DMA_BIT_MASK(32));
-	if (ret) {
-		dev_err(dev, "failed to set DMA mask\n");
-		return ret;
-	}
+		ret = dma_set_mask(dev, DMA_BIT_MASK(32));
+		if (ret) {
+			dev_err(dev, "failed to set DMA mask\n");
+			return ret;
+		}
 
-	ret = devm_request_irq(dev, irq, mtk_ecc_irq, 0x0, "mtk-ecc", ecc);
-	if (ret) {
-		dev_err(dev, "failed to request irq\n");
-		return -EINVAL;
+		ret = devm_request_irq(dev, irq, mtk_ecc_irq, 0x0, "mtk-ecc",
+				       ecc);
+		if (ret) {
+			dev_err(dev, "failed to request irq\n");
+			return -EINVAL;
+		}
 	}
 
 	ecc->dev = dev;
