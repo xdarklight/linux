@@ -217,14 +217,23 @@ static void meson_encoder_hdmi_mode_set(struct drm_bridge *bridge,
 	struct meson_encoder_hdmi *encoder_hdmi = bridge_to_meson_encoder_hdmi(bridge);
 	struct meson_drm *priv = encoder_hdmi->priv;
 	int vic = drm_match_cea_mode(mode);
-	unsigned int ycrcb_map = VPU_HDMI_OUTPUT_CBYCR;
 	bool yuv420_mode = false;
+	unsigned int ycrcb_map;
 
 	DRM_DEBUG_DRIVER("\"%s\" vic %d\n", mode->name, vic);
 
-	if (encoder_hdmi->output_bus_fmt == MEDIA_BUS_FMT_UYYVYY8_0_5X24) {
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8B) ||
+	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8M2)) {
+		if (encoder_hdmi->output_bus_fmt == MEDIA_BUS_FMT_RGB888_1X24)
+			ycrcb_map = VPU_HDMI_OUTPUT_YCBCR;
+		else
+			ycrcb_map = VPU_HDMI_OUTPUT_CRYCB;
+	} else if (encoder_hdmi->output_bus_fmt == MEDIA_BUS_FMT_UYYVYY8_0_5X24) {
 		ycrcb_map = VPU_HDMI_OUTPUT_CRYCB;
 		yuv420_mode = true;
+	} else {
+		ycrcb_map = VPU_HDMI_OUTPUT_CBYCR;
 	}
 
 	/* VENC + VENC-DVI Mode setup */
