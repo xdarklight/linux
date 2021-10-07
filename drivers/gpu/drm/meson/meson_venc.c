@@ -1953,12 +1953,16 @@ void meson_venc_enable_vsync(struct meson_drm *priv)
 		writel_relaxed(VENC_INTCTRL_ENCI_LNRST_INT_EN,
 			       priv->io_base + _REG(VENC_INTCTRL));
 	}
-	regmap_update_bits(priv->hhi, HHI_GCLK_MPEG2, BIT(25), BIT(25));
+
+	if (priv->hhi)
+		regmap_update_bits(priv->hhi, HHI_GCLK_MPEG2, BIT(25), BIT(25));
 }
 
 void meson_venc_disable_vsync(struct meson_drm *priv)
 {
-	regmap_update_bits(priv->hhi, HHI_GCLK_MPEG2, BIT(25), 0);
+	if (priv->hhi)
+		regmap_update_bits(priv->hhi, HHI_GCLK_MPEG2, BIT(25), 0);
+
 	writel_relaxed(0, priv->io_base + _REG(VENC_INTCTRL));
 }
 
@@ -1968,7 +1972,8 @@ void meson_venc_init(struct meson_drm *priv)
 	writel_relaxed(0xff, priv->io_base + _REG(VENC_VDAC_SETTING));
 
 	/* Disable HDMI PHY */
-	regmap_write(priv->hhi, HHI_HDMI_PHY_CNTL0, 0);
+	if (priv->hhi)
+		regmap_write(priv->hhi, HHI_HDMI_PHY_CNTL0, 0);
 
 	/* Disable HDMI */
 	writel_bits_relaxed(VPU_HDMI_ENCI_DATA_TO_HDMI |
