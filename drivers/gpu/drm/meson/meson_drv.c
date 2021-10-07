@@ -257,24 +257,27 @@ static int meson_drv_bind_master(struct device *dev, bool has_components)
 
 	priv->io_base = regs;
 
+	/*
+	 * The HHI resource is optional because it contains the clocks and CVBS
+	 * encoder registers. These are managed by separate drivers though.
+	 */
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "hhi");
-	if (!res) {
-		ret = -EINVAL;
-		goto free_drm;
-	}
-	/* Simply ioremap since it may be a shared register zone */
-	regs = devm_ioremap(dev, res->start, resource_size(res));
-	if (!regs) {
-		ret = -EADDRNOTAVAIL;
-		goto free_drm;
-	}
+	if (res) {
+		/* Simply ioremap since it may be a shared register zone */
+		regs = devm_ioremap(dev, res->start, resource_size(res));
+		if (!regs) {
+			ret = -EADDRNOTAVAIL;
+			goto free_drm;
+		}
 
-	priv->hhi = devm_regmap_init_mmio(dev, regs,
-					  &meson_regmap_config);
-	if (IS_ERR(priv->hhi)) {
-		dev_err(&pdev->dev, "Couldn't create the HHI regmap\n");
-		ret = PTR_ERR(priv->hhi);
-		goto free_drm;
+		priv->hhi = devm_regmap_init_mmio(dev, regs,
+						  &meson_regmap_config);
+		if (IS_ERR(priv->hhi)) {
+			dev_err(&pdev->dev,
+				"Couldn't create the HHI regmap\n");
+			ret = PTR_ERR(priv->hhi);
+			goto free_drm;
+		}
 	}
 
 	priv->canvas = meson_canvas_get(dev);
