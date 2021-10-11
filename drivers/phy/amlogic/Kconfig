@@ -25,6 +25,16 @@ config PHY_MESON8B_USB2
 	  Meson8b and GXBB SoCs.
 	  If unsure, say N.
 
+config PHY_MESON_CVBS_DAC
+	tristate "Amlogic Meson CVBS DAC PHY driver"
+	depends on ARCH_MESON || COMPILE_TEST
+	depends on OF
+	select MFD_SYSCON
+	help
+	  Enable this to support the CVBS DAC (PHY) found in Amlogic
+	  Meson SoCs.
+	  If unsure, say N.
+
 config PHY_MESON_GXL_USB2
 	tristate "Meson GXL and GXM USB2 PHY drivers"
 	default ARCH_MESON
