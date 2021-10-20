@@ -78,6 +78,15 @@ properties:
   interrupts:
     maxItems: 1
 
+  phys:
+    maxItems: 1
+    description:
+      PHY specifier for the CVBS DAC
+
+  phy-names:
+    items:
+      - const: cvbs-dac
+
   power-domains:
     maxItems: 1
     description: phandle to the associated power domain
@@ -118,6 +127,9 @@ examples:
         interrupts = <3>;
         #address-cells = <1>;
         #size-cells = <0>;
+
+        phys = <&cvbs_dac_phy>;
+        phy-names = "cvbs-dac";
 
         /* CVBS VDAC output port */
         port@0 {
