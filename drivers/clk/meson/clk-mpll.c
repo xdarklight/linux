@@ -77,10 +77,13 @@ static unsigned long mpll_recalc_rate(struct clk_hw *hw,
 {
 	struct clk_regmap *clk = to_clk_regmap(hw);
 	struct meson_clk_mpll_data *mpll = meson_clk_mpll_data(clk);
-	unsigned int sdm, n2;
+	unsigned int n2, sdm_en, sdm = 0;
 	long rate;
 
-	sdm = meson_parm_read(clk->map, &mpll->sdm);
+	sdm_en = meson_parm_read(clk->map, &mpll->sdm_en);
+	if (sdm_en)
+		sdm = meson_parm_read(clk->map, &mpll->sdm);
+
 	n2 = meson_parm_read(clk->map, &mpll->n2);
 
 	rate = rate_from_params(parent_rate, sdm, n2);
@@ -124,6 +127,9 @@ static int mpll_set_rate(struct clk_hw *hw,
 	/* Set the fractional part */
 	meson_parm_write(clk->map, &mpll->sdm, sdm);
 
+	/* Enable or disable the fractional part as needed */
+	meson_parm_write(clk->map, &mpll->sdm_en, sdm > 0 ? 1 : 0);
+
 	/* Set the integer divider part */
 	meson_parm_write(clk->map, &mpll->n2, n2);
 
@@ -143,9 +149,6 @@ static int mpll_init(struct clk_hw *hw)
 	if (mpll->init_count)
 		regmap_multi_reg_write(clk->map, mpll->init_regs,
 				       mpll->init_count);
-
-	/* Enable the fractional part */
-	meson_parm_write(clk->map, &mpll->sdm_en, 1);
 
 	/* Set spread spectrum if possible */
 	if (MESON_PARM_APPLICABLE(&mpll->ssen)) {
