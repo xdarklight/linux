@@ -15,6 +15,7 @@ properties:
     enum:
       - mediatek,mt2701-ecc
       - mediatek,mt2712-ecc
+      - mediatek,mt7621-ecc
       - mediatek,mt7622-ecc
 
   reg:
@@ -30,12 +31,24 @@ properties:
   interrupts:
     maxItems: 1
 
+allOf:
+  - if:
+      properties:
+        compatible:
+          contains:
+            enum:
+              - mediatek,mt2701-ecc
+              - mediatek,mt2712-ecc
+              - mediatek,mt7622-ecc
+    then:
+      required:
+        - interrupts
+
 required:
   - compatible
   - reg
   - clocks
   - clock-names
-  - interrupts
 
 additionalProperties: false
 
@@ -46,6 +59,13 @@ examples:
       reg = <0x1100e000 0x1000>;
       interrupts = <55>;
       clocks = <&nfi_ecc_clk>;
+      clock-names = "nfiecc_clk";
+    };
+  - |
+    ecc@1e003800 {
+      compatible = "mediatek,mt7621-ecc";
+      reg = <0x1e003800 0x800>;
+      clocks = <&nfi_clk>;
       clock-names = "nfiecc_clk";
     };
 
