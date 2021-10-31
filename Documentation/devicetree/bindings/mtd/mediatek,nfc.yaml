@@ -15,15 +15,19 @@ properties:
     enum:
       - mediatek,mt2701-nfc
       - mediatek,mt2712-nfc
+      - mediatek,mt7621-nfc
       - mediatek,mt7622-nfc
 
   reg:
     maxItems: 1
 
   clocks:
+    minItems: 1
     maxItems: 2
 
   clock-names:
+    minItems: 1
+    maxItems: 2
     items:
       - const: nfi_clk
       - const: pad_clk
@@ -69,6 +73,18 @@ patternProperties:
 
 allOf:
   - $ref: "nand-controller.yaml#"
+
+  - if:
+      properties:
+        compatible:
+          contains:
+            enum:
+              - mediatek,mt2701-nfc
+              - mediatek,mt2712-nfc
+              - mediatek,mt7622-nfc
+    then:
+      required:
+        - interrupts
 
   - if:
       properties:
@@ -149,6 +165,25 @@ allOf:
       properties:
         compatible:
           contains:
+            const: mediatek,mt7621-nfc
+    then:
+      patternProperties:
+        "^nand@[a-f0-9]$":
+          properties:
+            nand-ecc-step-size:
+              const: 512
+            nand-ecc-strength:
+              enum:
+                - 4
+                - 6
+                - 8
+                - 10
+                - 12
+
+  - if:
+      properties:
+        compatible:
+          contains:
             const: mediatek,mt7622-nfc
     then:
       patternProperties:
@@ -171,7 +206,6 @@ required:
   - reg
   - clocks
   - clock-names
-  - interrupts
   - ecc-engine
 
 additionalProperties: false
@@ -188,5 +222,14 @@ examples:
       #address-cells = <1>;
       #size-cells = <0>;
     };
-
+  - |
+    nand-controller@1e003000 {
+      compatible = "mediatek,mt7621-nfc";
+      reg = <0x1e003000 0x800>;
+      clocks = <&nficlock>;
+      clock-names = "nfi_clk";
+      ecc-engine = <&mtk_nfi_ecc>;
+      #address-cells = <1>;
+      #size-cells = <0>;
+    };
 ...
