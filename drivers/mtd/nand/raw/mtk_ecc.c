@@ -433,6 +433,8 @@ int mtk_ecc_enable(struct mtk_ecc *ecc, struct mtk_ecc_config *config)
 
 	writew(ECC_OP_ENABLE, ecc->regs + ECC_CTL_REG(op));
 
+	dev_err(ecc->dev, "%s(): ECC_ENCCNFG = 0x%08x, ECC_DECCNFG = 0x%08x\n", __func__, readl(ecc->regs + ECC_ENCCNFG), readl(ecc->regs + ECC_DECCNFG));
+
 	return 0;
 }
 EXPORT_SYMBOL(mtk_ecc_enable);
@@ -711,6 +713,18 @@ static int mtk_ecc_probe(struct platform_device *pdev)
 	mutex_init(&ecc->lock);
 	platform_set_drvdata(pdev, ecc);
 	dev_info(dev, "probed\n");
+
+	dev_err(dev, "ECC_ENCCON = 0x%08x\n", readl(ecc->regs + ECC_ENCCON));
+	dev_err(dev, "ECC_ENCCNFG = 0x%08x\n", readl(ecc->regs + ECC_ENCCNFG));
+	dev_err(dev, "ECC_ENCDIADDR = 0x%08x\n", readl(ecc->regs + ECC_ENCDIADDR));
+	dev_err(dev, "ECC_ENCIDLE = 0x%08x\n", readl(ecc->regs + ECC_ENCIDLE));
+	dev_err(dev, "ECC_DECCON = 0x%08x\n", readl(ecc->regs + ECC_DECCON));
+	dev_err(dev, "ECC_DECCNFG = 0x%08x\n", readl(ecc->regs + ECC_DECCNFG));
+	dev_err(dev, "ECC_DECIDLE = 0x%08x\n", readl(ecc->regs + ECC_DECIDLE));
+	dev_err(dev, "ECC_DECENUM0 = 0x%08x\n", readl(ecc->regs + ECC_DECENUM0));
+	dev_err(dev, "ECC_DECEL0 = 0x%08x\n", readl(ecc->regs + ECC_DECEL0));
+	dev_err(dev, "ECC_DECDONE = 0x%08x\n", readl(ecc->regs + 0x118));
+	dev_err(dev, "ECC_FDMADDR = 0x%08x\n", readl(ecc->regs + 0x13c));
 
 	return 0;
 }
