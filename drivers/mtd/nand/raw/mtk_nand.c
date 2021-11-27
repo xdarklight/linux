@@ -17,6 +17,7 @@
 #include <linux/iopoll.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
+#include <linux/sizes.h>
 #include "mtk_ecc.h"
 
 /* NAND controller register definition */
@@ -88,8 +89,6 @@
 #define NFI_EMPTY_THRESH	(0x23C)
 
 #define MTK_NAME		"mtk-nand"
-#define KB(x)			((x) * 1024UL)
-#define MB(x)			(KB(x) * 1024UL)
 
 #define MTK_TIMEOUT		(500000)
 #define MTK_RESET_TIMEOUT	(1000000)
@@ -329,28 +328,28 @@ static int mtk_nfc_hw_runtime_config(struct mtd_info *mtd)
 	spare = mtk_nand->spare_per_sector;
 
 	switch (mtd->writesize) {
-	case 512:
+	case SZ_512:
 		fmt = PAGEFMT_512_2K | PAGEFMT_SEC_SEL_512;
 		break;
-	case KB(2):
+	case SZ_2K:
 		if (chip->ecc.size == 512)
 			fmt = PAGEFMT_2K_4K | PAGEFMT_SEC_SEL_512;
 		else
 			fmt = PAGEFMT_512_2K;
 		break;
-	case KB(4):
+	case SZ_4K:
 		if (chip->ecc.size == 512)
 			fmt = PAGEFMT_4K_8K | PAGEFMT_SEC_SEL_512;
 		else
 			fmt = PAGEFMT_2K_4K;
 		break;
-	case KB(8):
+	case SZ_8K:
 		if (chip->ecc.size == 512)
 			fmt = PAGEFMT_8K_16K | PAGEFMT_SEC_SEL_512;
 		else
 			fmt = PAGEFMT_4K_8K;
 		break;
-	case KB(16):
+	case SZ_16K:
 		fmt = PAGEFMT_8K_16K;
 		break;
 	default:
