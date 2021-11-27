@@ -1766,6 +1766,32 @@ static int mtk_nfc_probe(struct platform_device *pdev)
 	if (ret)
 		goto release_ecc;
 
+	dev_err(dev, "NFI_CNFG = 0x%08x\n", readl(nfc->regs + NFI_CNFG));
+	dev_err(dev, "NFI_PAGEFMT = 0x%08x\n", readl(nfc->regs + NFI_PAGEFMT));
+	dev_err(dev, "NFI_CON = 0x%08x\n", readl(nfc->regs + NFI_CON));
+	dev_err(dev, "NFI_ACCCON = 0x%08x\n", readl(nfc->regs + NFI_ACCCON));
+	dev_err(dev, "NFI_INTR_EN = 0x%08x\n", readl(nfc->regs + NFI_INTR_EN));
+	dev_err(dev, "NFI_INTR_STA = 0x%08x\n", readl(nfc->regs + NFI_INTR_STA));
+	dev_err(dev, "NFI_CMD = 0x%08x\n", readl(nfc->regs + NFI_CMD));
+	dev_err(dev, "NFI_ADDRNOB = 0x%08x\n", readl(nfc->regs + NFI_ADDRNOB));
+	dev_err(dev, "NFI_COLADDR = 0x%08x\n", readl(nfc->regs + NFI_COLADDR));
+	dev_err(dev, "NFI_ROWADDR = 0x%08x\n", readl(nfc->regs + NFI_ROWADDR));
+	dev_err(dev, "NFI_STRDATA = 0x%08x\n", readl(nfc->regs + NFI_STRDATA));
+	dev_err(dev, "NFI_CNRNB = 0x%08x\n", readl(nfc->regs + NFI_CNRNB));
+	dev_err(dev, "NFI_DATAW = 0x%08x\n", readl(nfc->regs + NFI_DATAW));
+	dev_err(dev, "NFI_DATAR = 0x%08x\n", readl(nfc->regs + NFI_DATAR));
+	dev_err(dev, "NFI_PIO_DIRDY = 0x%08x\n", readl(nfc->regs + NFI_PIO_DIRDY));
+	dev_err(dev, "NFI_STA = 0x%08x\n", readl(nfc->regs + NFI_STA));
+	dev_err(dev, "NFI_ADDRCNTR = 0x%08x\n", readl(nfc->regs + NFI_ADDRCNTR));
+	dev_err(dev, "NFI_STRADDR = 0x%08x\n", readl(nfc->regs + NFI_STRADDR));
+	dev_err(dev, "NFI_BYTELEN = 0x%08x\n", readl(nfc->regs + NFI_DATAW));
+	dev_err(dev, "NFI_CSEL = 0x%08x\n", readl(nfc->regs + NFI_CSEL));
+	dev_err(dev, "NFI_FDML(0) = 0x%08x\n", readl(nfc->regs + NFI_FDML(0)));
+	dev_err(dev, "NFI_FDMM(0) = 0x%08x\n", readl(nfc->regs + NFI_FDMM(0)));
+	dev_err(dev, "NFI_DEBUG_CON1 = 0x%08x\n", readl(nfc->regs + NFI_DEBUG_CON1));
+	dev_err(dev, "NFI_MASTER_STA = 0x%08x\n", readl(nfc->regs + 0x210));
+	dev_err(dev, "NFI_EMPTY_THRESH = 0x%08x\n", readl(nfc->regs + NFI_EMPTY_THRESH));
+
 	if (nfc->caps->has_dma_support) {
 		irq = platform_get_irq(pdev, 0);
 		if (irq < 0) {
@@ -1824,6 +1850,32 @@ static int mtk_nfc_remove(struct platform_device *pdev)
 		nand_cleanup(chip);
 		list_del(&mtk_chip->node);
 	}
+
+	dev_err(&pdev->dev, "NFI_CNFG = 0x%08x\n", readl(nfc->regs + NFI_CNFG));
+	dev_err(&pdev->dev, "NFI_PAGEFMT = 0x%08x\n", readl(nfc->regs + NFI_PAGEFMT));
+	dev_err(&pdev->dev, "NFI_CON = 0x%08x\n", readl(nfc->regs + NFI_CON));
+	dev_err(&pdev->dev, "NFI_ACCCON = 0x%08x\n", readl(nfc->regs + NFI_ACCCON));
+	dev_err(&pdev->dev, "NFI_INTR_EN = 0x%08x\n", readl(nfc->regs + NFI_INTR_EN));
+	dev_err(&pdev->dev, "NFI_INTR_STA = 0x%08x\n", readl(nfc->regs + NFI_INTR_STA));
+	dev_err(&pdev->dev, "NFI_CMD = 0x%08x\n", readl(nfc->regs + NFI_CMD));
+	dev_err(&pdev->dev, "NFI_ADDRNOB = 0x%08x\n", readl(nfc->regs + NFI_ADDRNOB));
+	dev_err(&pdev->dev, "NFI_COLADDR = 0x%08x\n", readl(nfc->regs + NFI_COLADDR));
+	dev_err(&pdev->dev, "NFI_ROWADDR = 0x%08x\n", readl(nfc->regs + NFI_ROWADDR));
+	dev_err(&pdev->dev, "NFI_STRDATA = 0x%08x\n", readl(nfc->regs + NFI_STRDATA));
+	dev_err(&pdev->dev, "NFI_CNRNB = 0x%08x\n", readl(nfc->regs + NFI_CNRNB));
+	dev_err(&pdev->dev, "NFI_DATAW = 0x%08x\n", readl(nfc->regs + NFI_DATAW));
+	dev_err(&pdev->dev, "NFI_DATAR = 0x%08x\n", readl(nfc->regs + NFI_DATAR));
+	dev_err(&pdev->dev, "NFI_PIO_DIRDY = 0x%08x\n", readl(nfc->regs + NFI_PIO_DIRDY));
+	dev_err(&pdev->dev, "NFI_STA = 0x%08x\n", readl(nfc->regs + NFI_STA));
+	dev_err(&pdev->dev, "NFI_ADDRCNTR = 0x%08x\n", readl(nfc->regs + NFI_ADDRCNTR));
+	dev_err(&pdev->dev, "NFI_STRADDR = 0x%08x\n", readl(nfc->regs + NFI_STRADDR));
+	dev_err(&pdev->dev, "NFI_BYTELEN = 0x%08x\n", readl(nfc->regs + NFI_DATAW));
+	dev_err(&pdev->dev, "NFI_CSEL = 0x%08x\n", readl(nfc->regs + NFI_CSEL));
+	dev_err(&pdev->dev, "NFI_FDML(0) = 0x%08x\n", readl(nfc->regs + NFI_FDML(0)));
+	dev_err(&pdev->dev, "NFI_FDMM(0) = 0x%08x\n", readl(nfc->regs + NFI_FDMM(0)));
+	dev_err(&pdev->dev, "NFI_DEBUG_CON1 = 0x%08x\n", readl(nfc->regs + NFI_DEBUG_CON1));
+	dev_err(&pdev->dev, "NFI_MASTER_STA = 0x%08x\n", readl(nfc->regs + 0x210));
+	dev_err(&pdev->dev, "NFI_EMPTY_THRESH = 0x%08x\n", readl(nfc->regs + NFI_EMPTY_THRESH));
 
 	mtk_ecc_release(nfc->ecc);
 	mtk_nfc_disable_clk(&nfc->clk);
