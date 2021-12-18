@@ -228,6 +228,7 @@ properties:
           - allwinner,sun9i-a80-smp
           - allwinner,sun8i-a83t-smp
           - amlogic,meson8-smp
+          - amlogic,meson8-trustzone-firmware-smp
           - amlogic,meson8b-smp
           - arm,realview-smp
           - aspeed,ast2600-smp
