@@ -6,6 +6,7 @@
  */
 
 #include <linux/clk.h>
+#include <linux/clk-provider.h>
 #include <linux/console.h>
 #include <linux/delay.h>
 #include <linux/init.h>
@@ -65,9 +66,7 @@
 #define AML_UART_RECV_IRQ(c)		((c) & 0xff)
 
 /* AML_UART_REG5 bits */
-#define AML_UART_BAUD_MASK		0x7fffff
 #define AML_UART_BAUD_USE		BIT(23)
-#define AML_UART_BAUD_XTAL		BIT(24)
 
 #define AML_UART_PORT_NUM		12
 #define AML_UART_PORT_OFFSET		6
@@ -75,6 +74,21 @@
 
 #define AML_UART_POLL_USEC		5
 #define AML_UART_TIMEOUT_USEC		10000
+
+struct meson_uart_data {
+	struct uart_port	port;
+	struct clk		*pclk;
+	struct clk		*baud_clk;
+	struct clk_divider	baud_div;
+	struct clk_mux		use_xtal_mux;
+	struct clk_mux		xtal_clk_sel_mux;
+	struct clk_mux		xtal2_clk_sel_mux;
+	struct clk_fixed_factor	xtal_div2;
+	struct clk_fixed_factor	xtal_div3;
+	struct clk_fixed_factor	clk81_div4;
+	bool			xtal_input_only;
+	bool			has_xtal_clk_sel;
+};
 
 static struct uart_driver meson_uart_driver;
 
@@ -268,14 +282,11 @@ static void meson_uart_reset(struct uart_port *port)
 static int meson_uart_startup(struct uart_port *port)
 {
 	u32 val;
-	int ret = 0;
+	int ret;
+
+	meson_uart_reset(port);
 
 	val = readl(port->membase + AML_UART_CONTROL);
-	val |= AML_UART_CLEAR_ERR;
-	writel(val, port->membase + AML_UART_CONTROL);
-	val &= ~AML_UART_CLEAR_ERR;
-	writel(val, port->membase + AML_UART_CONTROL);
-
 	val |= (AML_UART_RX_EN | AML_UART_TX_EN);
 	writel(val, port->membase + AML_UART_CONTROL);
 
@@ -293,19 +304,17 @@ static int meson_uart_startup(struct uart_port *port)
 
 static void meson_uart_change_speed(struct uart_port *port, unsigned long baud)
 {
+	struct meson_uart_data *private_data = port->private_data;
 	u32 val;
 
 	while (!meson_uart_tx_empty(port))
 		cpu_relax();
 
-	if (port->uartclk == 24000000) {
-		val = ((port->uartclk / 3) / baud) - 1;
-		val |= AML_UART_BAUD_XTAL;
-	} else {
-		val = ((port->uartclk * 10 / (baud * 4) + 5) / 10) - 1;
-	}
+	val = readl(port->membase + AML_UART_REG5);
 	val |= AML_UART_BAUD_USE;
 	writel(val, port->membase + AML_UART_REG5);
+
+	clk_set_rate(private_data->baud_clk, baud);
 }
 
 static void meson_uart_set_termios(struct uart_port *port,
@@ -395,13 +404,73 @@ static int meson_uart_verify_port(struct uart_port *port,
 
 static void meson_uart_release_port(struct uart_port *port)
 {
+	struct meson_uart_data *private_data = port->private_data;
+
+	clk_disable_unprepare(private_data->baud_clk);
+	clk_disable_unprepare(private_data->pclk);
+
+	// TODO: devm_clk_hw_put(port->dev, private_data->baud_clk);
+
+	devm_clk_hw_unregister(port->dev, &private_data->baud_div.hw);
+	devm_clk_hw_unregister(port->dev, &private_data->use_xtal_mux.hw);
+
+	if (private_data->has_xtal_clk_sel) {
+		devm_clk_hw_unregister(port->dev,
+				       &private_data->xtal2_clk_sel_mux.hw);
+		devm_clk_hw_unregister(port->dev,
+				       &private_data->xtal_clk_sel_mux.hw);
+		devm_clk_hw_unregister(port->dev,
+				       &private_data->xtal_div2.hw);
+	}
+
+	if (!private_data->xtal_input_only)
+		devm_clk_hw_unregister(port->dev, &private_data->clk81_div4.hw);
+
+	devm_clk_hw_unregister(port->dev, &private_data->xtal_div3.hw);
+
 	devm_iounmap(port->dev, port->membase);
 	port->membase = NULL;
 	devm_release_mem_region(port->dev, port->mapbase, port->mapsize);
 }
 
+static int meson_uart_register_clk(struct uart_port *port,
+				   const char *name_suffix,
+				   const struct clk_parent_data *parent_data,
+				   unsigned int num_parents,
+				   const struct clk_ops *ops,
+				   struct clk_hw *hw)
+{
+	struct clk_init_data init = { };
+	char clk_name[32];
+
+	snprintf(clk_name, sizeof(clk_name), "%s#%s", dev_name(port->dev),
+		 name_suffix);
+
+	init.name = clk_name;
+	init.ops = ops;
+	init.flags = CLK_SET_RATE_PARENT;
+	init.parent_data = parent_data;
+	init.num_parents = num_parents;
+
+	hw->init = &init;
+
+	return devm_clk_hw_register(port->dev, hw);
+}
+
 static int meson_uart_request_port(struct uart_port *port)
 {
+	struct meson_uart_data *private_data = port->private_data;
+	struct clk_parent_data use_xtal_mux_parents[2] = {
+		{ .index = -1, },
+		{ .index = -1, },
+	};
+	struct clk_parent_data xtal_clk_sel_mux_parents[2] = { };
+	struct clk_parent_data xtal2_clk_sel_mux_parents[2] = { };
+	struct clk_parent_data xtal_div_parent = { .fw_name = "xtal", };
+	struct clk_parent_data clk81_div_parent = { .fw_name = "baud", };
+	struct clk_parent_data baud_div_parent = { };
+	int ret;
+
 	if (!devm_request_mem_region(port->dev, port->mapbase, port->mapsize,
 				     dev_name(port->dev))) {
 		dev_err(port->dev, "Memory region busy\n");
@@ -413,7 +482,141 @@ static int meson_uart_request_port(struct uart_port *port)
 	if (!port->membase)
 		return -ENOMEM;
 
+	ret = clk_prepare_enable(private_data->pclk);
+	if (ret)
+		return ret;
+
+	private_data->xtal_div3.mult = 1;
+	private_data->xtal_div3.div = 3;
+	ret = meson_uart_register_clk(port, "xtal_div3", &xtal_div_parent,
+				      1, &clk_fixed_factor_ops,
+				      &private_data->xtal_div3.hw);
+	if (ret)
+		goto err_disable_pclk;
+
+	if (!private_data->xtal_input_only) {
+		private_data->clk81_div4.mult = 1;
+		private_data->clk81_div4.div = 4;
+		ret = meson_uart_register_clk(port, "clk81_div4",
+					      &clk81_div_parent, 1,
+					      &clk_fixed_factor_ops,
+					      &private_data->clk81_div4.hw);
+		if (ret)
+			goto err_unregister_xtal_div3;
+
+		use_xtal_mux_parents[0].hw = &private_data->clk81_div4.hw;
+	}
+
+	if (private_data->has_xtal_clk_sel) {
+		private_data->xtal_div2.mult = 1;
+		private_data->xtal_div2.div = 2;
+		ret = meson_uart_register_clk(port, "xtal_div2",
+					      &xtal_div_parent, 1,
+					      &clk_fixed_factor_ops,
+					      &private_data->xtal_div2.hw);
+		if (ret)
+			goto err_unregister_clk81_div4;
+
+		xtal_clk_sel_mux_parents[0].hw = &private_data->xtal_div3.hw;
+		xtal_clk_sel_mux_parents[1].fw_name = "xtal";
+
+		private_data->xtal_clk_sel_mux.reg = port->membase + AML_UART_REG5;
+		private_data->xtal_clk_sel_mux.mask = 0x1;
+		private_data->xtal_clk_sel_mux.shift = 26;
+		private_data->xtal_clk_sel_mux.flags = CLK_MUX_ROUND_CLOSEST;
+		ret = meson_uart_register_clk(port, "xtal_clk_sel",
+					      xtal_clk_sel_mux_parents,
+					      ARRAY_SIZE(xtal_clk_sel_mux_parents),
+					      &clk_mux_ops,
+					      &private_data->xtal_clk_sel_mux.hw);
+		if (ret)
+			goto err_unregister_xtal_div2;
+
+		xtal2_clk_sel_mux_parents[0].hw = &private_data->xtal_clk_sel_mux.hw;
+		xtal2_clk_sel_mux_parents[1].hw = &private_data->xtal_div2.hw;
+
+		private_data->xtal2_clk_sel_mux.reg = port->membase + AML_UART_REG5;
+		private_data->xtal2_clk_sel_mux.mask = 0x1;
+		private_data->xtal2_clk_sel_mux.shift = 27;
+		private_data->xtal2_clk_sel_mux.flags = CLK_MUX_ROUND_CLOSEST;
+		ret = meson_uart_register_clk(port, "xtal2_clk_sel",
+					      xtal2_clk_sel_mux_parents,
+					      ARRAY_SIZE(xtal2_clk_sel_mux_parents),
+					      &clk_mux_ops,
+					      &private_data->xtal2_clk_sel_mux.hw);
+		if (ret)
+			goto err_unregister_xtal_clk_sel;
+
+		use_xtal_mux_parents[1].hw = &private_data->xtal2_clk_sel_mux.hw;
+	} else {
+		use_xtal_mux_parents[1].hw = &private_data->xtal_div3.hw;
+	}
+
+	private_data->use_xtal_mux.reg = port->membase + AML_UART_REG5;
+	private_data->use_xtal_mux.mask = 0x1;
+	private_data->use_xtal_mux.shift = 24;
+	private_data->use_xtal_mux.flags = CLK_MUX_ROUND_CLOSEST;
+	ret = meson_uart_register_clk(port, "use_xtal", use_xtal_mux_parents,
+				      ARRAY_SIZE(use_xtal_mux_parents),
+				      &clk_mux_ops,
+				      &private_data->use_xtal_mux.hw);
+	if (ret)
+		goto err_unregister_xtal2_clk_sel;
+
+	baud_div_parent.hw = &private_data->use_xtal_mux.hw;
+
+	private_data->baud_div.reg = port->membase + AML_UART_REG5;
+	private_data->baud_div.shift = 0;
+	private_data->baud_div.width = 23;
+	private_data->baud_div.flags = CLK_DIVIDER_ROUND_CLOSEST;
+	ret = meson_uart_register_clk(port, "baud_div",
+				      &baud_div_parent, 1,
+				      &clk_divider_ops,
+				      &private_data->baud_div.hw);
+	if (ret)
+		goto err_unregister_use_xtal_mux;
+
+	private_data->baud_clk = devm_clk_hw_get_clk(port->dev,
+						     &private_data->baud_div.hw,
+						     "baud_rate");
+	if (IS_ERR(private_data->baud_clk)) {
+		ret = PTR_ERR(private_data->baud_clk);
+		goto err_unregister_baud_div;
+	}
+
+	ret = clk_prepare_enable(private_data->baud_clk);
+	if (ret)
+		goto err_put_baud_clk;
+
 	return 0;
+
+err_put_baud_clk:
+	// TODO: devm_clk_hw_put(port->dev, private_data->baud_clk);
+err_unregister_baud_div:
+	devm_clk_hw_unregister(port->dev, &private_data->baud_div.hw);
+err_unregister_use_xtal_mux:
+	devm_clk_hw_unregister(port->dev, &private_data->use_xtal_mux.hw);
+err_unregister_xtal2_clk_sel:
+	if (private_data->has_xtal_clk_sel)
+		devm_clk_hw_unregister(port->dev,
+				       &private_data->xtal2_clk_sel_mux.hw);
+err_unregister_xtal_clk_sel:
+	if (private_data->has_xtal_clk_sel)
+		devm_clk_hw_unregister(port->dev,
+				       &private_data->xtal_clk_sel_mux.hw);
+err_unregister_xtal_div2:
+	if (private_data->has_xtal_clk_sel)
+		devm_clk_hw_unregister(port->dev,
+				       &private_data->xtal_div2.hw);
+err_unregister_clk81_div4:
+	if (!private_data->xtal_input_only)
+		devm_clk_hw_unregister(port->dev,
+				       &private_data->clk81_div4.hw);
+err_unregister_xtal_div3:
+	devm_clk_hw_unregister(port->dev, &private_data->xtal_div3.hw);
+err_disable_pclk:
+	clk_disable_unprepare(private_data->pclk);
+	return ret;
 }
 
 static void meson_uart_config_port(struct uart_port *port, int flags)
@@ -642,56 +845,11 @@ static struct uart_driver meson_uart_driver = {
 	.cons		= MESON_SERIAL_CONSOLE,
 };
 
-static inline struct clk *meson_uart_probe_clock(struct device *dev,
-						 const char *id)
-{
-	struct clk *clk = NULL;
-	int ret;
-
-	clk = devm_clk_get(dev, id);
-	if (IS_ERR(clk))
-		return clk;
-
-	ret = clk_prepare_enable(clk);
-	if (ret) {
-		dev_err(dev, "couldn't enable clk\n");
-		return ERR_PTR(ret);
-	}
-
-	devm_add_action_or_reset(dev,
-			(void(*)(void *))clk_disable_unprepare,
-			clk);
-
-	return clk;
-}
-
-static int meson_uart_probe_clocks(struct platform_device *pdev,
-				   struct uart_port *port)
-{
-	struct clk *clk_xtal = NULL;
-	struct clk *clk_pclk = NULL;
-	struct clk *clk_baud = NULL;
-
-	clk_pclk = meson_uart_probe_clock(&pdev->dev, "pclk");
-	if (IS_ERR(clk_pclk))
-		return PTR_ERR(clk_pclk);
-
-	clk_xtal = meson_uart_probe_clock(&pdev->dev, "xtal");
-	if (IS_ERR(clk_xtal))
-		return PTR_ERR(clk_xtal);
-
-	clk_baud = meson_uart_probe_clock(&pdev->dev, "baud");
-	if (IS_ERR(clk_baud))
-		return PTR_ERR(clk_baud);
-
-	port->uartclk = clk_get_rate(clk_baud);
-
-	return 0;
-}
-
 static int meson_uart_probe(struct platform_device *pdev)
 {
+	struct meson_uart_data *private_data;
 	struct resource *res_mem, *res_irq;
+	struct clk *clk_baud, *clk_xtal;
 	struct uart_port *port;
 	u32 fifosize = 64; /* Default is 64, 128 for EE UART_0 */
 	int ret = 0;
@@ -728,13 +886,24 @@ static int meson_uart_probe(struct platform_device *pdev)
 		return -EBUSY;
 	}
 
-	port = devm_kzalloc(&pdev->dev, sizeof(struct uart_port), GFP_KERNEL);
-	if (!port)
+	private_data = devm_kzalloc(&pdev->dev, sizeof(*private_data),
+				    GFP_KERNEL);
+	if (!private_data)
 		return -ENOMEM;
 
-	ret = meson_uart_probe_clocks(pdev, port);
-	if (ret)
-		return ret;
+	private_data->pclk = devm_clk_get(&pdev->dev, "pclk");
+	if (IS_ERR(private_data->pclk))
+		return PTR_ERR(private_data->pclk);
+
+	clk_baud = devm_clk_get(&pdev->dev, "baud");
+	if (IS_ERR(clk_baud))
+		return PTR_ERR(clk_baud);
+
+	clk_xtal = devm_clk_get(&pdev->dev, "xtal");
+	if (IS_ERR(clk_xtal))
+		return PTR_ERR(clk_xtal);
+
+	port = &private_data->port;
 
 	port->iotype = UPIO_MEM;
 	port->mapbase = res_mem->start;
@@ -748,15 +917,17 @@ static int meson_uart_probe(struct platform_device *pdev)
 	port->x_char = 0;
 	port->ops = &meson_uart_ops;
 	port->fifosize = fifosize;
+	port->uartclk = clk_get_rate(clk_baud);
+	port->private_data = private_data;
+
+	if (port->uartclk == clk_get_rate(clk_xtal))
+		private_data->xtal_input_only = true;
+
+	if (device_get_match_data(&pdev->dev))
+		private_data->has_xtal_clk_sel = true;
 
 	meson_ports[pdev->id] = port;
 	platform_set_drvdata(pdev, port);
-
-	/* reset port before registering (and possibly registering console) */
-	if (meson_uart_request_port(port) >= 0) {
-		meson_uart_reset(port);
-		meson_uart_release_port(port);
-	}
 
 	ret = uart_add_one_port(&meson_uart_driver, port);
 	if (ret)
@@ -777,10 +948,35 @@ static int meson_uart_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id meson_uart_dt_match[] = {
-	{ .compatible = "amlogic,meson6-uart" },
-	{ .compatible = "amlogic,meson8-uart" },
-	{ .compatible = "amlogic,meson8b-uart" },
-	{ .compatible = "amlogic,meson-gx-uart" },
+	{
+		.compatible = "amlogic,meson6-uart",
+		.data = (void *) false,
+	},
+	{
+		.compatible = "amlogic,meson8-uart",
+		.data = (void *) false,
+	},
+	{
+		.compatible = "amlogic,meson8b-uart",
+		.data = (void *) false,
+	},
+	{
+		.compatible = "amlogic,meson-gxbb-uart",
+		.data = (void *) false,
+	},
+	{
+		.compatible = "amlogic,meson-gxl-uart",
+		.data = (void *) true,
+	},
+	{
+		.compatible = "amlogic,meson-g12a-uart",
+		.data = (void *) true,
+	},
+	/* deprecated, don't use anymore */
+	{
+		.compatible = "amlogic,meson-gx-uart",
+		.data = (void *) false,
+	},
 	{ /* sentinel */ },
 };
 MODULE_DEVICE_TABLE(of, meson_uart_dt_match);
