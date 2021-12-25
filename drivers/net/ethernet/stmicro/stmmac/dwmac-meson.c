@@ -15,7 +15,8 @@
 
 #include "stmmac_platform.h"
 
-#define ETHMAC_SPEED_100	BIT(1)
+/* divides the input clock by 20 (= 0x0) or 2 (= 0x1) */
+#define PREG_ETHERNET_ADDR0_SPEED_100	BIT(1)
 
 struct meson_dwmac {
 	struct device	*dev;
@@ -31,10 +32,10 @@ static void meson6_dwmac_fix_mac_speed(void *priv, unsigned int speed, unsigned 
 
 	switch (speed) {
 	case SPEED_10:
-		val &= ~ETHMAC_SPEED_100;
+		val &= ~PREG_ETHERNET_ADDR0_SPEED_100;
 		break;
 	case SPEED_100:
-		val |= ETHMAC_SPEED_100;
+		val |= PREG_ETHERNET_ADDR0_SPEED_100;
 		break;
 	}
 
