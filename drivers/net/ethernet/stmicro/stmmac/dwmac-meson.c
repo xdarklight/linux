@@ -5,6 +5,7 @@
  * Copyright (C) 2014 Beniamino Galvani <b.galvani@gmail.com>
  */
 
+#include <linux/clk.h>
 #include <linux/device.h>
 #include <linux/ethtool.h>
 #include <linux/io.h>
@@ -14,6 +15,8 @@
 #include <linux/stmmac.h>
 
 #include "stmmac_platform.h"
+
+#define PREG_ETHERNET_ADDR0_DIV_EN	BIT(0)
 
 /* divides the input clock by 20 (= 0x0) or 2 (= 0x1) */
 #define PREG_ETHERNET_ADDR0_SPEED_100	BIT(1)
@@ -45,11 +48,28 @@ static int meson6_dwmac_set_clk_tx_rate(void *bsp_priv, struct clk *clk_tx_i,
 	return 0;
 }
 
+static int meson6_dwmac_init(struct device *dev, void *priv)
+{
+	struct meson_dwmac *dwmac = priv;
+
+	writel(readl(dwmac->reg) | PREG_ETHERNET_ADDR0_DIV_EN, dwmac->reg);
+
+	return 0;
+}
+
+static void meson6_dwmac_exit(struct device *dev, void *priv)
+{
+	struct meson_dwmac *dwmac = priv;
+
+	writel(readl(dwmac->reg) & ~PREG_ETHERNET_ADDR0_DIV_EN, dwmac->reg);
+}
+
 static int meson6_dwmac_probe(struct platform_device *pdev)
 {
 	struct plat_stmmacenet_data *plat_dat;
 	struct stmmac_resources stmmac_res;
 	struct meson_dwmac *dwmac;
+	struct clk *clk;
 	int ret;
 
 	ret = stmmac_get_platform_resources(pdev, &stmmac_res);
@@ -68,7 +88,14 @@ static int meson6_dwmac_probe(struct platform_device *pdev)
 	if (IS_ERR(dwmac->reg))
 		return PTR_ERR(dwmac->reg);
 
+	clk = devm_clk_get_optional_enabled_with_rate(&pdev->dev, "ethernet",
+						      50 * 1000 * 1000);
+	if (IS_ERR(clk))
+		return PTR_ERR(clk);
+
 	plat_dat->bsp_priv = dwmac;
+	plat_dat->init = meson6_dwmac_init;
+	plat_dat->exit = meson6_dwmac_exit;
 	plat_dat->set_clk_tx_rate = meson6_dwmac_set_clk_tx_rate;
 
 	return stmmac_dvr_probe(&pdev->dev, plat_dat, &stmmac_res);
