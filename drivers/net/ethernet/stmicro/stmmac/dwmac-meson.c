@@ -5,6 +5,7 @@
  * Copyright (C) 2014 Beniamino Galvani <b.galvani@gmail.com>
  */
 
+#include <linux/bitfield.h>
 #include <linux/clk.h>
 #include <linux/device.h>
 #include <linux/ethtool.h>
@@ -16,10 +17,20 @@
 
 #include "stmmac_platform.h"
 
-#define PREG_ETHERNET_ADDR0_DIV_EN	BIT(0)
+#define PREG_ETHERNET_ADDR0_DIV_EN			BIT(0)
 
 /* divides the input clock by 20 (= 0x0) or 2 (= 0x1) */
-#define PREG_ETHERNET_ADDR0_SPEED_100	BIT(1)
+#define PREG_ETHERNET_ADDR0_SPEED_100			BIT(1)
+
+/* 0x0 = little, 0x1 = big */
+#define PREG_ETHERNET_ADDR0_DATA_ENDIANNESS		BIT(2)
+
+/* 0x0 = same order, 0x1: unknown */
+#define PREG_ETHERNET_ADDR0_DESC_ENDIANNESS		BIT(3)
+
+#define PREG_ETHERNET_ADDR0_MII_MODE			GENMASK(6, 4)
+#define PREG_ETHERNET_ADDR0_MII_MODE_RGMII		0x1
+#define PREG_ETHERNET_ADDR0_MII_MODE_RMII		0x4
 
 struct meson_dwmac {
 	struct device	*dev;
@@ -52,6 +63,7 @@ static int meson6_dwmac_set_clk_tx_rate(void *bsp_priv, struct clk *clk_tx_i,
 static int meson6_dwmac_init(struct platform_device *pdev, void *priv)
 {
 	struct meson_dwmac *dwmac = priv;
+	u32 val;
 	int ret;
 
 	ret = clk_set_rate(dwmac->ethernet_clk, 50 * 1000 * 1000);
@@ -62,7 +74,14 @@ static int meson6_dwmac_init(struct platform_device *pdev, void *priv)
 	if (ret)
 		return ret;
 
-	writel(readl(dwmac->reg) | PREG_ETHERNET_ADDR0_DIV_EN, dwmac->reg);
+	val = readl(dwmac->reg);
+	val &= ~PREG_ETHERNET_ADDR0_DATA_ENDIANNESS;
+	val &= ~PREG_ETHERNET_ADDR0_DESC_ENDIANNESS;
+	val &= ~PREG_ETHERNET_ADDR0_MII_MODE;
+	val |= FIELD_PREP(PREG_ETHERNET_ADDR0_MII_MODE,
+			  PREG_ETHERNET_ADDR0_MII_MODE_RMII);
+	val |= PREG_ETHERNET_ADDR0_DIV_EN;
+	writel(val, dwmac->reg);
 
 	return 0;
 }
