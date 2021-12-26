@@ -130,6 +130,10 @@
 struct sdio_func;
 struct sdio_device_id;
 
+struct rtw_sdio_tx_data {
+	u8 sn;
+};
+
 struct rtw_sdio_work_data {
 	struct work_struct work;
 	struct rtw_dev *rtwdev;
