@@ -491,6 +491,92 @@ static int rtw_sdio_read_port(struct rtw_dev *rtwdev, u8 *buf, size_t count)
 	return ret;
 }
 
+static int rtw_sdio_check_free_txpg(struct rtw_dev *rtwdev, u8 queue,
+				    size_t count)
+{
+	u8 sdio_free_txpg_len, sdio_free_txpg[12];
+	unsigned int pages_free, pages_needed;
+	int ret;
+
+	if (rtw_chip_wcpu_11n(rtwdev))
+		sdio_free_txpg_len = 4;
+	else
+		sdio_free_txpg_len = 12;
+
+	ret = rtw_sdio_read(rtwdev, REG_SDIO_FREE_TXPG, &sdio_free_txpg,
+			    sdio_free_txpg_len);
+	if (ret)
+		return ret;
+
+	if (rtw_chip_wcpu_11n(rtwdev)) {
+		switch (queue) {
+		case RTW_TX_QUEUE_BCN:
+		case RTW_TX_QUEUE_H2C:
+		case RTW_TX_QUEUE_HI0:
+		case RTW_TX_QUEUE_MGMT:
+			/* high */
+			pages_free = sdio_free_txpg[0];
+			break;
+		case RTW_TX_QUEUE_VI:
+		case RTW_TX_QUEUE_VO:
+			/* normal */
+			pages_free = sdio_free_txpg[1];
+			break;
+		case RTW_TX_QUEUE_BE:
+		case RTW_TX_QUEUE_BK:
+			/* low */
+			pages_free = sdio_free_txpg[2];
+			break;
+		default:
+			rtw_warn(rtwdev, "Unknown mapping for queue %u\n", queue);
+			break;
+		}
+
+		/* add the pages from the public queue */
+		pages_free += sdio_free_txpg[3];
+	} else {
+		switch (queue) {
+		case RTW_TX_QUEUE_BCN:
+		case RTW_TX_QUEUE_H2C:
+		case RTW_TX_QUEUE_HI0:
+			/* high */
+			pages_free = sdio_free_txpg[0] | (sdio_free_txpg[1] << 8);
+			break;
+		case RTW_TX_QUEUE_VI:
+		case RTW_TX_QUEUE_VO:
+			/* normal */
+			pages_free = sdio_free_txpg[2] | (sdio_free_txpg[3] << 8);
+			break;
+		case RTW_TX_QUEUE_BE:
+		case RTW_TX_QUEUE_BK:
+			/* low */
+			pages_free = sdio_free_txpg[4] | (sdio_free_txpg[5] << 8);
+			break;
+		case RTW_TX_QUEUE_MGMT:
+			/* extra */
+			pages_free = sdio_free_txpg[8] | (sdio_free_txpg[9] << 8);
+			break;
+		default:
+			rtw_warn(rtwdev, "Unknown mapping for queue %u\n", queue);
+			break;
+		}
+
+		/* add the pages from the public queue */
+		pages_free += sdio_free_txpg[6] | (sdio_free_txpg[7] << 8);
+	}
+
+	pages_needed = DIV_ROUND_UP(count, rtwdev->chip->page_size);
+
+	if (pages_needed > pages_free) {
+		rtw_dbg(rtwdev, RTW_DBG_SDIO,
+			"Not enough free pages (%u needed, %u free) in queue %u for %zu bytes\n",
+			pages_needed, pages_free, queue, count);
+		return -EBUSY;
+	}
+
+	return 0;
+}
+
 static int rtw_sdio_write_port(struct rtw_dev *rtwdev, u8 *buf,
 			       size_t count, u8 queue)
 {
@@ -506,6 +592,10 @@ static int rtw_sdio_write_port(struct rtw_dev *rtwdev, u8 *buf,
 		return -EINVAL;
 
 	txsize = rtw_sdio_cmd53_align_size(count);
+
+	ret = rtw_sdio_check_free_txpg(rtwdev, queue, txsize);
+	if (ret)
+		return ret;
 
 	ptr = kmalloc(txsize, GFP_KERNEL | GFP_DMA);
 	if (!ptr)
@@ -653,6 +743,16 @@ static void rtw_sdio_power_switch(struct rtw_dev *rtwdev, bool on)
 	rtwsdio->is_powered_on = true;
 }
 
+static struct rtw_sdio_tx_data *rtw_sdio_get_tx_data(struct sk_buff *skb)
+{
+	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
+
+	BUILD_BUG_ON(sizeof(struct rtw_sdio_tx_data) >
+		     sizeof(info->status.status_driver_data));
+
+	return (struct rtw_sdio_tx_data *)info->status.status_driver_data;
+}
+
 static int rtw_sdio_write_data(struct rtw_dev *rtwdev,
 			       struct rtw_tx_pkt_info *pkt_info,
 			       struct sk_buff *skb, u8 queue)
@@ -705,6 +805,7 @@ static int rtw_sdio_tx_write(struct rtw_dev *rtwdev,
 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
 	struct rtw_chip_info *chip = rtwdev->chip;
 	u8 queue = rtw_hw_queue_mapping(skb);
+	struct rtw_sdio_tx_data *tx_data;
 	u8 *pkt_desc;
 
 	pkt_desc = skb_push(skb, chip->tx_pkt_desc_sz);
@@ -712,6 +813,9 @@ static int rtw_sdio_tx_write(struct rtw_dev *rtwdev,
 	pkt_info->qsel = rtw_sdio_get_tx_qsel(skb, queue);
 	rtw_tx_fill_tx_desc(pkt_info, skb);
 	fill_txdesc_checksum_common(skb->data);
+
+	tx_data = rtw_sdio_get_tx_data(skb);
+	tx_data->sn = pkt_info->sn;
 
 	skb_queue_tail(&rtwsdio->tx_queue[queue], skb);
 
@@ -902,6 +1006,29 @@ static int rtw_sdio_request_irq(struct rtw_dev *rtwdev,
 	return 0;
 }
 
+static void rtw_sdio_indicate_tx_status(struct rtw_dev *rtwdev,
+					struct sk_buff *skb)
+{
+	struct rtw_sdio_tx_data *tx_data = rtw_sdio_get_tx_data(skb);
+	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
+	struct ieee80211_hw *hw = rtwdev->hw;
+
+	/* enqueue to wait for tx report */
+	if (info->flags & IEEE80211_TX_CTL_REQ_TX_STATUS) {
+		rtw_tx_report_enqueue(rtwdev, skb, tx_data->sn);
+		return;
+	}
+
+	/* always ACK for others, then they won't be marked as drop */
+	ieee80211_tx_info_clear_status(info);
+	if (info->flags & IEEE80211_TX_CTL_NO_ACK)
+		info->flags |= IEEE80211_TX_STAT_NOACK_TRANSMITTED;
+	else
+		info->flags |= IEEE80211_TX_STAT_ACK;
+
+	ieee80211_tx_status_irqsafe(hw, skb);
+}
+
 static void rtw_sdio_tx_handler(struct work_struct *work)
 {
 	struct rtw_sdio_work_data *work_data =
@@ -909,16 +1036,25 @@ static void rtw_sdio_tx_handler(struct work_struct *work)
 	struct rtw_dev *rtwdev = work_data->rtwdev;
 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
 	struct sk_buff *skb;
-	int index, limit;
+	int ret, queue, limit;
 
-	for (index = RTK_MAX_TX_QUEUE_NUM - 1; index >= 0; index--) {
+	for (queue = RTK_MAX_TX_QUEUE_NUM - 1; queue >= 0; queue--) {
 		for (limit = 0; limit < 200; limit++) {
-			skb = skb_dequeue(&rtwsdio->tx_queue[index]);
+			skb = skb_dequeue(&rtwsdio->tx_queue[queue]);
 			if (!skb)
 				break;
 
-			rtw_sdio_write_port(rtwdev, skb->data, skb->len, index);
-			dev_kfree_skb_any(skb);
+			ret = rtw_sdio_write_port(rtwdev, skb->data, skb->len,
+						  queue);
+			if (ret) {
+				skb_queue_head(&rtwsdio->tx_queue[queue], skb);
+				break;
+			}
+
+			if (queue <= RTW_TX_QUEUE_VO)
+				rtw_sdio_indicate_tx_status(rtwdev, skb);
+			else
+				dev_kfree_skb_any(skb);
 		}
 	}
 }
