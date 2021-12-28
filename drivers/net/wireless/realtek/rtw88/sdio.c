@@ -529,40 +529,42 @@ static int rtw_sdio_check_free_txpg(struct rtw_dev *rtwdev, u8 queue,
 			break;
 		default:
 			rtw_warn(rtwdev, "Unknown mapping for queue %u\n", queue);
-			break;
+			return -EINVAL;
 		}
 
 		/* add the pages from the public queue */
 		pages_free += sdio_free_txpg[3];
 	} else {
+		__le16 *sdio_free_txpg_le16 = (void *)sdio_free_txpg;
+
 		switch (queue) {
 		case RTW_TX_QUEUE_BCN:
 		case RTW_TX_QUEUE_H2C:
 		case RTW_TX_QUEUE_HI0:
 			/* high */
-			pages_free = sdio_free_txpg[0] | (sdio_free_txpg[1] << 8);
+			pages_free = le16_to_cpu(sdio_free_txpg_le16[0]) & 0xfff;
 			break;
 		case RTW_TX_QUEUE_VI:
 		case RTW_TX_QUEUE_VO:
 			/* normal */
-			pages_free = sdio_free_txpg[2] | (sdio_free_txpg[3] << 8);
+			pages_free = le16_to_cpu(sdio_free_txpg_le16[1]) & 0xfff;
 			break;
 		case RTW_TX_QUEUE_BE:
 		case RTW_TX_QUEUE_BK:
 			/* low */
-			pages_free = sdio_free_txpg[4] | (sdio_free_txpg[5] << 8);
+			pages_free = le16_to_cpu(sdio_free_txpg_le16[2]) & 0xfff;
 			break;
 		case RTW_TX_QUEUE_MGMT:
 			/* extra */
-			pages_free = sdio_free_txpg[8] | (sdio_free_txpg[9] << 8);
+			pages_free = le16_to_cpu(sdio_free_txpg_le16[4]) & 0xfff;
 			break;
 		default:
 			rtw_warn(rtwdev, "Unknown mapping for queue %u\n", queue);
-			break;
+			return -EINVAL;
 		}
 
 		/* add the pages from the public queue */
-		pages_free += sdio_free_txpg[6] | (sdio_free_txpg[7] << 8);
+		pages_free += (le16_to_cpu(sdio_free_txpg_le16[3]) & 0xfff);
 	}
 
 	pages_needed = DIV_ROUND_UP(count, rtwdev->chip->page_size);
