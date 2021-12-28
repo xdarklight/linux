@@ -144,25 +144,8 @@ static struct ieee80211_supported_band rtw_band_5ghz = {
 struct rtw_watch_dog_iter_data {
 	struct rtw_dev *rtwdev;
 	struct rtw_vif *rtwvif;
+	bool cfg_csi_rate;
 };
-
-static void rtw_dynamic_csi_rate(struct rtw_dev *rtwdev, struct rtw_vif *rtwvif)
-{
-	struct rtw_bf_info *bf_info = &rtwdev->bf_info;
-	u8 fix_rate_enable = 0;
-	u8 new_csi_rate_idx;
-
-	if (rtwvif->bfee.role != RTW_BFEE_SU &&
-	    rtwvif->bfee.role != RTW_BFEE_MU)
-		return;
-
-	rtw_chip_cfg_csi_rate(rtwdev, rtwdev->dm_info.min_rssi,
-			      bf_info->cur_csi_rpt_rate,
-			      fix_rate_enable, &new_csi_rate_idx);
-
-	if (new_csi_rate_idx != bf_info->cur_csi_rpt_rate)
-		bf_info->cur_csi_rpt_rate = new_csi_rate_idx;
-}
 
 static void rtw_vif_watch_dog_iter(void *data, u8 *mac,
 				   struct ieee80211_vif *vif)
@@ -174,7 +157,8 @@ static void rtw_vif_watch_dog_iter(void *data, u8 *mac,
 		if (vif->bss_conf.assoc)
 			iter_data->rtwvif = rtwvif;
 
-	rtw_dynamic_csi_rate(iter_data->rtwdev, rtwvif);
+	iter_data->cfg_csi_rate = rtwvif->bfee.role == RTW_BFEE_SU ||
+				  rtwvif->bfee.role == RTW_BFEE_MU;
 
 	rtwvif->stats.tx_unicast = 0;
 	rtwvif->stats.rx_unicast = 0;
@@ -243,6 +227,19 @@ static void rtw_watch_dog_work(struct work_struct *work)
 	data.rtwdev = rtwdev;
 	/* use atomic version to avoid taking local->iflist_mtx mutex */
 	rtw_iterate_vifs_atomic(rtwdev, rtw_vif_watch_dog_iter, &data);
+
+	if (data.cfg_csi_rate) {
+		struct rtw_bf_info *bf_info = &rtwdev->bf_info;
+		u8 fix_rate_enable = 0;
+		u8 new_csi_rate_idx;
+
+		rtw_chip_cfg_csi_rate(rtwdev, rtwdev->dm_info.min_rssi,
+				      bf_info->cur_csi_rpt_rate,
+				      fix_rate_enable, &new_csi_rate_idx);
+
+		if (new_csi_rate_idx != bf_info->cur_csi_rpt_rate)
+			bf_info->cur_csi_rpt_rate = new_csi_rate_idx;
+	}
 
 	/* fw supports only one station associated to enter lps, if there are
 	 * more than two stations associated to the AP, then we can not enter
