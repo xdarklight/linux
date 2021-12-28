@@ -728,12 +728,12 @@ static void rtw_sdio_interface_cfg(struct rtw_dev *rtwdev)
 
 	rtw_read32(rtwdev, REG_SDIO_FREE_TXPG);
 
-	val = rtw_read32(rtwdev, REG_SDIO_FREE_TXPG);
+	val = rtw_read32(rtwdev, REG_SDIO_TX_CTRL);
 	val &= 0xffff;
-	val &= ~(REG_SDIO_TX_ERRSTPINTEN |
-		 REG_SDIO_TX_ENMSKTMR |
-		 REG_SDIO_TX_ENRXDMAMSKINT);
-	rtw_write32(rtwdev, REG_SDIO_FREE_TXPG, val);
+	val &= ~(REG_SDIO_TX_CTRL_CMD_ERR_STOP_INT_EN |
+		 REG_SDIO_TX_CTRL_EN_MASK_TIMER |
+		 REG_SDIO_TX_CTRL_EN_RXDMA_MASK_INT);
+	rtw_write32(rtwdev, REG_SDIO_TX_CTRL, val);
 }
 
 static void rtw_sdio_power_switch(struct rtw_dev *rtwdev, bool on)
