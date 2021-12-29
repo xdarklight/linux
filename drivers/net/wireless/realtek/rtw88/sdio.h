@@ -142,6 +142,8 @@
 #define RTW_SDIO_BLOCK_SIZE			512
 #define RTW_SDIO_ADDR_RX_RX0FF_GEN(_id)		(0x0e000 | ((_id) & 0x3))
 
+#define RTW_SDIO_MAX_XMITBUF_SZ			(RTW_SDIO_BLOCK_SIZE * 40)
+
 struct sdio_func;
 struct sdio_device_id;
 
