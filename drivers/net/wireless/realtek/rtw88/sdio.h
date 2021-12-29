@@ -127,6 +127,8 @@
 #define RTW_SDIO_BLOCK_SIZE			512
 #define RTW_SDIO_ADDR_RX_RX0FF_GEN(_id)		(0x0e000 | ((_id) & 0x3))
 
+#define RTW_SDIO_MAX_XMITBUF_SZ			(RTW_SDIO_BLOCK_SIZE * 40)
+
 #define RTW_SDIO_DATA_PTR_ALIGN			8
 
 struct sdio_func;
@@ -154,6 +156,7 @@ struct rtw_sdio {
 	struct workqueue_struct *txwq, *rxwq;
 
 	struct sk_buff_head tx_queue[RTK_MAX_TX_QUEUE_NUM];
+	struct sk_buff_head tx_ack_queue[RTK_MAX_TX_QUEUE_NUM];
 	struct rtw_sdio_work_data *tx_handler_data;
 };
 
