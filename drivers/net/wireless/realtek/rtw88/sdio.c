@@ -491,11 +491,10 @@ static int rtw_sdio_read_port(struct rtw_dev *rtwdev, u8 *buf, size_t count)
 	return ret;
 }
 
-static int rtw_sdio_check_free_txpg(struct rtw_dev *rtwdev, u8 queue,
-				    size_t count)
+static int rtw_sdio_get_free_txpg(struct rtw_dev *rtwdev, u8 queue)
 {
 	u8 sdio_free_txpg_len, sdio_free_txpg[12];
-	unsigned int pages_free, pages_needed;
+	unsigned int pages_free;
 	int ret;
 
 	if (rtw_chip_wcpu_11n(rtwdev))
@@ -567,12 +566,26 @@ static int rtw_sdio_check_free_txpg(struct rtw_dev *rtwdev, u8 queue,
 		pages_free += (le16_to_cpu(sdio_free_txpg_le16[3]) & 0xfff);
 	}
 
-	pages_needed = DIV_ROUND_UP(count, rtwdev->chip->page_size);
+	return pages_free;
+}
+
+static int rtw_sdio_check_free_txpg(struct rtw_dev *rtwdev, u8 queue,
+				    size_t bytes)
+{
+	unsigned int pages_free, pages_needed;
+	int ret;
+
+	ret = rtw_sdio_get_free_txpg(rtwdev, queue);
+	if (ret < 0)
+		return ret;
+
+	pages_free = ret;
+	pages_needed = DIV_ROUND_UP(bytes, rtwdev->chip->page_size);
 
 	if (pages_needed > pages_free) {
 		rtw_dbg(rtwdev, RTW_DBG_SDIO,
 			"Not enough free pages (%u needed, %u free) in queue %u for %zu bytes\n",
-			pages_needed, pages_free, queue, count);
+			pages_needed, pages_free, queue, bytes);
 		return -EBUSY;
 	}
 
@@ -1031,32 +1044,142 @@ static void rtw_sdio_indicate_tx_status(struct rtw_dev *rtwdev,
 	ieee80211_tx_status_irqsafe(hw, skb);
 }
 
+static int rtw_sdio_tx(struct rtw_dev *rtwdev, u8 queue)
+{
+	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+	struct sk_buff_head *tx_queue, *ack_queue;
+	struct sk_buff *skb, *skb_agg, *skb_iter;
+	u8 *data_ptr, num_aggregated_skbs = 0;
+	unsigned int max_agg_bytes;
+	unsigned long flags;
+	size_t aligned_size;
+	int  ret;
+
+	tx_queue = &rtwsdio->tx_queue[queue];
+	ack_queue = &rtwsdio->tx_ack_queue[queue];
+
+	skb = skb_dequeue(tx_queue);
+	if (!skb)
+		return 0;
+
+	if (queue > RTW_TX_QUEUE_VO || skb_queue_empty(tx_queue)) {
+		skb_queue_tail(ack_queue, skb);
+		return rtw_sdio_write_port(rtwdev, skb->data, skb->len, queue);
+	}
+
+#if 1
+	ret = rtw_sdio_get_free_txpg(rtwdev, queue);
+	if (ret < 0)
+		return ret;
+
+	max_agg_bytes = min(RTW_SDIO_MAX_XMITBUF_SZ,
+			    ret * rtwdev->chip->page_size);
+	if (skb->len > max_agg_bytes)
+		return -EBUSY;
+
+	skb_agg = dev_alloc_skb(max_agg_bytes);
+	if (!skb_agg) {
+		skb_queue_tail(ack_queue, skb);
+		return rtw_sdio_write_port(rtwdev, skb->data, skb->len, queue);
+	}
+
+	data_ptr = skb_agg->data;
+	skb_iter = skb;
+
+	skb_queue_tail(ack_queue, skb);
+
+	while (num_aggregated_skbs < U8_MAX) {
+		memcpy(data_ptr, skb_iter->data, skb_iter->len);
+
+		aligned_size = ALIGN(skb_iter->len, 8);
+		skb_put(skb_agg, aligned_size);
+		data_ptr += aligned_size;
+
+		spin_lock_irqsave(&tx_queue->lock, flags);
+
+		skb_iter = skb_peek(tx_queue);
+		if (skb_iter &&
+		    ALIGN(skb_iter->len, 8) < (max_agg_bytes - skb_agg->len))
+			__skb_unlink(skb_iter, tx_queue);
+		else
+			skb_iter = NULL;
+
+		spin_unlock_irqrestore(&tx_queue->lock, flags);
+
+		if (!skb_iter)
+			break;
+
+		num_aggregated_skbs++;
+		skb_queue_tail(ack_queue, skb_iter);
+	}
+
+	if (!num_aggregated_skbs) {
+		dev_kfree_skb_any(skb_agg);
+		return rtw_sdio_write_port(rtwdev, skb->data, skb->len, queue);
+	}
+
+	/*
+	 * Firmware starts counting the number of aggregated SKBs at 0. This
+	 * information only has to be set in the very first TX descriptor (all
+	 * following TX descriptors in this aggregated transfer can still use
+	 * zero ax DMA_TXAGG_NUM).
+	 * Updating the TX descriptor also means that the checksum needs to be
+	 * re-calculated.
+	 */
+	SET_TX_DESC_DMA_TXAGG_NUM(skb_agg->data, num_aggregated_skbs + 1);
+	fill_txdesc_checksum_common(skb_agg->data);
+
+	ret = rtw_sdio_write_port(rtwdev, skb_agg->data, skb_agg->len,
+				  queue);
+	dev_kfree_skb_any(skb_agg);
+
+	return ret;
+#else
+	skb_queue_tail(ack_queue, skb);
+	return rtw_sdio_write_port(rtwdev, skb->data, skb->len, queue);
+#endif
+}
+
 static void rtw_sdio_tx_handler(struct work_struct *work)
 {
 	struct rtw_sdio_work_data *work_data =
 		container_of(work, struct rtw_sdio_work_data, work);
 	struct rtw_dev *rtwdev = work_data->rtwdev;
 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
-	struct sk_buff *skb;
+	struct sk_buff_head *tx_queue, *ack_queue;
 	int ret, queue, limit;
+	struct sk_buff *skb;
 
 	for (queue = RTK_MAX_TX_QUEUE_NUM - 1; queue >= 0; queue--) {
 		for (limit = 0; limit < 200; limit++) {
-			skb = skb_dequeue(&rtwsdio->tx_queue[queue]);
-			if (!skb)
+			tx_queue = &rtwsdio->tx_queue[queue];
+			ack_queue = &rtwsdio->tx_ack_queue[queue];
+
+			if (skb_queue_empty(tx_queue))
 				break;
 
-			ret = rtw_sdio_write_port(rtwdev, skb->data, skb->len,
-						  queue);
-			if (ret) {
-				skb_queue_head(&rtwsdio->tx_queue[queue], skb);
-				break;
+			ret = rtw_sdio_tx(rtwdev, queue);
+
+			while ((skb = skb_dequeue_tail(ack_queue))) {
+				/*
+				 * If transmitting the data failed then we need
+				 * to add all SKBs back to the queue while
+				 * keeping the order in which we have taken
+				 * them from the tx_queue.
+				 * Otherwise we can either indicate the TX
+				 * status or free the (no longer referenced)
+				 * SKBs.
+				 */
+				if (ret)
+					skb_queue_head(tx_queue, skb);
+				else if (queue <= RTW_TX_QUEUE_VO)
+					rtw_sdio_indicate_tx_status(rtwdev, skb);
+				else
+					dev_kfree_skb_any(skb);
 			}
 
-			if (queue <= RTW_TX_QUEUE_VO)
-				rtw_sdio_indicate_tx_status(rtwdev, skb);
-			else
-				dev_kfree_skb_any(skb);
+			if (ret)
+				break;
 		}
 	}
 }
@@ -1078,8 +1201,11 @@ static int rtw_sdio_init_tx(struct rtw_dev *rtwdev)
 		return -ENOMEM;
 	}
 
-	for (i = 0; i < RTK_MAX_TX_QUEUE_NUM; i++)
+	for (i = 0; i < RTK_MAX_TX_QUEUE_NUM; i++) {
 		skb_queue_head_init(&rtwsdio->tx_queue[i]);
+		skb_queue_head_init(&rtwsdio->tx_ack_queue[i]);
+	}
+
 	rtwsdio->tx_handler_data = kmalloc(sizeof(*rtwsdio->tx_handler_data),
 					   GFP_KERNEL);
 	if (!rtwsdio->tx_handler_data)
@@ -1100,8 +1226,10 @@ static void rtw_sdio_deinit_tx(struct rtw_dev *rtwdev)
 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
 	int i;
 
-	for (i = 0; i < RTK_MAX_TX_QUEUE_NUM; i++)
+	for (i = 0; i < RTK_MAX_TX_QUEUE_NUM; i++) {
 		skb_queue_purge(&rtwsdio->tx_queue[i]);
+		skb_queue_purge(&rtwsdio->tx_ack_queue[i]);
+	}
 
 	flush_workqueue(rtwsdio->txwq);
 	destroy_workqueue(rtwsdio->txwq);
