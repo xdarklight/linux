@@ -325,11 +325,8 @@
 		interrupt-parent = <&gpio_intc>;
 		interrupts = <13 IRQ_TYPE_EDGE_BOTH>; /* GPIOAO_13 */
 
-		/*
-		 * TODO: realtek,ldo1-en-gpios is connected to GPIO_BSD_EN.
-		 * We currently cannot configure this pin correctly.
-		 * Luckily for us it's in the "right" state by default.
-		 */
+		realtek,ldo1-en-gpios = <&gpio GPIO_BSD_EN GPIO_ACTIVE_HIGH>;
+
 		realtek,in1-differential;
 	};
 };
