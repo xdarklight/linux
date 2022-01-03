@@ -639,7 +639,6 @@ static void rtw_sdio_tx_kick_off(struct rtw_dev *rtwdev)
 {
 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
 
-	rtw_sdio_deep_ps_leave(rtwdev);
 	queue_work(rtwsdio->txwq, &rtwsdio->tx_handler_data->work);
 }
 
@@ -961,6 +960,8 @@ static void rtw_sdio_tx_handler(struct work_struct *work)
 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
 	struct sk_buff *skb;
 	int ret, queue, limit;
+
+	rtw_sdio_deep_ps_leave(rtwdev);
 
 	for (queue = RTK_MAX_TX_QUEUE_NUM - 1; queue >= 0; queue--) {
 		for (limit = 0; limit < 200; limit++) {
