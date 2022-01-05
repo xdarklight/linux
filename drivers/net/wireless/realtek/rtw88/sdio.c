@@ -815,6 +815,9 @@ static void rtw_sdio_rxfifo_recv(struct rtw_dev *rtwdev, u32 rx_len)
 
 	skb_put(skb, pkt_stat.pkt_len);
 	skb_reserve(skb, pkt_offset);
+
+	rtw_rx_stats(rtwdev, pkt_stat.vif, skb);
+
 	ieee80211_rx_irqsafe(rtwdev->hw, skb);
 }
 
