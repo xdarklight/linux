@@ -472,6 +472,14 @@ static int rtw_sdio_check_free_txpg(struct rtw_dev *rtwdev, u8 queue,
 	return 0;
 }
 
+static size_t rtw_sdio_skb_get_aligned_len(struct sk_buff *skb)
+{
+	if (!skb)
+		return 0;
+
+	return ALIGN(skb->len, RTW_SDIO_DATA_PTR_ALIGN);
+}
+
 static int rtw_sdio_write_port(struct rtw_dev *rtwdev, struct sk_buff *skb,
 			       u8 queue)
 {
@@ -1041,15 +1049,16 @@ static int rtw_sdio_tx(struct rtw_dev *rtwdev, u8 queue)
 	while (num_aggregated_skbs < U8_MAX) {
 		memcpy(data_ptr, skb_iter->data, skb_iter->len);
 
-		aligned_size = ALIGN(skb_iter->len, 8);
+		aligned_size = rtw_sdio_skb_get_aligned_len(skb_iter);
 		skb_put(skb_agg, aligned_size);
 		data_ptr += aligned_size;
 
 		spin_lock_irqsave(&tx_queue->lock, flags);
 
 		skb_iter = skb_peek(tx_queue);
+		aligned_size = rtw_sdio_skb_get_aligned_len(skb_iter);
 		if (skb_iter &&
-		    ALIGN(skb_iter->len, 8) < (max_agg_bytes - skb_agg->len))
+		    aligned_size < (max_agg_bytes - skb_agg->len))
 			__skb_unlink(skb_iter, tx_queue);
 		else
 			skb_iter = NULL;
