@@ -975,35 +975,52 @@ static void rtw_sdio_indicate_tx_status(struct rtw_dev *rtwdev,
 	ieee80211_tx_status_irqsafe(hw, skb);
 }
 
+static void rtw_sdio_tx_queue(struct rtw_dev *rtwdev,
+			      enum rtw_tx_queue_type queue)
+{
+	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+	struct sk_buff *skb;
+	int ret;
+
+	while (true) {
+		skb = skb_dequeue(&rtwsdio->tx_queue[queue]);
+		if (!skb)
+			break;
+
+		ret = rtw_sdio_write_port(rtwdev, skb, queue);
+		if (ret) {
+			skb_queue_head(&rtwsdio->tx_queue[queue], skb);
+			break;
+		}
+
+		if (queue <= RTW_TX_QUEUE_VO)
+			rtw_sdio_indicate_tx_status(rtwdev, skb);
+		else
+			dev_kfree_skb_any(skb);
+	}
+}
+
 static void rtw_sdio_tx_handler(struct work_struct *work)
 {
 	struct rtw_sdio_work_data *work_data =
 		container_of(work, struct rtw_sdio_work_data, work);
 	struct rtw_dev *rtwdev = work_data->rtwdev;
 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
-	struct sk_buff *skb;
-	int ret, queue, limit;
+	bool has_more_tx_data;
+	int queue;
 
 	rtw_sdio_deep_ps_leave(rtwdev);
 
-	for (queue = RTK_MAX_TX_QUEUE_NUM - 1; queue >= 0; queue--) {
-		for (limit = 0; limit < 200; limit++) {
-			skb = skb_dequeue(&rtwsdio->tx_queue[queue]);
-			if (!skb)
-				break;
+	do {
+		has_more_tx_data = false;
 
-			ret = rtw_sdio_write_port(rtwdev, skb, queue);
-			if (ret) {
-				skb_queue_head(&rtwsdio->tx_queue[queue], skb);
-				break;
-			}
+		for (queue = RTK_MAX_TX_QUEUE_NUM - 1; queue >= 0; queue--) {
+			rtw_sdio_tx_queue(rtwdev, queue);
 
-			if (queue <= RTW_TX_QUEUE_VO)
-				rtw_sdio_indicate_tx_status(rtwdev, skb);
-			else
-				dev_kfree_skb_any(skb);
+			if (!skb_queue_empty(&rtwsdio->tx_queue[queue]))
+				has_more_tx_data = true;
 		}
-	}
+	} while (has_more_tx_data);
 }
 
 static void rtw_sdio_free_irq(struct rtw_dev *rtwdev,
