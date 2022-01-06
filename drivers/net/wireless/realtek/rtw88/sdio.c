@@ -479,13 +479,9 @@ static int rtw_sdio_write_port(struct rtw_dev *rtwdev, struct sk_buff *skb,
 	if (ret)
 		return ret;
 
-	/* re-align buffer, if needed, so SDIO DMA can consume it */
-	if (!IS_ALIGNED((unsigned long)skb->data, 8)) {
-		nskb = skb_copy_expand(skb, 0, 0, GFP_ATOMIC);
-		if (!nskb)
-			return -ENOMEM;
-		skb = nskb;
-	}
+	if (!IS_ALIGNED((unsigned long)skb->data, RTW_SDIO_DATA_PTR_ALIGN))
+		rtw_warn(rtwdev, "Got unaligned SKB in %s() for queue %u\n",
+			 __func__, queue);
 
 	bus_claim = rtw_sdio_bus_claim_needed(rtwsdio);
 
@@ -675,19 +671,55 @@ static struct rtw_sdio_tx_data *rtw_sdio_get_tx_data(struct sk_buff *skb)
 	return (struct rtw_sdio_tx_data *)info->status.status_driver_data;
 }
 
+static void rtw_sdio_tx_skb_prepare(struct rtw_dev *rtwdev,
+				    struct rtw_tx_pkt_info *pkt_info,
+				    u8 queue, struct sk_buff *skb)
+{
+	struct rtw_chip_info *chip = rtwdev->chip;
+	unsigned long data_addr, aligned_addr;
+	void *data_ptr;
+	size_t offset;
+	u8 *pkt_desc;
+
+	data_ptr = skb_push(skb, chip->tx_pkt_desc_sz);
+
+	data_addr = (unsigned long)data_ptr;
+	aligned_addr = ALIGN(data_addr, RTW_SDIO_DATA_PTR_ALIGN);
+
+	if (data_addr == aligned_addr) {
+		pkt_desc = data_ptr;
+	} else {
+		/*
+		 * Ensure that the start of the pkt_desc is always aligned at
+		 * RTW_SDIO_DATA_PTR_ALIGN.
+		 */
+		offset = RTW_SDIO_DATA_PTR_ALIGN - (aligned_addr - data_addr);
+
+		pkt_desc = skb_push(skb, offset);
+
+		/*
+		 * By inserting padding to align the start of the pkt_desc we
+		 * need to inform the firmware that the actual data starts at
+		 * a different offset than normal.
+		 */
+		pkt_info->offset += offset;
+	}
+
+	memset(pkt_desc, 0, chip->tx_pkt_desc_sz);
+
+	pkt_info->qsel = rtw_sdio_get_tx_qsel(skb, queue);
+
+	rtw_tx_fill_tx_desc(pkt_info, skb);
+	fill_txdesc_checksum_common(skb->data);
+}
+
 static int rtw_sdio_write_data(struct rtw_dev *rtwdev,
 			       struct rtw_tx_pkt_info *pkt_info,
 			       struct sk_buff *skb, u8 queue)
 {
-	struct rtw_chip_info *chip = rtwdev->chip;
-	u8 *pkt_desc;
 	int ret;
 
-	pkt_desc = skb_push(skb, chip->tx_pkt_desc_sz);
-	memset(pkt_desc, 0, chip->tx_pkt_desc_sz);
-	pkt_info->qsel = rtw_sdio_get_tx_qsel(skb, queue);
-	rtw_tx_fill_tx_desc(pkt_info, skb);
-	fill_txdesc_checksum_common(skb->data);
+	rtw_sdio_tx_skb_prepare(rtwdev, pkt_info, queue, skb);
 
 	ret = rtw_sdio_write_port(rtwdev, skb, queue);
 	dev_kfree_skb_any(skb);
@@ -725,16 +757,10 @@ static int rtw_sdio_tx_write(struct rtw_dev *rtwdev,
 			     struct sk_buff *skb)
 {
 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
-	struct rtw_chip_info *chip = rtwdev->chip;
 	u8 queue = rtw_hw_queue_mapping(skb);
 	struct rtw_sdio_tx_data *tx_data;
-	u8 *pkt_desc;
 
-	pkt_desc = skb_push(skb, chip->tx_pkt_desc_sz);
-	memset(pkt_desc, 0, chip->tx_pkt_desc_sz);
-	pkt_info->qsel = rtw_sdio_get_tx_qsel(skb, queue);
-	rtw_tx_fill_tx_desc(pkt_info, skb);
-	fill_txdesc_checksum_common(skb->data);
+	rtw_sdio_tx_skb_prepare(rtwdev, pkt_info, queue, skb);
 
 	tx_data = rtw_sdio_get_tx_data(skb);
 	tx_data->sn = pkt_info->sn;
