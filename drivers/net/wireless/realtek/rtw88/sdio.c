@@ -981,6 +981,7 @@ static void rtw_sdio_tx_handler(struct work_struct *work)
 		container_of(work, struct rtw_sdio_work_data, work);
 	struct rtw_dev *rtwdev = work_data->rtwdev;
 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+	bool has_more_tx_data = false;
 	struct sk_buff *skb;
 	int ret, queue, limit;
 
@@ -995,6 +996,7 @@ static void rtw_sdio_tx_handler(struct work_struct *work)
 			ret = rtw_sdio_write_port(rtwdev, skb, queue);
 			if (ret) {
 				skb_queue_head(&rtwsdio->tx_queue[queue], skb);
+				has_more_tx_data = true;
 				break;
 			}
 
@@ -1003,7 +1005,13 @@ static void rtw_sdio_tx_handler(struct work_struct *work)
 			else
 				dev_kfree_skb_any(skb);
 		}
+
+		if (!skb_queue_empty(&rtwsdio->tx_queue[queue]))
+			has_more_tx_data = true;
 	}
+
+	if (has_more_tx_data)
+		rtw_sdio_tx_kick_off(rtwdev);
 }
 
 static void rtw_sdio_free_irq(struct rtw_dev *rtwdev,
