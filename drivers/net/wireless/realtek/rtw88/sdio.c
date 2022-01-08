@@ -507,6 +507,35 @@ static void rtw_sdio_init(struct rtw_dev *rtwdev)
 	rtwsdio->irq_mask = REG_SDIO_HIMR_RX_REQUEST | REG_SDIO_HIMR_CPWM1;
 }
 
+static void rtw_sdio_rx_aggregation(struct rtw_dev *rtwdev, bool enable)
+{
+	u8 size, timeout;
+
+	if (enable) {
+		if (rtwdev->chip->id == RTW_CHIP_TYPE_8822C) {
+			size = 0xff;
+			timeout = 0x20;
+		} else {
+			size = 0x6;
+			timeout = 0x6;
+		}
+
+		/* Make the firmware honor the size limit configured below */
+		rtw_write32_set(rtwdev, REG_RXDMA_AGG_PG_TH, BIT_EN_PRE_CALC);
+
+		rtw_write8_set(rtwdev, REG_TXDMA_PQ_MAP, BIT_RXDMA_AGG_EN);
+
+		rtw_write16(rtwdev, REG_RXDMA_AGG_PG_TH, size |
+			    (timeout << BIT_SHIFT_DMA_AGG_TO_V1));
+
+		rtw_write8_set(rtwdev, REG_RXDMA_MODE, BIT_DMA_MODE);
+	} else {
+		rtw_write32_clr(rtwdev, REG_RXDMA_AGG_PG_TH, BIT_EN_PRE_CALC);
+		rtw_write8_clr(rtwdev, REG_TXDMA_PQ_MAP, BIT_RXDMA_AGG_EN);
+		rtw_write8_clr(rtwdev, REG_RXDMA_MODE, BIT_DMA_MODE);
+	}
+}
+
 static void rtw_sdio_enable_interrupt(struct rtw_dev *rtwdev)
 {
 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
@@ -575,6 +604,7 @@ static int rtw_sdio_setup(struct rtw_dev *rtwdev)
 
 static int rtw_sdio_start(struct rtw_dev *rtwdev)
 {
+	rtw_sdio_rx_aggregation(rtwdev, false);
 	rtw_sdio_enable_interrupt(rtwdev);
 
 	return 0;
@@ -777,14 +807,35 @@ static void rtw_sdio_tx_err_isr(struct rtw_dev *rtwdev)
 	rtw_write32(rtwdev, REG_TXDMA_STATUS, val);
 }
 
+static void rtw_sdio_rx_skb(struct rtw_dev *rtwdev, struct sk_buff *skb,
+			    u32 pkt_offset, struct rtw_rx_pkt_stat *pkt_stat,
+			    struct ieee80211_rx_status *rx_status)
+{
+	memcpy(IEEE80211_SKB_RXCB(skb), rx_status, sizeof(*rx_status));
+
+	if (pkt_stat->is_c2h) {
+		skb_put(skb, pkt_stat->pkt_len + pkt_offset);
+		rtw_fw_c2h_cmd_rx_irqsafe(rtwdev, pkt_offset, skb);
+		return;
+	}
+
+	skb_put(skb, pkt_stat->pkt_len);
+	skb_reserve(skb, pkt_offset);
+
+	rtw_rx_stats(rtwdev, pkt_stat->vif, skb);
+
+	ieee80211_rx_irqsafe(rtwdev->hw, skb);
+}
+
 static void rtw_sdio_rxfifo_recv(struct rtw_dev *rtwdev, u32 rx_len)
 {
 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
 	struct rtw_chip_info *chip = rtwdev->chip;
 	u32 pkt_desc_sz = chip->rx_pkt_desc_sz;
+	struct ieee80211_rx_status rx_status;
 	struct rtw_rx_pkt_stat pkt_stat;
-	struct sk_buff *skb;
-	u32 pkt_offset;
+	struct sk_buff *skb, *split_skb;
+	u32 pkt_offset, curr_pkt_len;
 	size_t bufsz;
 	u8 *rx_desc;
 	int ret;
@@ -801,24 +852,44 @@ static void rtw_sdio_rxfifo_recv(struct rtw_dev *rtwdev, u32 rx_len)
 		return;
 	}
 
-	rx_desc = skb->data;
-	chip->ops->query_rx_desc(rtwdev, rx_desc, &pkt_stat,
-				 (struct ieee80211_rx_status *)skb->cb);
-	pkt_offset = pkt_desc_sz + pkt_stat.drv_info_sz +
-		     pkt_stat.shift;
+	while (true) {
+		rx_desc = skb->data;
+		chip->ops->query_rx_desc(rtwdev, rx_desc, &pkt_stat,
+					 &rx_status);
+		pkt_offset = pkt_desc_sz + pkt_stat.drv_info_sz +
+			     pkt_stat.shift;
 
-	if (pkt_stat.is_c2h) {
-		skb_put(skb, pkt_stat.pkt_len + pkt_offset);
-		rtw_fw_c2h_cmd_rx_irqsafe(rtwdev, pkt_offset, skb);
-		return;
+		curr_pkt_len = ALIGN(pkt_offset + pkt_stat.pkt_len,
+				     RTW_SDIO_DATA_PTR_ALIGN);
+
+		if ((curr_pkt_len + pkt_desc_sz) >= rx_len) {
+			/*
+			 * Use the original skb (with it's adjusted offset)
+			 * when processing the last (or even the only) entry to
+			 * have it's memory freed automatically.
+			 */
+			rtw_sdio_rx_skb(rtwdev, skb, pkt_offset, &pkt_stat,
+					&rx_status);
+			break;
+		}
+
+		split_skb = dev_alloc_skb(curr_pkt_len);
+		if (!split_skb) {
+			rtw_sdio_rx_skb(rtwdev, skb, pkt_offset, &pkt_stat,
+					&rx_status);
+			break;
+		}
+
+		skb_copy_header(split_skb, skb);
+		memcpy(split_skb->data, skb->data, curr_pkt_len);
+
+		rtw_sdio_rx_skb(rtwdev, split_skb, pkt_offset, &pkt_stat,
+				&rx_status);
+
+		/* Move to the start of the next RX descriptor */
+		skb_reserve(skb, curr_pkt_len);
+		rx_len -= curr_pkt_len;
 	}
-
-	skb_put(skb, pkt_stat.pkt_len);
-	skb_reserve(skb, pkt_offset);
-
-	rtw_rx_stats(rtwdev, pkt_stat.vif, skb);
-
-	ieee80211_rx_irqsafe(rtwdev->hw, skb);
 }
 
 static void rtw_sdio_rx_isr(struct rtw_dev *rtwdev)
