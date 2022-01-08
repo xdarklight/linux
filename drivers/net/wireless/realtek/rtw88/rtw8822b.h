@@ -65,6 +65,11 @@ struct rtw8822be_efuse {
 	u8 res7;
 };
 
+struct rtw8822bs_efuse {
+	u8 res4[0x4a];			/* 0xd0 */
+	u8 mac_addr[ETH_ALEN];		/* 0x11a */
+} __packed;
+
 struct rtw8822b_efuse {
 	__le16 rtl_id;
 	u8 res0[0x0e];
@@ -94,11 +99,14 @@ struct rtw8822b_efuse {
 	union {
 		struct rtw8822bu_efuse u;
 		struct rtw8822be_efuse e;
+		struct rtw8822bs_efuse s;
 	};
 };
 
 static_assert(offsetof(struct rtw8822b_efuse, e) == 0xd0);
 static_assert(sizeof(struct rtw8822be_efuse) == 49);
+static_assert(offsetof(struct rtw8822b_efuse, s) == 0xd0);
+static_assert(sizeof(struct rtw8822bs_efuse) == 80);
 static_assert(offsetof(struct rtw8822b_efuse, u) == 0xd0);
 static_assert(sizeof(struct rtw8822bu_efuse) == 304);
 
