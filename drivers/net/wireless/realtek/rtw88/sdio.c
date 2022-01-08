@@ -587,19 +587,21 @@ static void rtw_sdio_deep_ps_enter(struct rtw_dev *rtwdev)
 	bool tx_empty = true;
 	u8 queue;
 
-	/* Deep PS state is not allowed to TX-DMA */
-	for (queue = 0; queue < RTK_MAX_TX_QUEUE_NUM; queue++) {
-		/* BCN queue is rsvd page, does not have DMA interrupt
-		 * H2C queue is managed by firmware
-		 */
-		if (queue == RTW_TX_QUEUE_BCN ||
-		    queue == RTW_TX_QUEUE_H2C)
-			continue;
+	if (!rtw_fw_feature_check(&rtwdev->fw, FW_FEATURE_TX_WAKE)) {
+		/* Deep PS state is not allowed to TX-DMA */
+		for (queue = 0; queue < RTK_MAX_TX_QUEUE_NUM; queue++) {
+			/* BCN queue is rsvd page, does not have DMA interrupt
+			 * H2C queue is managed by firmware
+			 */
+			if (queue == RTW_TX_QUEUE_BCN ||
+			    queue == RTW_TX_QUEUE_H2C)
+				continue;
 
-		/* check if there is any skb DMAing */
-		if (skb_queue_len(&rtwsdio->tx_queue[queue])) {
-			tx_empty = false;
-			break;
+			/* check if there is any skb DMAing */
+			if (skb_queue_len(&rtwsdio->tx_queue[queue])) {
+				tx_empty = false;
+				break;
+			}
 		}
 	}
 
@@ -988,7 +990,8 @@ static void rtw_sdio_tx_handler(struct work_struct *work)
 	struct sk_buff *skb;
 	int ret, queue, limit;
 
-	rtw_sdio_deep_ps_leave(rtwdev);
+	if (!rtw_fw_feature_check(&rtwdev->fw, FW_FEATURE_TX_WAKE))
+		rtw_sdio_deep_ps_leave(rtwdev);
 
 	for (queue = RTK_MAX_TX_QUEUE_NUM - 1; queue >= 0; queue--) {
 		for (limit = 0; limit < 200; limit++) {
