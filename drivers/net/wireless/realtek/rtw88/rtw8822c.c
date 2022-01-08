@@ -4889,6 +4889,7 @@ static const struct rtw_rfe_def rtw8822c_rfe_defs[] = {
 	[0] = RTW_DEF_RFE(8822c, 0, 0),
 	[1] = RTW_DEF_RFE(8822c, 0, 0),
 	[2] = RTW_DEF_RFE(8822c, 0, 0),
+	[4] = RTW_DEF_RFE(8822c, 0, 0),
 	[5] = RTW_DEF_RFE(8822c, 0, 5),
 	[6] = RTW_DEF_RFE(8822c, 0, 0),
 };
