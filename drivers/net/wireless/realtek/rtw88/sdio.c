@@ -674,18 +674,15 @@ static void rtw_sdio_tx_skb_prepare(struct rtw_dev *rtwdev,
 {
 	struct rtw_chip_info *chip = rtwdev->chip;
 	unsigned long data_addr, aligned_addr;
-	void *data_ptr;
 	size_t offset;
 	u8 *pkt_desc;
 
-	data_ptr = skb_push(skb, chip->tx_pkt_desc_sz);
+	pkt_desc = skb_push(skb, chip->tx_pkt_desc_sz);
 
-	data_addr = (unsigned long)data_ptr;
+	data_addr = (unsigned long)pkt_desc;
 	aligned_addr = ALIGN(data_addr, RTW_SDIO_DATA_PTR_ALIGN);
 
-	if (data_addr == aligned_addr) {
-		pkt_desc = data_ptr;
-	} else {
+	if (data_addr != aligned_addr) {
 		/*
 		 * Ensure that the start of the pkt_desc is always aligned at
 		 * RTW_SDIO_DATA_PTR_ALIGN.
