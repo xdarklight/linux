@@ -547,7 +547,8 @@ static u8 rtw_hw_queue_mapping(struct sk_buff *skb)
 	return queue;
 }
 
-static u8 rtw_sdio_get_tx_qsel(struct sk_buff *skb, u8 queue)
+static u8 rtw_sdio_get_tx_qsel(struct rtw_dev *rtwdev, struct sk_buff *skb,
+			       u8 queue)
 {
 	switch (queue) {
 	case RTW_TX_QUEUE_BCN:
@@ -555,7 +556,10 @@ static u8 rtw_sdio_get_tx_qsel(struct sk_buff *skb, u8 queue)
 	case RTW_TX_QUEUE_H2C:
 		return TX_DESC_QSEL_H2C;
 	case RTW_TX_QUEUE_MGMT:
-		return TX_DESC_QSEL_MGMT;
+		if (rtw_chip_wcpu_11n(rtwdev))
+			return TX_DESC_QSEL_HIGH;
+		else
+			return TX_DESC_QSEL_MGMT;
 	case RTW_TX_QUEUE_HI0:
 		return TX_DESC_QSEL_HIGH;
 	default:
@@ -703,7 +707,7 @@ static void rtw_sdio_tx_skb_prepare(struct rtw_dev *rtwdev,
 
 	memset(pkt_desc, 0, chip->tx_pkt_desc_sz);
 
-	pkt_info->qsel = rtw_sdio_get_tx_qsel(skb, queue);
+	pkt_info->qsel = rtw_sdio_get_tx_qsel(rtwdev, skb, queue);
 
 	rtw_tx_fill_tx_desc(pkt_info, skb);
 	fill_txdesc_checksum_common(skb->data);
