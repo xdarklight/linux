@@ -962,6 +962,56 @@ static int rtw_debugfs_get_fw_crash(struct seq_file *m, void *v)
 	return 0;
 }
 
+struct rtw_fw_feature_flag {
+	enum rtw_fw_feature feature;
+	const char *name;
+};
+
+#define rtw_fw_feature_to_name(_feature)	\
+	{					\
+		.feature = _feature,		\
+		.name = #_feature,		\
+	}
+
+static const struct rtw_fw_feature_flag rtw_debugfs_fw_feature_flags[] = {
+	rtw_fw_feature_to_name(FW_FEATURE_SIG),
+	rtw_fw_feature_to_name(FW_FEATURE_LPS_C2H),
+	rtw_fw_feature_to_name(FW_FEATURE_LCLK),
+	rtw_fw_feature_to_name(FW_FEATURE_PG),
+	rtw_fw_feature_to_name(FW_FEATURE_TX_WAKE),
+	rtw_fw_feature_to_name(FW_FEATURE_BCN_FILTER),
+	rtw_fw_feature_to_name(FW_FEATURE_NOTIFY_SCAN),
+	rtw_fw_feature_to_name(FW_FEATURE_ADAPTIVITY),
+	rtw_fw_feature_to_name(FW_FEATURE_SCAN_OFFLOAD),
+};
+
+static int rtw_debugfs_get_fw_features(struct seq_file *m, void *v)
+{
+	struct rtw_debugfs_priv *debugfs_priv = m->private;
+	struct rtw_dev *rtwdev = debugfs_priv->rtwdev;
+	const struct rtw_fw_feature_flag *flag;
+	unsigned int i, valid_feature_mask = 0;
+	bool feature_available;
+
+	for (i = 0; i < ARRAY_SIZE(rtw_debugfs_fw_feature_flags); i++) {
+		flag = &rtw_debugfs_fw_feature_flags[i];
+		feature_available = rtw_fw_feature_check(&rtwdev->fw,
+							 flag->feature);
+
+		seq_printf(m, "%s (0x%08x): %s\n",
+			   flag->name, flag->feature,
+			   feature_available ? "yes" : "no");
+
+		valid_feature_mask |= flag->feature;
+	}
+
+	if (rtwdev->fw.feature & ~valid_feature_mask)
+		seq_printf(m, "unknown features: 0x%08x\n",
+			   rtwdev->fw.feature & ~valid_feature_mask);
+
+	return 0;
+}
+
 static ssize_t rtw_debugfs_set_force_lowest_basic_rate(struct file *filp,
 						       const char __user *buffer,
 						       size_t count, loff_t *loff)
@@ -1193,6 +1243,10 @@ static struct rtw_debugfs_priv rtw_debug_priv_fw_crash = {
 	.cb_read = rtw_debugfs_get_fw_crash,
 };
 
+static struct rtw_debugfs_priv rtw_debug_priv_fw_features = {
+	.cb_read = rtw_debugfs_get_fw_features,
+};
+
 static struct rtw_debugfs_priv rtw_debug_priv_force_lowest_basic_rate = {
 	.cb_write = rtw_debugfs_set_force_lowest_basic_rate,
 	.cb_read = rtw_debugfs_get_force_lowest_basic_rate,
@@ -1279,6 +1333,7 @@ void rtw_debugfs_init(struct rtw_dev *rtwdev)
 	rtw_debugfs_add_r(tx_pwr_tbl);
 	rtw_debugfs_add_rw(edcca_enable);
 	rtw_debugfs_add_rw(fw_crash);
+	rtw_debugfs_add_rw(fw_features);
 	rtw_debugfs_add_rw(force_lowest_basic_rate);
 	rtw_debugfs_add_rw(dm_cap);
 }
