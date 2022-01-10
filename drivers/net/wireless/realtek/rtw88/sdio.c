@@ -323,7 +323,8 @@ static void rtw_sdio_write32(struct rtw_dev *rtwdev, u32 addr, u32 val)
 		rtw_warn(rtwdev, "sdio write32 failed (0x%x): %d", addr, ret);
 }
 
-static u32 rtw_sdio_get_tx_addr(struct rtw_dev *rtwdev, size_t size, u8 queue)
+static u32 rtw_sdio_get_tx_addr(struct rtw_dev *rtwdev, size_t size,
+				enum rtw_tx_queue_type queue)
 {
 	u32 txaddr;
 
@@ -460,7 +461,7 @@ static int rtw_sdio_check_free_txpg(struct rtw_dev *rtwdev, u8 queue,
 }
 
 static int rtw_sdio_write_port(struct rtw_dev *rtwdev, struct sk_buff *skb,
-			       u8 queue)
+			       enum rtw_tx_queue_type queue)
 {
 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
 	bool bus_claim;
@@ -546,34 +547,6 @@ static void rtw_sdio_enable_interrupt(struct rtw_dev *rtwdev)
 static void rtw_sdio_disable_interrupt(struct rtw_dev *rtwdev)
 {
 	rtw_write32(rtwdev, REG_SDIO_HIMR, 0x0);
-}
-
-static u8 ac_to_hwq[] = {
-	[IEEE80211_AC_VO] = RTW_TX_QUEUE_VO,
-	[IEEE80211_AC_VI] = RTW_TX_QUEUE_VI,
-	[IEEE80211_AC_BE] = RTW_TX_QUEUE_BE,
-	[IEEE80211_AC_BK] = RTW_TX_QUEUE_BK,
-};
-
-static_assert(ARRAY_SIZE(ac_to_hwq) == IEEE80211_NUM_ACS);
-
-static u8 rtw_hw_queue_mapping(struct sk_buff *skb)
-{
-	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)skb->data;
-	u8 q_mapping = skb_get_queue_mapping(skb);
-	__le16 fc = hdr->frame_control;
-	u8 queue;
-
-	if (unlikely(ieee80211_is_beacon(fc)))
-		queue = RTW_TX_QUEUE_BCN;
-	else if (unlikely(ieee80211_is_mgmt(fc) || ieee80211_is_ctl(fc)))
-		queue = RTW_TX_QUEUE_MGMT;
-	else if (WARN_ON_ONCE(q_mapping >= ARRAY_SIZE(ac_to_hwq)))
-		queue = ac_to_hwq[IEEE80211_AC_BE];
-	else
-		queue = ac_to_hwq[q_mapping];
-
-	return queue;
 }
 
 static u8 rtw_sdio_get_tx_qsel(struct rtw_dev *rtwdev, struct sk_buff *skb,
@@ -706,7 +679,8 @@ static struct rtw_sdio_tx_data *rtw_sdio_get_tx_data(struct sk_buff *skb)
 
 static void rtw_sdio_tx_skb_prepare(struct rtw_dev *rtwdev,
 				    struct rtw_tx_pkt_info *pkt_info,
-				    u8 queue, struct sk_buff *skb)
+				    struct sk_buff *skb,
+				    enum rtw_tx_queue_type queue)
 {
 	struct rtw_chip_info *chip = rtwdev->chip;
 	unsigned long data_addr, aligned_addr;
@@ -745,11 +719,12 @@ static void rtw_sdio_tx_skb_prepare(struct rtw_dev *rtwdev,
 
 static int rtw_sdio_write_data(struct rtw_dev *rtwdev,
 			       struct rtw_tx_pkt_info *pkt_info,
-			       struct sk_buff *skb, u8 queue)
+			       struct sk_buff *skb,
+			       enum rtw_tx_queue_type queue)
 {
 	int ret;
 
-	rtw_sdio_tx_skb_prepare(rtwdev, pkt_info, queue, skb);
+	rtw_sdio_tx_skb_prepare(rtwdev, pkt_info, skb, queue);
 
 	ret = rtw_sdio_write_port(rtwdev, skb, queue);
 	dev_kfree_skb_any(skb);
@@ -787,10 +762,10 @@ static int rtw_sdio_tx_write(struct rtw_dev *rtwdev,
 			     struct sk_buff *skb)
 {
 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
-	u8 queue = rtw_hw_queue_mapping(skb);
+	enum rtw_tx_queue_type queue = rtw_tx_queue_mapping(skb);
 	struct rtw_sdio_tx_data *tx_data;
 
-	rtw_sdio_tx_skb_prepare(rtwdev, pkt_info, queue, skb);
+	rtw_sdio_tx_skb_prepare(rtwdev, pkt_info, skb, queue);
 
 	tx_data = rtw_sdio_get_tx_data(skb);
 	tx_data->sn = pkt_info->sn;
