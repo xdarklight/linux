@@ -67,6 +67,8 @@
 	le32p_replace_bits((__le32 *)(txdesc) + 0x03, value, BIT(15))
 #define SET_TX_DESC_BT_NULL(txdesc, value)				       \
 	le32p_replace_bits((__le32 *)(txdesc) + 0x02, value, BIT(23))
+#define SET_TX_DESC_TXDESC_CHECKSUM(txdesc, value)                             \
+	le32p_replace_bits((__le32 *)(txdesc) + 0x07, value, GENMASK(15, 0))
 
 enum rtw_tx_desc_queue_select {
 	TX_DESC_QSEL_TID0	= 0,
@@ -121,5 +123,16 @@ rtw_tx_write_data_h2c_get(struct rtw_dev *rtwdev,
 
 enum rtw_tx_queue_type rtw_tx_ac_to_hwq(enum ieee80211_ac_numbers ac);
 enum rtw_tx_queue_type rtw_tx_queue_mapping(struct sk_buff *skb);
+
+static inline void fill_txdesc_checksum_common(u8 *txdesc, size_t words)
+{
+	__le16 chksum = 0;
+	__le16 *data = (__le16 *)(txdesc);
+
+	while (words--)
+		chksum ^= *data++;
+
+	SET_TX_DESC_TXDESC_CHECKSUM(txdesc, __le16_to_cpu(chksum));
+}
 
 #endif
