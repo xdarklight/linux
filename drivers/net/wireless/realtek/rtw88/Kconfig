@@ -42,6 +42,13 @@ config RTW88_8822BE
 
 	  802.11ac PCIe wireless network adapter
 
+config RTW88_8822BS
+	tristate "Realtek 8822BS SDIO wireless network adapter"
+	depends on MMC
+	select RTW88_CORE
+	select RTW88_SDIO
+	select RTW88_8822B
+
 config RTW88_8822CE
 	tristate "Realtek 8822CE PCI wireless network adapter"
 	depends on PCI
