@@ -269,9 +269,17 @@ static int rtw_mac_power_switch(struct rtw_dev *rtwdev, bool pwr_on)
 	if (pwr_on == cur_pwr)
 		return -EALREADY;
 
+	/* Always signal power off before power sequence. This way
+	 * read/write functions will take path which works in both
+	 * states. State will change in the middle of the sequence.
+	 */
+	rtw_hci_power_switch(rtwdev, false);
+
 	pwr_seq = pwr_on ? chip->pwr_on_seq : chip->pwr_off_seq;
 	if (rtw_pwr_seq_parser(rtwdev, pwr_seq))
 		return -EINVAL;
+
+	rtw_hci_power_switch(rtwdev, pwr_on);
 
 	return 0;
 }
