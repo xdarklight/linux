@@ -54,6 +54,8 @@ obj-$(CONFIG_RTW88_8821CU)	+= rtw88_8821cu.o
 rtw88_8821cu-objs		:= rtw8821cu.o
 
 obj-$(CONFIG_RTW88_PCI)		+= rtw88_pci.o
+obj-$(CONFIG_RTW88_SDIO)	+= rtw88_sdio.o
 obj-$(CONFIG_RTW88_USB)		+= rtw88_usb.o
 rtw88_pci-objs			:= pci.o
+rtw88_sdio-objs			:= sdio.o
 rtw88_usb-objs			:= usb.o
