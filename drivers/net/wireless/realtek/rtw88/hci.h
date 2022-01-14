@@ -22,6 +22,8 @@ struct rtw_hci_ops {
 	int (*write_data_rsvd_page)(struct rtw_dev *rtwdev, u8 *buf, u32 size);
 	int (*write_data_h2c)(struct rtw_dev *rtwdev, u8 *buf, u32 size);
 
+	void (*power_switch)(struct rtw_dev *rtwdev, bool on);
+
 	u8 (*read8)(struct rtw_dev *rtwdev, u32 addr);
 	u16 (*read16)(struct rtw_dev *rtwdev, u32 addr);
 	u32 (*read32)(struct rtw_dev *rtwdev, u32 addr);
@@ -82,6 +84,12 @@ static inline int
 rtw_hci_write_data_h2c(struct rtw_dev *rtwdev, u8 *buf, u32 size)
 {
 	return rtwdev->hci.ops->write_data_h2c(rtwdev, buf, size);
+}
+
+static inline void rtw_hci_power_switch(struct rtw_dev *rtwdev, bool on)
+{
+	if (rtwdev->hci.ops->power_switch)
+		rtwdev->hci.ops->power_switch(rtwdev, on);
 }
 
 static inline u8 rtw_read8(struct rtw_dev *rtwdev, u32 addr)
