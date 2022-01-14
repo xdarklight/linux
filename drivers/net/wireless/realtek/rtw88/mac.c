@@ -7,6 +7,7 @@
 #include "reg.h"
 #include "fw.h"
 #include "debug.h"
+#include "sdio.h"
 
 void rtw_set_channel_mac(struct rtw_dev *rtwdev, u8 channel, u8 bw,
 			 u8 primary_ch_idx)
@@ -60,6 +61,7 @@ EXPORT_SYMBOL(rtw_set_channel_mac);
 
 static int rtw_mac_pre_system_cfg(struct rtw_dev *rtwdev)
 {
+	unsigned int retry;
 	u32 value32;
 	u8 value8;
 
@@ -76,6 +78,26 @@ static int rtw_mac_pre_system_cfg(struct rtw_dev *rtwdev)
 	switch (rtw_hci_type(rtwdev)) {
 	case RTW_HCI_TYPE_PCIE:
 		rtw_write32_set(rtwdev, REG_HCI_OPT_CTRL, BIT_USB_SUS_DIS);
+		break;
+	case RTW_HCI_TYPE_SDIO:
+		rtw_write8_clr(rtwdev, REG_SDIO_HSUS_CTRL, BIT(0));
+
+		for (retry = 0; retry < RTW_PWR_POLLING_CNT; retry++) {
+			if (rtw_read8(rtwdev, REG_SDIO_HSUS_CTRL) & BIT(1))
+				break;
+
+			usleep_range(10, 50);
+		}
+
+		if (retry == RTW_PWR_POLLING_CNT) {
+			rtw_err(rtwdev, "failed to poll REG_SDIO_HSUS_CTRL[1]");
+			return -ETIMEDOUT;
+		}
+
+		if (rtw_sdio_is_sdio30_supported(rtwdev))
+			rtw_write8_set(rtwdev, REG_HCI_OPT_CTRL + 2, BIT(2));
+		else
+			rtw_write8_clr(rtwdev, REG_HCI_OPT_CTRL + 2, BIT(2));
 		break;
 	case RTW_HCI_TYPE_USB:
 		break;
@@ -248,6 +270,7 @@ static int rtw_mac_power_switch(struct rtw_dev *rtwdev, bool pwr_on)
 {
 	struct rtw_chip_info *chip = rtwdev->chip;
 	const struct rtw_pwr_seq_cmd **pwr_seq;
+	u32 imr;
 	u8 rpwm;
 	bool cur_pwr;
 
@@ -278,11 +301,18 @@ static int rtw_mac_power_switch(struct rtw_dev *rtwdev, bool pwr_on)
 	 */
 	rtw_hci_power_switch(rtwdev, false);
 
+	imr = rtw_read32(rtwdev, REG_SDIO_HIMR);
+	rtw_write32(rtwdev, REG_SDIO_HIMR, 0);
+
 	pwr_seq = pwr_on ? chip->pwr_on_seq : chip->pwr_off_seq;
-	if (rtw_pwr_seq_parser(rtwdev, pwr_seq))
+	if (rtw_pwr_seq_parser(rtwdev, pwr_seq)) {
+		rtw_write32(rtwdev, REG_SDIO_HIMR, imr);
 		return -EINVAL;
+	}
 
 	rtw_hci_power_switch(rtwdev, pwr_on);
+
+	rtw_write32(rtwdev, REG_SDIO_HIMR, imr);
 
 	return 0;
 }
@@ -449,6 +479,9 @@ static void download_firmware_reg_backup(struct rtw_dev *rtwdev,
 	bckp_idx++;
 	rtw_write16(rtwdev, REG_FIFOPAGE_INFO_1, 0x200);
 	rtw_write32(rtwdev, REG_RQPN_CTRL_2, bckp[bckp_idx - 1].val);
+
+	if (rtw_hci_type(rtwdev) == RTW_HCI_TYPE_SDIO)
+		rtw_read32(rtwdev, REG_SDIO_FREE_TXPG);
 
 	/* Disable beacon related functions */
 	tmp = rtw_read8(rtwdev, REG_BCN_CTRL);
@@ -1046,8 +1079,12 @@ static int txdma_queue_mapping(struct rtw_dev *rtwdev)
 	if (rtw_chip_wcpu_11ac(rtwdev))
 		rtw_write32(rtwdev, REG_H2CQ_CSR, BIT_H2CQ_FULL);
 
-	if (rtw_hci_type(rtwdev) == RTW_HCI_TYPE_USB)
+	if (rtw_hci_type(rtwdev) == RTW_HCI_TYPE_SDIO) {
+		rtw_read32(rtwdev, REG_SDIO_FREE_TXPG);
+		rtw_write32(rtwdev, REG_SDIO_TX_CTRL, 0);
+	} else if (rtw_hci_type(rtwdev) == RTW_HCI_TYPE_USB) {
 		rtw_write8_set(rtwdev, REG_TXDMA_PQ_MAP, BIT_RXDMA_ARBBW_EN);
+	}
 
 	return 0;
 }
