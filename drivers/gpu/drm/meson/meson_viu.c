@@ -448,13 +448,17 @@ void meson_viu_init(struct meson_drm *priv)
 	writel_relaxed(reg, priv->io_base + _REG(VIU_OSD1_FIFO_CTRL_STAT));
 	writel_relaxed(reg, priv->io_base + _REG(VIU_OSD2_FIFO_CTRL_STAT));
 
-	/* Set OSD alpha replace value */
-	writel_bits_relaxed(0xff << OSD_REPLACE_SHIFT,
-			    0xff << OSD_REPLACE_SHIFT,
-			    priv->io_base + _REG(VIU_OSD1_CTRL_STAT2));
-	writel_bits_relaxed(0xff << OSD_REPLACE_SHIFT,
-			    0xff << OSD_REPLACE_SHIFT,
-			    priv->io_base + _REG(VIU_OSD2_CTRL_STAT2));
+	if (!meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8) &&
+	    !meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8B) &&
+	    !meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8M2)) {
+		/* Set OSD alpha replace value */
+		writel_bits_relaxed(0xff << OSD_REPLACE_SHIFT,
+				    0xff << OSD_REPLACE_SHIFT,
+				    priv->io_base + _REG(VIU_OSD1_CTRL_STAT2));
+		writel_bits_relaxed(0xff << OSD_REPLACE_SHIFT,
+				    0xff << OSD_REPLACE_SHIFT,
+				    priv->io_base + _REG(VIU_OSD2_CTRL_STAT2));
+	}
 
 	/* Disable VD1 AFBC */
 	/* di_mif0_en=0 mif0_to_vpp_en=0 di_mad_en=0 and afbc vd1 set=0*/
