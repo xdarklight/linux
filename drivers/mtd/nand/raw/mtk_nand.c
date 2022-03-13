@@ -1717,6 +1717,7 @@ static int mtk_nfc_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct device_node *np = dev->of_node;
+	struct resource *res;
 	struct mtk_nfc *nfc;
 	int ret, irq;
 
@@ -1738,7 +1739,8 @@ static int mtk_nfc_probe(struct platform_device *pdev)
 	nfc->caps = of_device_get_match_data(dev);
 	nfc->dev = dev;
 
-	nfc->regs = devm_platform_ioremap_resource(pdev, 0);
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	nfc->regs = devm_ioremap_resource(dev, res);
 	if (IS_ERR(nfc->regs)) {
 		ret = PTR_ERR(nfc->regs);
 		goto release_ecc;
@@ -1783,6 +1785,8 @@ static int mtk_nfc_probe(struct platform_device *pdev)
 			dev_err(dev, "failed to set dma mask\n");
 			goto clk_disable;
 		}
+	} else {
+		nfc->ecc_cfg.fdma_addr = res->start + NFI_FDML(0);
 	}
 
 	platform_set_drvdata(pdev, nfc);
