@@ -38,10 +38,10 @@
 #define ECC_DECIDLE		(0x10C)
 #define ECC_DECENUM0		(0x114)
 #define ECC_DECEL0		(0x11C)
-#define		DEC_EL_ODD_MASK		GENMASK(31, 16)
-#define		DEC_EL_EVEN_MASK	GENMASK(15, 0)
-#define		DEC_EL_BYTE_POS_MASK	GENMASK(15, 3)
-#define		DEC_EL_BIT_POS_MASK	GENMASK(2, 0)
+#define		DEC_EL_ODD_BYTE_POS_MASK	GENMASK(31, 19)
+#define		DEC_EL_ODD_BIT_POS_MASK		GENMASK(18, 16)
+#define		DEC_EL_EVEN_BYTE_POS_MASK	GENMASK(15, 3)
+#define		DEC_EL_EVEN_BIT_POS_MASK	GENMASK(2, 0)
 
 #define ECC_TIMEOUT		(500000)
 
@@ -295,33 +295,30 @@ void mtk_ecc_correct_sector(struct mtk_ecc *ecc, struct mtk_ecc_stats *stats,
 	}
 
 	for (i = 0; i < stats->bitflips; i++) {
-		u32 error_locations, sector_error_location;
-		u32 error_byte_pos, error_bit_pos;
-		u16 error_locations_register;
+		u32 error_locations, error_byte_pos, error_bit_pos;
 		u8 *error_byte = NULL;
 
 		/* Two (even and odd) sectors per 32-bit/4-byte register */
-		error_locations_register = ECC_DECEL0 + ((i / 2) * 4);
+		error_locations = readl(ecc->regs + ECC_DECEL0 + ((i / 2) * 4));
 
-		error_locations = readl(ecc->regs + error_locations_register);
+		if (i & 1) {
+			error_bit_pos = FIELD_GET(DEC_EL_ODD_BIT_POS_MASK,
+						  error_locations);
+			error_byte_pos = FIELD_GET(DEC_EL_ODD_BYTE_POS_MASK,
+						   error_locations);
+		} else {
+			error_bit_pos = FIELD_GET(DEC_EL_EVEN_BIT_POS_MASK,
+						  error_locations);
+			error_byte_pos = FIELD_GET(DEC_EL_EVEN_BYTE_POS_MASK,
+						   error_locations);
+		}
 
-		if (i & 1)
-			sector_error_location = FIELD_GET(DEC_EL_ODD_MASK,
-							  error_locations);
-		else
-			sector_error_location = FIELD_GET(DEC_EL_EVEN_MASK,
-							  error_locations);
-
-		error_byte_pos = FIELD_GET(DEC_EL_BYTE_POS_MASK,
-					   sector_error_location);
 		if (error_byte_pos < ecc_size)
 			error_byte = &sector_buf[error_byte_pos];
 		else if (error_byte_pos - ecc_size < fdm_reg_size)
 			error_byte = &fdm_buf[error_byte_pos - ecc_size];
 
 		if (error_byte) {
-			error_bit_pos = FIELD_GET(DEC_EL_BIT_POS_MASK,
-						  sector_error_location);
 			*error_byte ^= (1 << error_bit_pos);
 			stats->corrected++;
 		}
