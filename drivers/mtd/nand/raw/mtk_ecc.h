@@ -31,6 +31,7 @@ struct mtk_ecc_config {
 	u32 strength;
 	u32 sectors;
 	u32 len;
+	dma_addr_t fdma_addr;
 };
 
 int mtk_ecc_encode(struct mtk_ecc *, struct mtk_ecc_config *, u8 *, u32);

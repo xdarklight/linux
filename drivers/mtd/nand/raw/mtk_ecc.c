@@ -96,6 +96,7 @@ enum mtk_ecc_regs {
 	ECC_DECDONE,
 	ECC_DECIRQ_EN,
 	ECC_DECIRQ_STA,
+	ECC_FDMADDR,
 };
 
 static int mt2701_ecc_regs[] = {
@@ -105,6 +106,7 @@ static int mt2701_ecc_regs[] = {
 	[ECC_DECDONE] =         0x124,
 	[ECC_DECIRQ_EN] =       0x200,
 	[ECC_DECIRQ_STA] =      0x204,
+	[ECC_FDMADDR] =         -1,
 };
 
 static int mt2712_ecc_regs[] = {
@@ -114,6 +116,7 @@ static int mt2712_ecc_regs[] = {
 	[ECC_DECDONE] =         0x124,
 	[ECC_DECIRQ_EN] =       0x200,
 	[ECC_DECIRQ_STA] =      0x204,
+	[ECC_FDMADDR] =         -1,
 };
 
 static int mt7621_ecc_regs[] = {
@@ -123,6 +126,7 @@ static int mt7621_ecc_regs[] = {
 	[ECC_DECDONE] =         0x118,
 	[ECC_DECIRQ_EN] =       -1,
 	[ECC_DECIRQ_STA] =      -1,
+	[ECC_FDMADDR] =         0x13c,
 };
 
 static int mt7622_ecc_regs[] = {
@@ -132,6 +136,7 @@ static int mt7622_ecc_regs[] = {
 	[ECC_DECDONE] =         0x11c,
 	[ECC_DECIRQ_EN] =       0x140,
 	[ECC_DECIRQ_STA] =      0x144,
+	[ECC_FDMADDR] =         -1,
 };
 
 static inline void mtk_ecc_wait_idle(struct mtk_ecc *ecc,
@@ -398,8 +403,17 @@ int mtk_ecc_enable(struct mtk_ecc *ecc, struct mtk_ecc_config *config)
 		return ret;
 	}
 
-	if (ecc->caps->has_dma_support &&
-	    (config->mode != ECC_NFI_MODE || op != ECC_ENCODE)) {
+	if (!ecc->caps->has_dma_support) {
+		if (!config->fdma_addr) {
+			dev_err(ecc->dev,
+				"FMDA addr is missing in mtk_ecc_config\n");
+			mutex_unlock(&ecc->lock);
+			return -EINVAL;
+		}
+
+		writel(lower_32_bits(config->fdma_addr),
+		       ecc->regs + ecc->caps->ecc_regs[ECC_FDMADDR]);
+	} else if (config->mode != ECC_NFI_MODE || op != ECC_ENCODE) {
 		init_completion(&ecc->done);
 		reg_val = ECC_IRQ_EN;
 		/*
