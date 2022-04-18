@@ -22,9 +22,13 @@ properties:
   intel,global-reset:
     description: Global reset register offset and bit offset.
     $ref: /schemas/types.yaml#/definitions/uint32-array
+    minItems: 2
     items:
       - description: Register offset
       - description: Register bit offset
+        minimum: 0
+        maximum: 31
+      - description: Status bit offset (only if "#reset-cells" is 3)
         minimum: 0
         maximum: 31
 
