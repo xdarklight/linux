@@ -223,7 +223,7 @@ static int intel_reset_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static const struct intel_reset_soc xrx200_data = {
+static const struct intel_reset_soc xway_data = {
 	.legacy =		true,
 	.reset_cell_count =	3,
 };
@@ -235,7 +235,10 @@ static const struct intel_reset_soc lgm_data = {
 
 static const struct of_device_id intel_reset_match[] = {
 	{ .compatible = "intel,rcu-lgm", .data = &lgm_data },
-	{ .compatible = "intel,rcu-xrx200", .data = &xrx200_data },
+	{ .compatible = "lantiq,ase-rcu", .data = &xway_data },
+	{ .compatible = "lantiq,danube-rcu", .data = &xway_data },
+	{ .compatible = "lantiq,xrx100-rcu", .data = &xway_data },
+	{ .compatible = "lantiq,xrx200-rcu", .data = &xway_data },
 	{}
 };
 
