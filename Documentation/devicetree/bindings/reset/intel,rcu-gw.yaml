@@ -11,9 +11,16 @@ maintainers:
 
 properties:
   compatible:
-    enum:
-      - intel,rcu-lgm
-      - intel,rcu-xrx200
+    oneOf:
+      - items:
+          - enum:
+              - lantiq,ase-rcu
+              - lantiq,danube-rcu
+              - lantiq,xrx100-rcu
+              - lantiq,xrx200-rcu
+          - const: simple-mfd
+          - const: syscon
+      - const: intel,rcu-lgm
 
   reg:
     description: Reset controller registers.
@@ -33,8 +40,6 @@ properties:
         maximum: 31
 
   "#reset-cells":
-    minimum: 2
-    maximum: 3
     description: |
       First cell is reset request register offset.
       Second cell is bit offset in reset request register.
@@ -42,6 +47,43 @@ properties:
       For LGM SoC, reset cell count is 2 as bit offset in
       reset request and reset status registers is same. Whereas
       3 for legacy SoCs as bit offset differs.
+
+  "#address-cells":
+    const: 1
+
+  "#size-cells":
+    const: 1
+
+  big-endian: true
+
+patternProperties:
+  "^usb2-phy@[0-9a-f]+$":
+    type: object
+    $ref: "../phy/lantiq,xway-rcu-usb2-phy.yaml"
+
+allOf:
+  - if:
+      properties:
+        compatible:
+          contains:
+            const: intel,rcu-lgm
+    then:
+      properties:
+        "#reset-cells":
+          const: 2
+  - if:
+      properties:
+        compatible:
+          contains:
+            enum:
+              - lantiq,ase-rcu
+              - lantiq,danube-rcu
+              - lantiq,xrx100-rcu
+              - lantiq,xrx200-rcu
+    then:
+      properties:
+        "#reset-cells":
+          const: 3
 
 required:
   - compatible
@@ -66,4 +108,36 @@ examples:
         clocks = <&cgu0 1>;
         #pwm-cells = <2>;
         resets = <&rcu0 0x30 21>;
+    };
+  - |
+    rcu_xrx200: rcu@203000 {
+        compatible = "lantiq,xrx200-rcu", "simple-mfd", "syscon";
+        reg = <0x203000 0x100>;
+        big-endian;
+
+        #address-cells = <1>;
+        #size-cells = <1>;
+
+        #reset-cells = <3>;
+        intel,global-reset = <0x10 30 29>;
+
+        usb_phy0: usb2-phy@18 {
+            compatible = "lantiq,xrx200-usb2-phy";
+            reg = <0x18 4>, <0x38 4>;
+            status = "disabled";
+
+            resets = <&rcu_xrx200 0x48 4 4>, <&rcu_xrx200 0x10 4 4>;
+            reset-names = "phy", "ctrl";
+            #phy-cells = <0>;
+        };
+
+        usb_phy1: usb2-phy@34 {
+            compatible = "lantiq,xrx200-usb2-phy";
+            reg = <0x34 4>, <0x3c 4>;
+            status = "disabled";
+
+            resets = <&rcu_xrx200 0x48 5 5>, <&rcu_xrx200 0x10 4 4>;
+            reset-names = "phy", "ctrl";
+            #phy-cells = <0>;
+        };
     };
