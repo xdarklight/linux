@@ -86,7 +86,8 @@ config RESET_INTEL_GW
 	bool "Intel Reset Controller Driver"
 	depends on X86 || LANTIQ || COMPILE_TEST
 	depends on OF && HAS_IOMEM
-	select REGMAP_MMIO
+	select REGMAP_MMIO if X86
+	select MFD_SYSCON if LANTIQ
 	help
 	  This enables the reset controller driver for Intel Gateway SoCs.
 	  Say Y to control the reset signals provided by reset controller.
