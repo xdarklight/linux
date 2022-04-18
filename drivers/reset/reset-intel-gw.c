@@ -5,6 +5,7 @@
  */
 
 #include <linux/bitfield.h>
+#include <linux/mfd/syscon.h>
 #include <linux/init.h>
 #include <linux/of_device.h>
 #include <linux/platform_device.h>
@@ -170,7 +171,6 @@ static int intel_reset_probe(struct platform_device *pdev)
 	struct device_node *np = pdev->dev.of_node;
 	struct device *dev = &pdev->dev;
 	struct intel_reset_data *data;
-	void __iomem *base;
 	u32 rb_id[3];
 	int ret;
 
@@ -182,15 +182,24 @@ static int intel_reset_probe(struct platform_device *pdev)
 	if (!data->soc_data)
 		return -ENODEV;
 
-	base = devm_platform_ioremap_resource(pdev, 0);
-	if (IS_ERR(base))
-		return PTR_ERR(base);
+	if (data->soc_data->legacy) {
+		data->regmap = syscon_node_to_regmap(dev->of_node);
+		if (IS_ERR(data->regmap))
+			return dev_err_probe(dev, PTR_ERR(data->regmap),
+					     "Failed to get regmap from syscon node\n");
+	} else {
+		void __iomem *base;
 
-	data->regmap = devm_regmap_init_mmio(dev, base,
-					     &intel_rcu_regmap_config);
-	if (IS_ERR(data->regmap)) {
-		dev_err(dev, "regmap initialization failed\n");
-		return PTR_ERR(data->regmap);
+		base = devm_platform_ioremap_resource(pdev, 0);
+		if (IS_ERR(base))
+			return PTR_ERR(base);
+
+		data->regmap = devm_regmap_init_mmio(dev, base,
+						     &intel_rcu_regmap_config);
+		if (IS_ERR(data->regmap)) {
+			dev_err(dev, "regmap initialization failed\n");
+			return PTR_ERR(data->regmap);
+		}
 	}
 
 	ret = device_property_read_u32_array(dev, "intel,global-reset", rb_id,
