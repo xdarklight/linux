@@ -638,11 +638,18 @@ static int gswip_pce_table_entry_write(struct gswip_priv *priv,
 
 static int gswip_vlan_first_bridge_index(struct gswip_priv *priv)
 {
-	return priv->hw_info->max_ports;
+	/*
+	 * The GSW140 datasheet states:
+	 * "By default, all VLAN groups are assigned to the same FID (FID=0)".
+	 * Reserve FID=0 and keep one FID for each individual port (FID=port+1)
+	 * which may not part of a bridge.
+	 */
+	return priv->hw_info->max_ports + 1;
 }
 
 static int gswip_vlan_port_index(int port)
 {
+	/* See the description in gswip_vlan_first_bridge_index() */
 	return port + 1;
 }
 
@@ -1360,7 +1367,8 @@ static void gswip_port_stp_state_set(struct dsa_switch *ds, int port, u8 state)
 }
 
 static int gswip_port_fdb(struct dsa_switch *ds, int port,
-			  const unsigned char *addr, u16 vid, bool add)
+			  const unsigned char *addr, u16 vid,
+			  struct dsa_db db, bool add)
 {
 	struct net_device *bridge = dsa_port_bridge_dev_get(dsa_to_port(ds, port));
 	struct gswip_priv *priv = ds->priv;
@@ -1369,22 +1377,27 @@ static int gswip_port_fdb(struct dsa_switch *ds, int port,
 	int fid = -1;
 	int err;
 
-	if (!bridge)
-		return -EINVAL;
-
-	for (; i < ARRAY_SIZE(priv->vlans); i++) {
-		if (priv->vlans[i].bridge == bridge &&
-		    priv->vlans[i].vid == vid) {
-			fid = priv->vlans[i].fid;
-			break;
+	if (bridge) {
+		for (; i < ARRAY_SIZE(priv->vlans); i++) {
+			if (priv->vlans[i].bridge == bridge &&
+			    priv->vlans[i].vid == vid) {
+				fid = priv->vlans[i].fid;
+				break;
+			}
 		}
-	}
 
-	if (fid == -1) {
-		dev_err(priv->dev,
-			"Port %d not part of a known bridge and VLAN ID %u combination\n",
+		if (fid == -1) {
+			dev_err(priv->dev,
+				"Port %d not part of a known bridge and VLAN ID %u combination\n",
 			port, vid);
-		return -EINVAL;
+			return -EINVAL;
+		}
+	} else {
+		if (dsa_is_cpu_port(ds, port) &&
+		    dsa_fdb_present_in_other_db(ds, port, addr, 0, db))
+			return 0;
+
+		fid = gswip_vlan_port_index(port);
 	}
 
 	mac_bridge.table = GSWIP_TABLE_MAC_BRIDGE;
@@ -1408,14 +1421,14 @@ static int gswip_port_fdb_add(struct dsa_switch *ds, int port,
 			      const unsigned char *addr, u16 vid,
 			      struct dsa_db db)
 {
-	return gswip_port_fdb(ds, port, addr, vid, true);
+	return gswip_port_fdb(ds, port, addr, vid, db, true);
 }
 
 static int gswip_port_fdb_del(struct dsa_switch *ds, int port,
 			      const unsigned char *addr, u16 vid,
 			      struct dsa_db db)
 {
-	return gswip_port_fdb(ds, port, addr, vid, false);
+	return gswip_port_fdb(ds, port, addr, vid, db, false);
 }
 
 static int gswip_port_fdb_dump(struct dsa_switch *ds, int port,
