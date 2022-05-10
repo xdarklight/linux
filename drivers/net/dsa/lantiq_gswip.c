@@ -1369,14 +1369,17 @@ static int gswip_port_fdb(struct dsa_switch *ds, int port,
 		return -EINVAL;
 
 	for (i = max_ports; i < ARRAY_SIZE(priv->vlans); i++) {
-		if (priv->vlans[i].bridge == bridge) {
+		if (priv->vlans[i].bridge == bridge &&
+		    priv->vlans[i].vid == vid) {
 			fid = priv->vlans[i].fid;
 			break;
 		}
 	}
 
 	if (fid == -1) {
-		dev_err(priv->dev, "Port not part of a bridge\n");
+		dev_err(priv->dev,
+			"Port %d not part of a known bridge and VLAN ID %u combination\n",
+			port, vid);
 		return -EINVAL;
 	}
 
