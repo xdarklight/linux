@@ -40,6 +40,7 @@
 #include <linux/phy.h>
 #include <linux/phylink.h>
 #include <linux/platform_device.h>
+#include <linux/refcount.h>
 #include <linux/regmap.h>
 #include <linux/reset.h>
 #include <net/dsa.h>
@@ -287,6 +288,7 @@ struct gswip_priv {
 	struct gswip_gphy_fw *gphy_fw;
 	u32 port_vlan_filter;
 	struct mutex pce_table_lock;
+	refcount_t cpu_port_fdb_refcnt;
 };
 
 struct gswip_pce_table_entry {
@@ -1365,19 +1367,33 @@ static int gswip_port_fdb(struct dsa_switch *ds, int port,
 	int i;
 	int err;
 
-	if (!bridge)
-		return -EINVAL;
+	if (dsa_is_cpu_port(ds, port)) {
+		/* The CPU port is shared across all bridges and is independent
+		 * of VLANs. Only remove the FDB entry once the CPU port is not
+		 * used anymore.
+		 */
+		if (add)
+			refcount_inc(&priv->cpu_port_fdb_refcnt);
+		else if (!refcount_dec_and_test(&priv->cpu_port_fdb_refcnt))
+			/* Still in use - don't remove this entry */
+			return 0;
 
-	for (i = max_ports; i < ARRAY_SIZE(priv->vlans); i++) {
-		if (priv->vlans[i].bridge == bridge) {
-			fid = priv->vlans[i].fid;
-			break;
+		/* The CPU port FDB entry is valid for all bridges/FIDs */
+		fid = 0;
+	} else if (bridge) {
+		for (i = max_ports; i < ARRAY_SIZE(priv->vlans); i++) {
+			if (priv->vlans[i].bridge == bridge) {
+				fid = priv->vlans[i].fid;
+				break;
+			}
 		}
-	}
 
-	if (fid == -1) {
-		dev_err(priv->dev, "Port not part of a bridge\n");
-		return -EINVAL;
+		if (fid == -1) {
+			dev_err(priv->dev, "Port not part of a bridge\n");
+			return -EINVAL;
+		}
+	} else {
+		return -EOPNOTSUPP;
 	}
 
 	mac_bridge.table = GSWIP_TABLE_MAC_BRIDGE;
