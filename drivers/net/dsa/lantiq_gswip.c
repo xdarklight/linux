@@ -1365,19 +1365,26 @@ static int gswip_port_fdb(struct dsa_switch *ds, int port,
 	int i;
 	int err;
 
-	if (!bridge)
-		return -EINVAL;
-
-	for (i = max_ports; i < ARRAY_SIZE(priv->vlans); i++) {
-		if (priv->vlans[i].bridge == bridge) {
-			fid = priv->vlans[i].fid;
-			break;
+	if (bridge) {
+		for (i = max_ports; i < ARRAY_SIZE(priv->vlans); i++) {
+			if (priv->vlans[i].bridge == bridge) {
+				fid = priv->vlans[i].fid;
+				break;
+			}
 		}
-	}
 
-	if (fid == -1) {
-		dev_err(priv->dev, "Port not part of a bridge\n");
-		return -EINVAL;
+		if (fid == -1) {
+			dev_err(priv->dev, "Port not part of a bridge\n");
+			return -EINVAL;
+		}
+	} else if (dsa_is_cpu_port(ds, port)) {
+		/* Use FID 0 which is the "default" and used as fallback. This
+		 * is not used by any standalone port or a bridge, so we can
+		 * safely use it for the CPU port.
+		 */
+		fid = 0;
+	} else {
+		return -EOPNOTSUPP;
 	}
 
 	mac_bridge.table = GSWIP_TABLE_MAC_BRIDGE;
