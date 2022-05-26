@@ -248,6 +248,9 @@ config PINCTRL_XWAY
 	bool
 	depends on SOC_TYPE_XWAY
 	depends on PINCTRL_LANTIQ
+	select GPIOLIB
+	select GPIOLIB_IRQCHIP
+	select IRQ_DOMAIN_HIERARCHY
 
 config PINCTRL_LPC18XX
 	bool "NXP LPC18XX/43XX SCU pinctrl driver"
