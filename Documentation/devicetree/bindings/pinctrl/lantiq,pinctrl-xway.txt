@@ -10,6 +10,9 @@ Required properties:
 - reg: Should contain the physical address and length of the gpio/pinmux
   register range
 
+Optional propertie:
+- interrupt-parent: phandle to the EIU interrupt controller
+
 Please refer to pinctrl-bindings.txt in this directory for details of the
 common pinctrl bindings used by client devices, including the meaning of the
 phrase "pin configuration node".
