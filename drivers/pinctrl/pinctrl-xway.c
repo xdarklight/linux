@@ -21,8 +21,6 @@
 
 #include "pinctrl-lantiq.h"
 
-#include <lantiq_soc.h>
-
 /* we have up to 4 banks of 16 bit each */
 #define PINS			16
 #define PORT3			3
@@ -55,11 +53,6 @@
 #define GPIO3_PUDSEL		(GPIO_BASE(0) + 0x28)
 #define GPIO3_PUDEN		(GPIO_BASE(0) + 0x2C)
 #define GPIO3_ALT1		(GPIO_BASE(PINS) + 0x24)
-
-/* macros to help us access the registers */
-#define gpio_getbit(m, r, p)	(!!(ltq_r32(m + r) & BIT(p)))
-#define gpio_setbit(m, r, p)	ltq_w32_mask(0, BIT(p), m + r)
-#define gpio_clearbit(m, r, p)	ltq_w32_mask(BIT(p), 0, m + r)
 
 #define MFP_XWAY(a, f0, f1, f2, f3)	\
 	{				\
@@ -1093,6 +1086,33 @@ static const struct ltq_pmx_func xrx300_funcs[] = {
 	{"ephy",	ARRAY_AND_SIZE(xrx300_gphy_grps)},
 };
 
+/* ---------  registers access helper functions --------- */
+static u32 xway_pinmux_getbit(struct ltq_pinmux_info *info, u8 reg,
+			      u8 port_pin)
+{
+	return ioread32be(info->membase[0] + reg) & BIT(port_pin);
+}
+
+static void xway_pinmux_setbit(struct ltq_pinmux_info *info, u8 reg,
+			       u8 port_pin)
+{
+	u32 val;
+
+	val = ioread32be(info->membase[0] + reg);
+	val |= BIT(port_pin);
+	iowrite32be(val, info->membase[0] + reg);
+}
+
+static void xway_pinmux_clearbit(struct ltq_pinmux_info *info, u8 reg,
+				 u8 port_pin)
+{
+	u32 val;
+
+	val = ioread32be(info->membase[0] + reg);
+	val &= ~BIT(port_pin);
+	iowrite32be(val, info->membase[0] + reg);
+}
+
 /* ---------  pinconf related code --------- */
 static int xway_pinconf_get(struct pinctrl_dev *pctldev,
 				unsigned pin,
@@ -1110,7 +1130,7 @@ static int xway_pinconf_get(struct pinctrl_dev *pctldev,
 		else
 			reg = GPIO_OD(pin);
 		*config = LTQ_PINCONF_PACK(param,
-			!gpio_getbit(info->membase[0], reg, PORT_PIN(pin)));
+			!xway_pinmux_getbit(info, reg, PORT_PIN(pin)));
 		break;
 
 	case LTQ_PINCONF_PARAM_PULL:
@@ -1118,7 +1138,7 @@ static int xway_pinconf_get(struct pinctrl_dev *pctldev,
 			reg = GPIO3_PUDEN;
 		else
 			reg = GPIO_PUDEN(pin);
-		if (!gpio_getbit(info->membase[0], reg, PORT_PIN(pin))) {
+		if (!xway_pinmux_getbit(info, reg, PORT_PIN(pin))) {
 			*config = LTQ_PINCONF_PACK(param, 0);
 			break;
 		}
@@ -1127,7 +1147,7 @@ static int xway_pinconf_get(struct pinctrl_dev *pctldev,
 			reg = GPIO3_PUDSEL;
 		else
 			reg = GPIO_PUDSEL(pin);
-		if (!gpio_getbit(info->membase[0], reg, PORT_PIN(pin)))
+		if (!xway_pinmux_getbit(info, reg, PORT_PIN(pin)))
 			*config = LTQ_PINCONF_PACK(param, 2);
 		else
 			*config = LTQ_PINCONF_PACK(param, 1);
@@ -1136,7 +1156,7 @@ static int xway_pinconf_get(struct pinctrl_dev *pctldev,
 	case LTQ_PINCONF_PARAM_OUTPUT:
 		reg = GPIO_DIR(pin);
 		*config = LTQ_PINCONF_PACK(param,
-			gpio_getbit(info->membase[0], reg, PORT_PIN(pin)));
+			xway_pinmux_getbit(info, reg, PORT_PIN(pin)));
 		break;
 	default:
 		dev_err(pctldev->dev, "Invalid config param %04x\n", param);
@@ -1168,11 +1188,11 @@ static int xway_pinconf_set(struct pinctrl_dev *pctldev,
 			else
 				reg = GPIO_OD(pin);
 			if (arg == 0)
-				gpio_setbit(info->membase[0],
+				xway_pinmux_setbit(info,
 					reg,
 					PORT_PIN(pin));
 			else
-				gpio_clearbit(info->membase[0],
+				xway_pinmux_clearbit(info,
 					reg,
 					PORT_PIN(pin));
 			break;
@@ -1183,23 +1203,23 @@ static int xway_pinconf_set(struct pinctrl_dev *pctldev,
 			else
 				reg = GPIO_PUDEN(pin);
 			if (arg == 0) {
-				gpio_clearbit(info->membase[0],
+				xway_pinmux_clearbit(info,
 					reg,
 					PORT_PIN(pin));
 				break;
 			}
-			gpio_setbit(info->membase[0], reg, PORT_PIN(pin));
+			xway_pinmux_setbit(info, reg, PORT_PIN(pin));
 
 			if (port == PORT3)
 				reg = GPIO3_PUDSEL;
 			else
 				reg = GPIO_PUDSEL(pin);
 			if (arg == 1)
-				gpio_clearbit(info->membase[0],
+				xway_pinmux_clearbit(info,
 					reg,
 					PORT_PIN(pin));
 			else if (arg == 2)
-				gpio_setbit(info->membase[0],
+				xway_pinmux_setbit(info,
 					reg,
 					PORT_PIN(pin));
 			else
@@ -1210,11 +1230,11 @@ static int xway_pinconf_set(struct pinctrl_dev *pctldev,
 		case LTQ_PINCONF_PARAM_OUTPUT:
 			reg = GPIO_DIR(pin);
 			if (arg == 0)
-				gpio_clearbit(info->membase[0],
+				xway_pinmux_clearbit(info,
 					reg,
 					PORT_PIN(pin));
 			else
-				gpio_setbit(info->membase[0],
+				xway_pinmux_setbit(info,
 					reg,
 					PORT_PIN(pin));
 			break;
@@ -1267,14 +1287,14 @@ static inline int xway_mux_apply(struct pinctrl_dev *pctrldev,
 		alt1_reg = GPIO3_ALT1;
 
 	if (mux & MUX_ALT0)
-		gpio_setbit(info->membase[0], GPIO_ALT0(pin), PORT_PIN(pin));
+		xway_pinmux_setbit(info, GPIO_ALT0(pin), PORT_PIN(pin));
 	else
-		gpio_clearbit(info->membase[0], GPIO_ALT0(pin), PORT_PIN(pin));
+		xway_pinmux_clearbit(info, GPIO_ALT0(pin), PORT_PIN(pin));
 
 	if (mux & MUX_ALT1)
-		gpio_setbit(info->membase[0], alt1_reg, PORT_PIN(pin));
+		xway_pinmux_setbit(info, alt1_reg, PORT_PIN(pin));
 	else
-		gpio_clearbit(info->membase[0], alt1_reg, PORT_PIN(pin));
+		xway_pinmux_clearbit(info, alt1_reg, PORT_PIN(pin));
 
 	return 0;
 }
@@ -1298,23 +1318,23 @@ static void xway_gpio_set(struct gpio_chip *chip, unsigned int pin, int val)
 	struct ltq_pinmux_info *info = dev_get_drvdata(chip->parent);
 
 	if (val)
-		gpio_setbit(info->membase[0], GPIO_OUT(pin), PORT_PIN(pin));
+		xway_pinmux_setbit(info, GPIO_OUT(pin), PORT_PIN(pin));
 	else
-		gpio_clearbit(info->membase[0], GPIO_OUT(pin), PORT_PIN(pin));
+		xway_pinmux_clearbit(info, GPIO_OUT(pin), PORT_PIN(pin));
 }
 
 static int xway_gpio_get(struct gpio_chip *chip, unsigned int pin)
 {
 	struct ltq_pinmux_info *info = dev_get_drvdata(chip->parent);
 
-	return !!gpio_getbit(info->membase[0], GPIO_IN(pin), PORT_PIN(pin));
+	return !!xway_pinmux_getbit(info, GPIO_IN(pin), PORT_PIN(pin));
 }
 
 static int xway_gpio_dir_in(struct gpio_chip *chip, unsigned int pin)
 {
 	struct ltq_pinmux_info *info = dev_get_drvdata(chip->parent);
 
-	gpio_clearbit(info->membase[0], GPIO_DIR(pin), PORT_PIN(pin));
+	xway_pinmux_clearbit(info, GPIO_DIR(pin), PORT_PIN(pin));
 
 	return 0;
 }
@@ -1324,10 +1344,10 @@ static int xway_gpio_dir_out(struct gpio_chip *chip, unsigned int pin, int val)
 	struct ltq_pinmux_info *info = dev_get_drvdata(chip->parent);
 
 	if (PORT(pin) == PORT3)
-		gpio_setbit(info->membase[0], GPIO3_OD, PORT_PIN(pin));
+		xway_pinmux_setbit(info, GPIO3_OD, PORT_PIN(pin));
 	else
-		gpio_setbit(info->membase[0], GPIO_OD(pin), PORT_PIN(pin));
-	gpio_setbit(info->membase[0], GPIO_DIR(pin), PORT_PIN(pin));
+		xway_pinmux_setbit(info, GPIO_OD(pin), PORT_PIN(pin));
+	xway_pinmux_setbit(info, GPIO_DIR(pin), PORT_PIN(pin));
 	xway_gpio_set(chip, pin, val);
 
 	return 0;
