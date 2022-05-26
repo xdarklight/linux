@@ -235,22 +235,24 @@ config PINCTRL_KEEMBAY
 
 config PINCTRL_LANTIQ
 	bool
-	depends on LANTIQ
+	depends on LANTIQ || COMPILE_TEST
 	select PINMUX
 	select PINCONF
 
 config PINCTRL_FALCON
 	bool
 	depends on SOC_FALCON
-	depends on PINCTRL_LANTIQ
+	select PINCTRL_LANTIQ
 
 config PINCTRL_XWAY
-	bool
-	depends on SOC_TYPE_XWAY
-	depends on PINCTRL_LANTIQ
+	bool "Lantiq XWAY SoC GPIO and pinctrl driver"
+	depends on SOC_TYPE_XWAY || COMPILE_TEST
+	depends on OF
+	depends on HAS_IOMEM
 	select GPIOLIB
 	select GPIOLIB_IRQCHIP
 	select IRQ_DOMAIN_HIERARCHY
+	select PINCTRL_LANTIQ
 
 config PINCTRL_LPC18XX
 	bool "NXP LPC18XX/43XX SCU pinctrl driver"
