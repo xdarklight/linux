@@ -13,6 +13,7 @@
 #include <linux/of_platform.h>
 #include <linux/of_address.h>
 #include <linux/of_gpio.h>
+#include <linux/of_irq.h>
 #include <linux/ioport.h>
 #include <linux/io.h>
 #include <linux/device.h>
@@ -1333,21 +1334,82 @@ static int xway_gpio_dir_out(struct gpio_chip *chip, unsigned int pin, int val)
 	return 0;
 }
 
-/*
- * gpiolib gpiod_to_irq callback function.
- * Returns the mapped IRQ (external interrupt) number for a given GPIO pin.
- */
-static int xway_gpio_to_irq(struct gpio_chip *chip, unsigned offset)
+static void xway_gpio_init_irq_valid_mask(struct gpio_chip *chip,
+					  unsigned long *valid_mask,
+					  unsigned int ngpios)
 {
 	struct ltq_pinmux_info *info = dev_get_drvdata(chip->parent);
-	int i;
+	unsigned int i;
+
+	bitmap_clear(valid_mask, 0, ngpios);
 
 	for (i = 0; i < info->num_exin; i++)
-		if (info->exin[i] == offset)
-			return ltq_eiu_get_irq(i);
-
-	return -1;
+		set_bit(info->exin[i], valid_mask);
 }
+
+static int xway_gpio_child_to_parent_hwirq(struct gpio_chip *chip,
+					   unsigned int child,
+					   unsigned int child_type,
+					   unsigned int *parent,
+					   unsigned int *parent_type)
+{
+	struct ltq_pinmux_info *info = dev_get_drvdata(chip->parent);
+	unsigned int i;
+
+	for (i = 0; i < info->num_exin; i++) {
+		if (info->exin[i] != child)
+			continue;
+
+		*parent = i;
+		*parent_type = child_type;
+		return 0;
+	}
+
+	return -EINVAL;
+}
+
+static void *xway_gpio_populate_parent_fwspec(struct gpio_chip *chip,
+					      unsigned int parent_hwirq,
+					      unsigned int parent_type)
+{
+	struct irq_fwspec *fwspec;
+
+	fwspec = kmalloc(sizeof(*fwspec), GFP_KERNEL);
+	if (!fwspec)
+		return NULL;
+
+	fwspec->fwnode = chip->irq.parent_domain->fwnode;
+	fwspec->param_count = 2;
+	fwspec->param[0] = parent_hwirq;
+	fwspec->param[1] = parent_type;
+
+	return fwspec;
+}
+
+static int xway_gpio_irqchip_set_type(struct irq_data *d, unsigned int type)
+{
+	if (type & (IRQ_TYPE_EDGE_FALLING | IRQ_TYPE_EDGE_RISING))
+		irq_set_handler_locked(d, handle_level_irq);
+	else
+		irq_set_handler_locked(d, handle_edge_irq);
+
+	return irq_chip_set_type_parent(d, type);
+}
+
+/*
+ * The interrupt handling happens in the parent interrupt controller,
+ * we don't do anything here.
+ */
+static struct irq_chip xway_gpio_irqchip = {
+	.name = "XWAY-GPIO",
+	.irq_ack = irq_chip_ack_parent,
+	.irq_mask = irq_chip_mask_parent,
+	.irq_unmask = irq_chip_unmask_parent,
+	.irq_eoi = irq_chip_eoi_parent,
+	.irq_set_affinity = irq_chip_set_affinity_parent,
+	.irq_set_type = xway_gpio_irqchip_set_type,
+	.irq_retrigger = irq_chip_retrigger_hierarchy,
+};
 
 static struct gpio_chip xway_chip = {
 	.label = "gpio-xway",
@@ -1357,7 +1419,6 @@ static struct gpio_chip xway_chip = {
 	.set = xway_gpio_set,
 	.request = gpiochip_generic_request,
 	.free = gpiochip_generic_free,
-	.to_irq = xway_gpio_to_irq,
 	.base = -1,
 };
 
@@ -1449,6 +1510,34 @@ static const struct of_device_id xway_match[] = {
 };
 MODULE_DEVICE_TABLE(of, xway_match);
 
+static int pinmux_xway_gpio_irqchip_init(struct platform_device *pdev)
+{
+	struct irq_domain *parent_irq_domain;
+	struct device_node *parent_irq_node;
+
+	parent_irq_node = of_irq_find_parent(pdev->dev.of_node);
+	if (!parent_irq_node)
+		return 0;
+
+	parent_irq_domain = irq_find_host(parent_irq_node);
+	of_node_put(parent_irq_node);
+
+	if (!parent_irq_domain)
+		return dev_err_probe(&pdev->dev, -ENODEV,
+				     "No parent IRQ domain found\n");
+
+	xway_chip.irq.fwnode = of_node_to_fwnode(pdev->dev.of_node);
+	xway_chip.irq.parent_domain = parent_irq_domain;
+	xway_chip.irq.chip = &xway_gpio_irqchip,
+	xway_chip.irq.init_valid_mask = xway_gpio_init_irq_valid_mask;
+	xway_chip.irq.child_to_parent_hwirq = xway_gpio_child_to_parent_hwirq;
+	xway_chip.irq.populate_parent_alloc_arg = xway_gpio_populate_parent_fwspec;
+	xway_chip.irq.default_type = IRQ_TYPE_NONE;
+	xway_chip.irq.handler = handle_level_irq;
+
+	return 0;
+}
+
 static int pinmux_xway_probe(struct platform_device *pdev)
 {
 	const struct of_device_id *match;
@@ -1507,6 +1596,10 @@ static int pinmux_xway_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Failed to register pinctrl driver\n");
 		return ret;
 	}
+
+	ret = pinmux_xway_gpio_irqchip_init(pdev);
+	if (ret)
+		return ret;
 
 	/* register the gpio chip */
 	xway_chip.parent = &pdev->dev;
