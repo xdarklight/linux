@@ -20,7 +20,6 @@
 #include <asm/addrspace.h>
 
 #include <lantiq_soc.h>
-#include <lantiq_irq.h>
 
 #include "pci-lantiq.h"
 
