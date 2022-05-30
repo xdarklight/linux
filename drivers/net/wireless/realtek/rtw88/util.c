@@ -167,7 +167,7 @@ struct rtw_iter_vifs_data {
 	struct list_head list;
 };
 
-void rtw_collect_vif_iter(void *data, u8 *mac, struct ieee80211_vif *vif)
+static void rtw_collect_vif_iter(void *data, u8 *mac, struct ieee80211_vif *vif)
 {
 	struct rtw_iter_vifs_data *iter_stas = data;
 	struct rtw_vifs_entry *vifs_entry;
