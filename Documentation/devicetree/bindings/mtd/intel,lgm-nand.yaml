@@ -6,17 +6,20 @@ $schema: http://devicetree.org/meta-schemas/core.yaml#
 
 title: Intel LGM SoC NAND Controller Device Tree Bindings
 
-allOf:
-  - $ref: "nand-controller.yaml"
-
 maintainers:
   - Ramuthevar Vadivel Murugan <vadivel.muruganx.ramuthevar@linux.intel.com>
 
 properties:
   compatible:
-    const: intel,lgm-ebunand
+    enum:
+      - intel,lgm-ebunand
+      - lantiq,danube-ebunand
+      - lantiq,xrx100-ebunand
+      - lantiq,xrx200-ebunand
+      - lantiq,xrx300-ebunand
 
   reg:
+    minItems: 5
     maxItems: 6
 
   reg-names:
@@ -45,6 +48,19 @@ properties:
   "#size-cells":
     const: 0
 
+allOf:
+  - $ref: "nand-controller.yaml"
+
+  - if:
+      properties:
+        compatible:
+          contains:
+            const: intel,lgm-ebunand
+    then:
+      required:
+        - dmas
+        - dma-names
+
 patternProperties:
   "^nand@[a-f0-9]+$":
     type: object
@@ -53,20 +69,11 @@ patternProperties:
         minimum: 0
         maximum: 1
 
-      nand-ecc-mode: true
-
-      nand-ecc-algo:
-        const: hw
-
-    additionalProperties: false
-
 required:
   - compatible
   - reg
   - reg-names
   - clocks
-  - dmas
-  - dma-names
   - "#address-cells"
   - "#size-cells"
 
@@ -93,6 +100,23 @@ examples:
       nand@0 {
         reg = <0>;
         nand-ecc-mode = "hw";
+      };
+    };
+  - |
+    nand-controller@e1053b0 {
+      compatible = "lantiq,xrx300-ebunand";
+      reg = <0xe1053b0 0x14>,
+            <0x0 0x1000>,
+            <0x4000000 0x1000>,
+            <0x0 0x4>,
+            <0x4000000 0x4>;
+      reg-names = "ebunand", "nand_cs0", "nand_cs1", "addr_sel0", "addr_sel1";
+      #address-cells = <1>;
+      #size-cells = <0>;
+
+      nand@0 {
+        reg = <0>;
+        nand-ecc-mode = "soft";
       };
     };
 
