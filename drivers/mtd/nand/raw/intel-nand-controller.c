@@ -40,7 +40,9 @@
 #define EBU_BUSCON_HOLDC(n)	((n) << 4)
 #define EBU_BUSCON_WAITRDC(n)	((n) << 6)
 #define EBU_BUSCON_WAITWRC(n)	((n) << 8)
+#define EBU_BUSCON_BCGEN(n)	((n) << 12)
 #define EBU_BUSCON_BCGEN_CS	0x0
+#define EBU_BUSCON_BCGEN_RES	0x3
 #define EBU_BUSCON_SETUP_EN	BIT(22)
 #define EBU_BUSCON_ALEC		0xC000
 
@@ -108,6 +110,7 @@
 
 struct ebu_nand_platform_data {
 	u8 ebu_addr[MAX_CS];
+	u8 ebu_buscon_bcgen;
 	bool has_hsnand;
 	bool has_parent_ebu_device;
 };
@@ -235,8 +238,9 @@ static int ebu_nand_set_timings(struct nand_chip *chip, int csline,
 	twrwait = DIV_ROUND_UP(max(timings->tWC_min, timings->tWH_min), period);
 	reg |= EBU_BUSCON_WAITWRC(twrwait);
 
-	reg |= EBU_BUSCON_CMULT_V4 | EBU_BUSCON_BCGEN_CS | EBU_BUSCON_ALEC |
-		EBU_BUSCON_SETUP_EN;
+	reg |= EBU_BUSCON_BCGEN(ctrl->platform_data->ebu_buscon_bcgen);
+
+	reg |= EBU_BUSCON_CMULT_V4 | EBU_BUSCON_ALEC | EBU_BUSCON_SETUP_EN;
 
 	regmap_write(ctrl->ebu, EBU_BUSCON(ctrl->cs_num), reg);
 
@@ -781,6 +785,7 @@ static int ebu_nand_remove(struct platform_device *pdev)
 
 static const struct ebu_nand_platform_data ebu_nand_lgm_data = {
 	.ebu_addr = { 5, 5 },
+	.ebu_buscon_bcgen = EBU_BUSCON_BCGEN_CS,
 	.has_hsnand = true,
 	.has_parent_ebu_device = false,
 };
