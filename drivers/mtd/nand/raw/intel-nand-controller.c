@@ -17,6 +17,7 @@
 #include <linux/mtd/nand.h>
 
 #include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
@@ -104,6 +105,10 @@
 
 #define USEC_PER_SEC	1000000L
 
+struct ebu_nand_platform_data {
+	bool has_hsnand;
+};
+
 struct ebu_nand_cs {
 	void __iomem *chipaddr;
 	u32 addr_sel;
@@ -122,6 +127,7 @@ struct ebu_nand_controller {
 	u32 nd_para0;
 	u8 cs_num;
 	struct ebu_nand_cs cs[MAX_CS];
+	const struct ebu_nand_platform_data *platform_data;
 };
 
 static inline struct ebu_nand_controller *nand_to_ebu(struct nand_chip *chip)
@@ -453,6 +459,27 @@ static int ebu_nand_attach_chip(struct nand_chip *chip)
 	u32 blocksize = mtd->erasesize;
 	int bch_algo, start, val;
 
+	switch (chip->ecc.engine_type) {
+	case NAND_ECC_ENGINE_TYPE_NONE:
+	case NAND_ECC_ENGINE_TYPE_SOFT:
+	case NAND_ECC_ENGINE_TYPE_ON_DIE:
+		/* nothing to do */
+		return 0;
+
+	case NAND_ECC_ENGINE_TYPE_ON_HOST:
+		if (!ebu_host->platform_data->has_hsnand) {
+			dev_err(ebu_host->dev,
+				"Host ECC engine not supported without HSNAND\n");
+			return -EINVAL;
+		}
+		break;
+
+	default:
+		dev_err(ebu_host->dev, "Unsupported ECC mode: %d\n",
+			chip->ecc.engine_type);
+		return -EINVAL;
+	}
+
 	/* Default to an ECC size of 512 */
 	if (!chip->ecc.size)
 		chip->ecc.size = 512;
@@ -592,13 +619,19 @@ static int ebu_nand_probe(struct platform_device *pdev)
 	ebu_host->dev = dev;
 	nand_controller_init(&ebu_host->controller);
 
+	ebu_host->platform_data = of_device_get_match_data(dev);
+	if (!ebu_host->platform_data)
+		return dev_err_probe(dev, -ENODEV, "Missing OF match data\n");
+
 	ebu_host->ebu = devm_platform_ioremap_resource_byname(pdev, "ebunand");
 	if (IS_ERR(ebu_host->ebu))
 		return PTR_ERR(ebu_host->ebu);
 
-	ebu_host->hsnand = devm_platform_ioremap_resource_byname(pdev, "hsnand");
-	if (IS_ERR(ebu_host->hsnand))
-		return PTR_ERR(ebu_host->hsnand);
+	if (ebu_host->platform_data->has_hsnand) {
+		ebu_host->hsnand = devm_platform_ioremap_resource_byname(pdev, "hsnand");
+		if (IS_ERR(ebu_host->hsnand))
+			return PTR_ERR(ebu_host->hsnand);
+	}
 
 	chip_np = of_get_next_child(dev->of_node, NULL);
 	if (!chip_np)
@@ -634,19 +667,21 @@ static int ebu_nand_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	ebu_host->dma_tx = dma_request_chan(dev, "tx");
-	if (IS_ERR(ebu_host->dma_tx)) {
-		ret = dev_err_probe(dev, PTR_ERR(ebu_host->dma_tx),
-				    "failed to request DMA tx chan!.\n");
-		goto err_disable_unprepare_clk;
-	}
+	if (ebu_host->platform_data->has_hsnand) {
+		ebu_host->dma_tx = dma_request_chan(dev, "tx");
+		if (IS_ERR(ebu_host->dma_tx)) {
+			ret = dev_err_probe(dev, PTR_ERR(ebu_host->dma_tx),
+					    "failed to request DMA tx chan!.\n");
+			goto err_disable_unprepare_clk;
+		}
 
-	ebu_host->dma_rx = dma_request_chan(dev, "rx");
-	if (IS_ERR(ebu_host->dma_rx)) {
-		ret = dev_err_probe(dev, PTR_ERR(ebu_host->dma_rx),
-				    "failed to request DMA rx chan!.\n");
-		ebu_host->dma_rx = NULL;
-		goto err_cleanup_dma;
+		ebu_host->dma_rx = dma_request_chan(dev, "rx");
+		if (IS_ERR(ebu_host->dma_rx)) {
+			ret = dev_err_probe(dev, PTR_ERR(ebu_host->dma_rx),
+					    "failed to request DMA rx chan!.\n");
+			ebu_host->dma_rx = NULL;
+			goto err_cleanup_dma;
+		}
 	}
 
 	resname = devm_kasprintf(dev, GFP_KERNEL, "addr_sel%d", cs);
@@ -714,8 +749,12 @@ static int ebu_nand_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static const struct ebu_nand_platform_data ebu_nand_lgm_data = {
+	.has_hsnand = true,
+};
+
 static const struct of_device_id ebu_nand_match[] = {
-	{ .compatible = "intel,lgm-ebunand" },
+	{ .compatible = "intel,lgm-ebunand", .data = &ebu_nand_lgm_data },
 	{}
 };
 MODULE_DEVICE_TABLE(of, ebu_nand_match);
