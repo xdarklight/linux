@@ -106,6 +106,7 @@
 #define USEC_PER_SEC	1000000L
 
 struct ebu_nand_platform_data {
+	u8 ebu_addr[MAX_CS];
 	bool has_hsnand;
 };
 
@@ -691,7 +692,9 @@ static int ebu_nand_probe(struct platform_device *pdev)
 		goto err_cleanup_dma;
 	}
 	ebu_host->cs[cs].addr_sel = res->start;
-	writel(ebu_host->cs[cs].addr_sel | EBU_ADDR_MASK(5) | EBU_ADDR_SEL_REGEN,
+	writel(ebu_host->cs[cs].addr_sel |
+	       EBU_ADDR_MASK(ebu_host->platform_data->ebu_addr[cs]) |
+	       EBU_ADDR_SEL_REGEN,
 	       ebu_host->ebu + EBU_ADDR_SEL(cs));
 
 	nand_set_flash_node(&ebu_host->chip, chip_np);
@@ -750,6 +753,7 @@ static int ebu_nand_remove(struct platform_device *pdev)
 }
 
 static const struct ebu_nand_platform_data ebu_nand_lgm_data = {
+	.ebu_addr = { 5, 5 },
 	.has_hsnand = true,
 };
 
