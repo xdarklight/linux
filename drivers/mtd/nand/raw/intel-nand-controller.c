@@ -19,6 +19,7 @@
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/platform_device.h>
+#include <linux/regmap.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/types.h>
@@ -119,8 +120,8 @@ struct ebu_nand_controller {
 	struct nand_controller controller;
 	struct nand_chip chip;
 	struct device *dev;
-	void __iomem *ebu;
-	void __iomem *hsnand;
+	struct regmap *ebu;
+	struct regmap *hsnand;
 	struct dma_chan *dma_tx;
 	struct dma_chan *dma_rx;
 	struct completion dma_access_complete;
@@ -141,9 +142,10 @@ static int ebu_nand_waitrdy(struct nand_chip *chip, int timeout_ms)
 	struct ebu_nand_controller *ctrl = nand_to_ebu(chip);
 	u32 status;
 
-	return readl_poll_timeout(ctrl->ebu + EBU_WAIT, status,
-				  (status & EBU_WAIT_RDBY) ||
-				  (status & EBU_WAIT_WR_C), 20, timeout_ms);
+	return regmap_read_poll_timeout(ctrl->ebu, EBU_WAIT, status,
+					(status & EBU_WAIT_RDBY) ||
+					(status & EBU_WAIT_WR_C), 20,
+					timeout_ms);
 }
 
 static u8 ebu_nand_readb(struct nand_chip *chip)
@@ -186,19 +188,19 @@ static void ebu_nand_disable(struct nand_chip *chip)
 {
 	struct ebu_nand_controller *ebu_host = nand_get_controller_data(chip);
 
-	writel(0, ebu_host->ebu + EBU_CON);
+	regmap_write(ebu_host->ebu, EBU_CON, 0);
 }
 
 static void ebu_select_chip(struct nand_chip *chip)
 {
 	struct ebu_nand_controller *ebu_host = nand_get_controller_data(chip);
-	void __iomem *nand_con = ebu_host->ebu + EBU_CON;
-	u32 cs = ebu_host->cs_num;
 
-	writel(EBU_CON_NANDM_EN | EBU_CON_CSMUX_E_EN | EBU_CON_CS_P_LOW |
-	       EBU_CON_SE_P_LOW | EBU_CON_WP_P_LOW | EBU_CON_PRE_P_LOW |
-	       EBU_CON_IN_CS_S(cs) | EBU_CON_OUT_CS_S(cs) |
-	       EBU_CON_LAT_EN_CS_P, nand_con);
+	regmap_write(ebu_host->ebu, EBU_CON, EBU_CON_NANDM_EN |
+		     EBU_CON_CSMUX_E_EN | EBU_CON_CS_P_LOW | EBU_CON_SE_P_LOW |
+		     EBU_CON_WP_P_LOW | EBU_CON_PRE_P_LOW |
+		     EBU_CON_IN_CS_S(ebu_host->cs_num) |
+		     EBU_CON_OUT_CS_S(ebu_host->cs_num) |
+		     EBU_CON_LAT_EN_CS_P);
 }
 
 static int ebu_nand_set_timings(struct nand_chip *chip, int csline,
@@ -235,7 +237,7 @@ static int ebu_nand_set_timings(struct nand_chip *chip, int csline,
 	reg |= EBU_BUSCON_CMULT_V4 | EBU_BUSCON_BCGEN_CS | EBU_BUSCON_ALEC |
 		EBU_BUSCON_SETUP_EN;
 
-	writel(reg, ctrl->ebu + EBU_BUSCON(ctrl->cs_num));
+	regmap_write(ctrl->ebu, EBU_BUSCON(ctrl->cs_num), reg);
 
 	return 0;
 }
@@ -365,28 +367,29 @@ static void ebu_nand_trigger(struct ebu_nand_controller *ebu_host,
 	unsigned int val;
 
 	val = cmd | (page & 0xFF) << HSNAND_CTL1_ADDR_SHIFT;
-	writel(val, ebu_host->hsnand + HSNAND_CTL1);
+	regmap_write(ebu_host->hsnand, HSNAND_CTL1, val);
 	val = (page & 0xFFFF00) >> 8 | HSNAND_CTL2_CYC_N_V5;
-	writel(val, ebu_host->hsnand + HSNAND_CTL2);
+	regmap_write(ebu_host->hsnand, HSNAND_CTL2, val);
 
-	writel(ebu_host->nd_para0, ebu_host->hsnand + HSNAND_PARA0);
+	regmap_write(ebu_host->hsnand, HSNAND_PARA0, ebu_host->nd_para0);
 
 	/* clear first, will update later */
-	writel(0xFFFFFFFF, ebu_host->hsnand + HSNAND_CMSG_0);
-	writel(0xFFFFFFFF, ebu_host->hsnand + HSNAND_CMSG_1);
+	regmap_write(ebu_host->hsnand, HSNAND_CMSG_0, 0xFFFFFFFF);
+	regmap_write(ebu_host->hsnand, HSNAND_CMSG_1, 0xFFFFFFFF);
 
-	writel(HSNAND_INT_MSK_CTL_WR_C,
-	       ebu_host->hsnand + HSNAND_INT_MSK_CTL);
+	regmap_write(ebu_host->hsnand, HSNAND_INT_MSK_CTL,
+		     HSNAND_INT_MSK_CTL_WR_C);
 
 	if (!cmd)
 		val = HSNAND_CTL_RW_READ;
 	else
 		val = HSNAND_CTL_RW_WRITE;
 
-	writel(HSNAND_CTL_MSG_EN | HSNAND_CTL_CKFF_EN |
-	       HSNAND_CTL_ECC_OFF_V8TH | HSNAND_CTL_CE_SEL_CS(ebu_host->cs_num) |
-	       HSNAND_CTL_ENABLE_ECC | HSNAND_CTL_GO | val,
-	       ebu_host->hsnand + HSNAND_CTL);
+	regmap_write(ebu_host->hsnand, HSNAND_CTL,
+		     HSNAND_CTL_MSG_EN | HSNAND_CTL_CKFF_EN |
+		     HSNAND_CTL_ECC_OFF_V8TH |
+		     HSNAND_CTL_CE_SEL_CS(ebu_host->cs_num) |
+		     HSNAND_CTL_ENABLE_ECC | HSNAND_CTL_GO | val);
 }
 
 static int ebu_nand_read_page_hwecc(struct nand_chip *chip, u8 *buf,
@@ -394,7 +397,7 @@ static int ebu_nand_read_page_hwecc(struct nand_chip *chip, u8 *buf,
 {
 	struct mtd_info *mtd = nand_to_mtd(chip);
 	struct ebu_nand_controller *ebu_host = nand_get_controller_data(chip);
-	int ret, reg_data;
+	int ret;
 
 	ebu_nand_trigger(ebu_host, page, NAND_CMD_READ0);
 
@@ -405,9 +408,7 @@ static int ebu_nand_read_page_hwecc(struct nand_chip *chip, u8 *buf,
 	if (oob_required)
 		chip->ecc.read_oob(chip, page);
 
-	reg_data = readl(ebu_host->hsnand + HSNAND_CTL);
-	reg_data &= ~HSNAND_CTL_GO;
-	writel(reg_data, ebu_host->hsnand + HSNAND_CTL);
+	regmap_update_bits(ebu_host->hsnand, HSNAND_CTL, HSNAND_CTL_GO, 0);
 
 	return 0;
 }
@@ -417,8 +418,7 @@ static int ebu_nand_write_page_hwecc(struct nand_chip *chip, const u8 *buf,
 {
 	struct mtd_info *mtd = nand_to_mtd(chip);
 	struct ebu_nand_controller *ebu_host = nand_get_controller_data(chip);
-	void __iomem *int_sta = ebu_host->hsnand + HSNAND_INT_STA;
-	int reg_data, ret, val;
+	int ret, val;
 	u32 reg;
 
 	ebu_nand_trigger(ebu_host, page, NAND_CMD_SEQIN);
@@ -429,20 +429,18 @@ static int ebu_nand_write_page_hwecc(struct nand_chip *chip, const u8 *buf,
 
 	if (oob_required) {
 		reg = get_unaligned_le32(chip->oob_poi);
-		writel(reg, ebu_host->hsnand + HSNAND_CMSG_0);
+		regmap_write(ebu_host->hsnand, HSNAND_CMSG_0, reg);
 
 		reg = get_unaligned_le32(chip->oob_poi + 4);
-		writel(reg, ebu_host->hsnand + HSNAND_CMSG_1);
+		regmap_write(ebu_host->hsnand, HSNAND_CMSG_1, reg);
 	}
 
-	ret = readl_poll_timeout_atomic(int_sta, val, !(val & HSNAND_INT_STA_WR_C),
-					10, 1000);
+	ret = regmap_read_poll_timeout(ebu_host->hsnand, HSNAND_INT_STA, val,
+				       !(val & HSNAND_INT_STA_WR_C), 10, 1000);
 	if (ret)
 		return ret;
 
-	reg_data = readl(ebu_host->hsnand + HSNAND_CTL);
-	reg_data &= ~HSNAND_CTL_GO;
-	writel(reg_data, ebu_host->hsnand + HSNAND_CTL);
+	regmap_update_bits(ebu_host->hsnand, HSNAND_CTL, HSNAND_CTL_GO, 0);
 
 	return 0;
 }
@@ -601,6 +599,20 @@ static void ebu_dma_cleanup(struct ebu_nand_controller *ebu_host)
 		dma_release_channel(ebu_host->dma_tx);
 }
 
+static const struct regmap_config ebu_nand_regmap_config = {
+	.name = "ebunand",
+	.reg_bits = 16,
+	.val_bits = 32,
+	.reg_stride = 4,
+};
+
+static const struct regmap_config ebu_nand_hsnand_regmap_config = {
+	.name = "hsnand",
+	.reg_bits = 16,
+	.val_bits = 32,
+	.reg_stride = 4,
+};
+
 static int ebu_nand_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -609,6 +621,7 @@ static int ebu_nand_probe(struct platform_device *pdev)
 	struct nand_chip *nand;
 	struct mtd_info *mtd;
 	struct resource *res;
+	void __iomem *base;
 	char *resname;
 	int ret;
 	u32 cs;
@@ -624,12 +637,22 @@ static int ebu_nand_probe(struct platform_device *pdev)
 	if (!ebu_host->platform_data)
 		return dev_err_probe(dev, -ENODEV, "Missing OF match data\n");
 
-	ebu_host->ebu = devm_platform_ioremap_resource_byname(pdev, "ebunand");
+	base = devm_platform_ioremap_resource_byname(pdev, "ebunand");
+	if (IS_ERR(base))
+		return PTR_ERR(base);
+
+	ebu_host->ebu = devm_regmap_init_mmio(dev, base,
+					      &ebu_nand_regmap_config);
 	if (IS_ERR(ebu_host->ebu))
 		return PTR_ERR(ebu_host->ebu);
 
 	if (ebu_host->platform_data->has_hsnand) {
-		ebu_host->hsnand = devm_platform_ioremap_resource_byname(pdev, "hsnand");
+		base = devm_platform_ioremap_resource_byname(pdev, "hsnand");
+		if (IS_ERR(base))
+			return PTR_ERR(base);
+
+		ebu_host->hsnand = devm_regmap_init_mmio(dev, base,
+							 &ebu_nand_hsnand_regmap_config);
 		if (IS_ERR(ebu_host->hsnand))
 			return PTR_ERR(ebu_host->hsnand);
 	}
@@ -691,11 +714,13 @@ static int ebu_nand_probe(struct platform_device *pdev)
 		ret = -EINVAL;
 		goto err_cleanup_dma;
 	}
+
 	ebu_host->cs[cs].addr_sel = res->start;
-	writel(ebu_host->cs[cs].addr_sel |
-	       EBU_ADDR_MASK(ebu_host->platform_data->ebu_addr[cs]) |
-	       EBU_ADDR_SEL_REGEN,
-	       ebu_host->ebu + EBU_ADDR_SEL(cs));
+
+	regmap_write(ebu_host->ebu, EBU_ADDR_SEL(cs),
+		     ebu_host->cs[cs].addr_sel |
+		     EBU_ADDR_MASK(ebu_host->platform_data->ebu_addr[cs]) |
+		     EBU_ADDR_SEL_REGEN);
 
 	nand_set_flash_node(&ebu_host->chip, chip_np);
 
