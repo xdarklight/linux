@@ -109,6 +109,7 @@
 struct ebu_nand_platform_data {
 	u8 ebu_addr[MAX_CS];
 	bool has_hsnand;
+	bool has_parent_ebu_device;
 };
 
 struct ebu_nand_cs {
@@ -637,14 +638,21 @@ static int ebu_nand_probe(struct platform_device *pdev)
 	if (!ebu_host->platform_data)
 		return dev_err_probe(dev, -ENODEV, "Missing OF match data\n");
 
-	base = devm_platform_ioremap_resource_byname(pdev, "ebunand");
-	if (IS_ERR(base))
-		return PTR_ERR(base);
+	if (ebu_host->platform_data->has_parent_ebu_device) {
+		ebu_host->ebu = dev_get_regmap(dev->parent, NULL);
+		if (!ebu_host->ebu)
+			return dev_err_probe(dev, -EPROBE_DEFER,
+					     "Could not find EBU regmap for parent device\n");
+	} else {
+		base = devm_platform_ioremap_resource_byname(pdev, "ebunand");
+		if (IS_ERR(base))
+			return PTR_ERR(base);
 
-	ebu_host->ebu = devm_regmap_init_mmio(dev, base,
-					      &ebu_nand_regmap_config);
-	if (IS_ERR(ebu_host->ebu))
-		return PTR_ERR(ebu_host->ebu);
+		ebu_host->ebu = devm_regmap_init_mmio(dev, base,
+						      &ebu_nand_regmap_config);
+		if (IS_ERR(ebu_host->ebu))
+			return PTR_ERR(ebu_host->ebu);
+	}
 
 	if (ebu_host->platform_data->has_hsnand) {
 		base = devm_platform_ioremap_resource_byname(pdev, "hsnand");
@@ -774,6 +782,7 @@ static int ebu_nand_remove(struct platform_device *pdev)
 static const struct ebu_nand_platform_data ebu_nand_lgm_data = {
 	.ebu_addr = { 5, 5 },
 	.has_hsnand = true,
+	.has_parent_ebu_device = false,
 };
 
 static const struct of_device_id ebu_nand_match[] = {
