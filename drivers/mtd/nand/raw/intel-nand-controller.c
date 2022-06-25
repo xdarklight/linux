@@ -790,8 +790,19 @@ static const struct ebu_nand_platform_data ebu_nand_lgm_data = {
 	.has_parent_ebu_device = false,
 };
 
+static const struct ebu_nand_platform_data ebu_nand_xway_data = {
+	.ebu_addr = { 3, 2 },
+	.ebu_buscon_bcgen = EBU_BUSCON_BCGEN_RES,
+	.has_hsnand = false,
+	.has_parent_ebu_device = true,
+};
+
 static const struct of_device_id ebu_nand_match[] = {
 	{ .compatible = "intel,lgm-ebunand", .data = &ebu_nand_lgm_data },
+	{ .compatible = "lantiq,danube-ebunand", .data = &ebu_nand_xway_data },
+	{ .compatible = "lantiq,xrx100-ebunand", .data = &ebu_nand_xway_data },
+	{ .compatible = "lantiq,xrx200-ebunand", .data = &ebu_nand_xway_data },
+	{ .compatible = "lantiq,xrx300-ebunand", .data = &ebu_nand_xway_data },
 	{}
 };
 MODULE_DEVICE_TABLE(of, ebu_nand_match);
