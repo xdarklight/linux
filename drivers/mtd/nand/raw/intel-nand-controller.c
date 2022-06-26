@@ -725,12 +725,6 @@ static int ebu_nand_probe(struct platform_device *pdev)
 	nand_set_flash_node(&ebu_host->chip, chip_np);
 
 	mtd = nand_to_mtd(&ebu_host->chip);
-	if (!mtd->name) {
-		dev_err(ebu_host->dev, "NAND label property is mandatory\n");
-		ret = -EINVAL;
-		goto err_cleanup_dma;
-	}
-
 	mtd->dev.parent = dev;
 	ebu_host->dev = dev;
 
