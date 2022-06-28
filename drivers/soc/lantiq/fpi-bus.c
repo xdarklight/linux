@@ -16,8 +16,6 @@
 #include <linux/property.h>
 #include <linux/regmap.h>
 
-#include <lantiq_soc.h>
-
 #define XBAR_ALWAYS_LAST	0x430
 #define XBAR_FPI_BURST_EN	BIT(1)
 #define XBAR_AHB_BURST_EN	BIT(2)
@@ -26,11 +24,11 @@
 
 static int ltq_fpi_probe(struct platform_device *pdev)
 {
+	u32 rcu_ahb_endianness_reg_offset, val;
 	struct device *dev = &pdev->dev;
 	struct device_node *np = dev->of_node;
 	struct regmap *rcu_regmap;
 	void __iomem *xbar_membase;
-	u32 rcu_ahb_endianness_reg_offset;
 	int ret;
 
 	xbar_membase = devm_platform_ioremap_resource(pdev, 0);
@@ -58,7 +56,9 @@ static int ltq_fpi_probe(struct platform_device *pdev)
 	}
 
 	/* disable fpi burst */
-	ltq_w32_mask(XBAR_FPI_BURST_EN, 0, xbar_membase + XBAR_ALWAYS_LAST);
+	val = ioread32be(xbar_membase + XBAR_ALWAYS_LAST);
+	val &= ~XBAR_FPI_BURST_EN;
+	iowrite32be(val, xbar_membase + XBAR_ALWAYS_LAST);
 
 	return of_platform_populate(dev->of_node, NULL, NULL, dev);
 }
