@@ -1,0 +1,6 @@
+config LANTIQ_FPI_BUS
+	tristate "Lantiq FPI bus"
+	depends on SOC_XWAY || COMPILE_TEST
+	default SOC_XWAY
+	help
+	  Enable support for the FPI bus on Lantiq XWAY SoCs
