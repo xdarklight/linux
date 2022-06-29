@@ -45,6 +45,11 @@ properties:
 
   big-endian: true
 
+patternProperties:
+  "^nand-controller@[0-9a-f]+$":
+    type: object
+    $ref: "../mtd/intel,lgm-nand.yaml"
+
 required:
   - compatible
   - reg
@@ -78,5 +83,22 @@ examples:
         #address-cells = <1>;
         #size-cells = <1>;
         ranges;
+
+        nand-controller@1e1053b0 {
+            compatible = "lantiq,danube-ebunand";
+            reg = <0x1e1053b0 0x14>,
+                  <0x14000000 0x1000>,
+                  <0x14000000 0x1000>,
+                  <0x14000000 0x4>,
+                  <0x14000000 0x4>;
+            reg-names = "ebunand",
+                        "nand_cs0",
+                        "nand_cs1",
+                        "addr_sel0",
+                        "addr_sel1";
+
+            #address-cells = <1>;
+            #size-cells = <0>;
+        };
     };
 ...
