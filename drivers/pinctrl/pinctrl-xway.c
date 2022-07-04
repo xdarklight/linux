@@ -102,8 +102,6 @@ enum xway_mux {
 };
 
 /* ---------  ase related code --------- */
-#define ASE_MAX_PIN		32
-
 static const struct ltq_mfp_pin ase_mfp[] = {
 	/*       pin    f0	f1	f2	f3   */
 	MFP_XWAY(GPIO0, GPIO,	EXIN,	MII,	TDM),
@@ -230,8 +228,6 @@ static const struct ltq_pmx_func ase_funcs[] = {
 };
 
 /* ---------  danube related code --------- */
-#define DANUBE_MAX_PIN		32
-
 static const struct ltq_mfp_pin danube_mfp[] = {
 	/*       pin    f0	f1	f2	f3   */
 	MFP_XWAY(GPIO0, GPIO,	EXIN,	SDIO,	TDM),
@@ -405,8 +401,6 @@ static const struct ltq_pmx_func danube_funcs[] = {
 };
 
 /* ---------  xrx100 related code --------- */
-#define XRX100_MAX_PIN		56
-
 static const struct ltq_mfp_pin xrx100_mfp[] = {
 	/*       pin    f0	f1	f2	f3   */
 	MFP_XWAY(GPIO0, GPIO,	EXIN,	SDIO,	TDM),
@@ -618,8 +612,6 @@ static const struct ltq_pmx_func xrx100_funcs[] = {
 };
 
 /* ---------  xrx200 related code --------- */
-#define XRX200_MAX_PIN		50
-
 static const struct ltq_mfp_pin xrx200_mfp[] = {
 	/*       pin    f0	f1	f2	f3   */
 	MFP_XWAY(GPIO0, GPIO,	EXIN,	SDIO,	TDM),
@@ -874,8 +866,6 @@ static const struct ltq_pmx_func xrx200_funcs[] = {
 };
 
 /* ---------  xrx300 related code --------- */
-#define XRX300_MAX_PIN		64
-
 static const struct ltq_mfp_pin xrx300_mfp[] = {
 	/*       pin    f0	f1	f2	f3   */
 	MFP_XWAY(GPIO0, GPIO,	EXIN,	EPHY,	NONE),
@@ -1456,7 +1446,7 @@ struct pinctrl_xway_soc {
 
 /* XWAY AMAZON Family */
 static struct pinctrl_xway_soc ase_pinctrl = {
-	.pin_count = ASE_MAX_PIN,
+	.pin_count = ARRAY_SIZE(ase_mfp),
 	.mfp = ase_mfp,
 	.grps = ase_grps,
 	.num_grps = ARRAY_SIZE(ase_grps),
@@ -1468,7 +1458,7 @@ static struct pinctrl_xway_soc ase_pinctrl = {
 
 /* XWAY DANUBE Family */
 static struct pinctrl_xway_soc danube_pinctrl = {
-	.pin_count = DANUBE_MAX_PIN,
+	.pin_count = ARRAY_SIZE(danube_mfp),
 	.mfp = danube_mfp,
 	.grps = danube_grps,
 	.num_grps = ARRAY_SIZE(danube_grps),
@@ -1480,7 +1470,7 @@ static struct pinctrl_xway_soc danube_pinctrl = {
 
 /* XWAY xRX100 Family */
 static struct pinctrl_xway_soc xrx100_pinctrl = {
-	.pin_count = XRX100_MAX_PIN,
+	.pin_count = ARRAY_SIZE(xrx100_mfp),
 	.mfp = xrx100_mfp,
 	.grps = xrx100_grps,
 	.num_grps = ARRAY_SIZE(xrx100_grps),
@@ -1492,7 +1482,7 @@ static struct pinctrl_xway_soc xrx100_pinctrl = {
 
 /* XWAY xRX200 Family */
 static struct pinctrl_xway_soc xrx200_pinctrl = {
-	.pin_count = XRX200_MAX_PIN,
+	.pin_count = ARRAY_SIZE(xrx200_mfp),
 	.mfp = xrx200_mfp,
 	.grps = xrx200_grps,
 	.num_grps = ARRAY_SIZE(xrx200_grps),
@@ -1504,7 +1494,7 @@ static struct pinctrl_xway_soc xrx200_pinctrl = {
 
 /* XWAY xRX300 Family */
 static struct pinctrl_xway_soc xrx300_pinctrl = {
-	.pin_count = XRX300_MAX_PIN,
+	.pin_count = ARRAY_SIZE(xrx300_mfp),
 	.mfp = xrx300_mfp,
 	.grps = xrx300_grps,
 	.num_grps = ARRAY_SIZE(xrx300_grps),
