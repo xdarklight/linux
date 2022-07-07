@@ -500,7 +500,7 @@ vxlan_flood_test()
 	done
 
 	local -a t0s=($(flood_fetch_stats "${counters[@]}"))
-	$MZ $h1 -Q $vid -c 10 -d 100msec -p 64 -b $mac -B $dst -t icmp -q
+	mz_do $h1 "" -Q $vid -c 10 -d 100msec -p 64 -b $mac -B $dst -t icmp
 	sleep 1
 	local -a t1s=($(flood_fetch_stats "${counters[@]}"))
 

@@ -46,8 +46,8 @@ match_dst_mac_test()
 	tc filter add dev $h2 ingress protocol ip pref 2 handle 102 flower \
 		$tcflags dst_mac $h2mac action drop
 
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
-		-t ip -q
+	mz_do $h1 "" -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
+		-t ip
 
 	tc_check_packets "dev $h2 ingress" 101 1
 	check_fail $? "Matched on a wrong filter"
@@ -72,8 +72,8 @@ match_src_mac_test()
 	tc filter add dev $h2 ingress protocol ip pref 2 handle 102 flower \
 		$tcflags src_mac $h1mac action drop
 
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
-		-t ip -q
+	mz_do $h1 "" -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
+		-t ip
 
 	tc_check_packets "dev $h2 ingress" 101 1
 	check_fail $? "Matched on a wrong filter"
@@ -98,8 +98,8 @@ match_dst_ip_test()
 	tc filter add dev $h2 ingress protocol ip pref 3 handle 103 flower \
 		$tcflags dst_ip 192.0.2.0/24 action drop
 
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
-		-t ip -q
+	mz_do $h1 "" -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
+		-t ip
 
 	tc_check_packets "dev $h2 ingress" 101 1
 	check_fail $? "Matched on a wrong filter"
@@ -109,8 +109,8 @@ match_dst_ip_test()
 
 	tc filter del dev $h2 ingress protocol ip pref 2 handle 102 flower
 
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
-		-t ip -q
+	mz_do $h1 "" -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
+		-t ip
 
 	tc_check_packets "dev $h2 ingress" 103 1
 	check_err $? "Did not match on correct filter with mask"
@@ -132,8 +132,8 @@ match_src_ip_test()
 	tc filter add dev $h2 ingress protocol ip pref 3 handle 103 flower \
 		$tcflags src_ip 192.0.2.0/24 action drop
 
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
-		-t ip -q
+	mz_do $h1 "" -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
+		-t ip
 
 	tc_check_packets "dev $h2 ingress" 101 1
 	check_fail $? "Matched on a wrong filter"
@@ -143,8 +143,8 @@ match_src_ip_test()
 
 	tc filter del dev $h2 ingress protocol ip pref 2 handle 102 flower
 
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
-		-t ip -q
+	mz_do $h1 "" -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
+		-t ip
 
 	tc_check_packets "dev $h2 ingress" 103 1
 	check_err $? "Did not match on correct filter with mask"
@@ -168,8 +168,8 @@ match_ip_flags_test()
 	tc filter add dev $h2 ingress protocol ip pref 4 handle 104 flower \
 		$tcflags ip_flags nofrag action drop
 
-	$MZ $h1 -c 1 -p 1000 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
-		-t ip "frag=0" -q
+	mz_do $h1 "frag=0" -c 1 -p 1000 -a $h1mac -b $h2mac \
+		-A 192.0.2.1 -B 192.0.2.2 -t ip
 
 	tc_check_packets "dev $h2 ingress" 101 1
 	check_fail $? "Matched on wrong frag filter (nofrag)"
@@ -183,8 +183,8 @@ match_ip_flags_test()
 	tc_check_packets "dev $h2 ingress" 104 1
 	check_err $? "Did not match on nofrag filter (nofrag)"
 
-	$MZ $h1 -c 1 -p 1000 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
-		-t ip "frag=0,mf" -q
+	mz_do $h1 "frag=0,mf" -c 1 -p 1000 -a $h1mac -b $h2mac \
+		-A 192.0.2.1 -B 192.0.2.2 -t ip
 
 	tc_check_packets "dev $h2 ingress" 101 1
 	check_err $? "Did not match on frag filter (1stfrag)"
@@ -198,10 +198,10 @@ match_ip_flags_test()
 	tc_check_packets "dev $h2 ingress" 104 1
 	check_err $? "Match on wrong nofrag filter (1stfrag)"
 
-	$MZ $h1 -c 1 -p 1000 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
-		-t ip "frag=256,mf" -q
-	$MZ $h1 -c 1 -p 1000 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
-		-t ip "frag=256" -q
+	mz_do $h1 "frag=256,mf" -c 1 -p 1000 -a $h1mac -b $h2mac \
+		-A 192.0.2.1 -B 192.0.2.2 -t ip
+	mz_do $h1 "frag=256" -c 1 -p 1000 -a $h1mac -b $h2mac \
+		-A 192.0.2.1 -B 192.0.2.2 -t ip
 
 	tc_check_packets "dev $h2 ingress" 101 3
 	check_err $? "Did not match on frag filter (no1stfrag)"
@@ -234,8 +234,8 @@ match_pcp_test()
 	tc filter add dev $h2 ingress protocol 802.1q pref 2 handle 102 \
 		flower vlan_prio 7 $tcflags dst_mac $h2mac action drop
 
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac -B 192.0.2.11 -Q 7:85 -t ip -q
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac -B 192.0.2.11 -Q 0:85 -t ip -q
+	mz_do $h1 "" -c 1 -p 64 -a $h1mac -b $h2mac -B 192.0.2.11 -Q 7:85 -t ip
+	mz_do $h1 "" -c 1 -p 64 -a $h1mac -b $h2mac -B 192.0.2.11 -Q 0:85 -t ip
 
 	tc_check_packets "dev $h2 ingress" 101 0
 	check_err $? "Matched on specified PCP when should not"
@@ -263,7 +263,7 @@ match_vlan_test()
 	tc filter add dev $h2 ingress protocol 802.1q pref 2 handle 102 \
 		flower vlan_id 85 $tcflags action drop
 
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac -B 192.0.2.11 -Q 0:85 -t ip -q
+	mz_do $h1 "" -c 1 -p 64 -a $h1mac -b $h2mac -B 192.0.2.11 -Q 0:85 -t ip
 
 	tc_check_packets "dev $h2 ingress" 101 0
 	check_err $? "Matched on specified VLAN when should not"
@@ -289,8 +289,8 @@ match_ip_tos_test()
 	tc filter add dev $h2 ingress protocol ip pref 2 handle 102 flower \
 		$tcflags dst_ip 192.0.2.2 ip_tos 0x18 action drop
 
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
-		-t ip tos=18 -q
+	mz_do $h1 "tos=18" -c 1 -p 64 -a $h1mac -b $h2mac \
+		-A 192.0.2.1 -B 192.0.2.2 -t ip
 
 	tc_check_packets "dev $h2 ingress" 101 1
 	check_fail $? "Matched on a wrong filter (0x18)"
@@ -298,8 +298,8 @@ match_ip_tos_test()
 	tc_check_packets "dev $h2 ingress" 102 1
 	check_err $? "Did not match on correct filter (0x18)"
 
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
-		-t ip tos=20 -q
+	mz_do $h1 "tos=20" -c 1 -p 64 -a $h1mac -b $h2mac \
+		-A 192.0.2.1 -B 192.0.2.2 -t ip
 
 	tc_check_packets "dev $h2 ingress" 102 2
 	check_fail $? "Matched on a wrong filter (0x20)"
@@ -322,11 +322,11 @@ match_ip_ttl_test()
 	tc filter add dev $h2 ingress protocol ip pref 2 handle 102 flower \
 		$tcflags dst_ip 192.0.2.2 action drop
 
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
-		-t ip "ttl=63" -q
+	mz_do $h1 "ttl=63" -c 1 -p 64 -a $h1mac -b $h2mac \
+		-A 192.0.2.1 -B 192.0.2.2 -t ip
 
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
-		-t ip "ttl=63,mf,frag=256" -q
+	mz_do $h1 "ttl=63,mf,frag=256" -c 1 -p 64 \
+		-a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 -t ip
 
 	tc_check_packets "dev $h2 ingress" 102 1
 	check_fail $? "Matched on the wrong filter (no check on ttl)"
@@ -334,8 +334,8 @@ match_ip_ttl_test()
 	tc_check_packets "dev $h2 ingress" 101 2
 	check_err $? "Did not match on correct filter (ttl=63)"
 
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
-		-t ip "ttl=255" -q
+	mz_do $h1 "ttl=255" -c 1 -p 64 -a $h1mac -b $h2mac \
+		-A 192.0.2.1 -B 192.0.2.2 -t ip
 
 	tc_check_packets "dev $h2 ingress" 101 3
 	check_fail $? "Matched on a wrong filter (ttl=63)"
@@ -358,8 +358,8 @@ match_indev_test()
 	tc filter add dev $h2 ingress protocol ip pref 2 handle 102 flower \
 		$tcflags indev $h2 dst_mac $h2mac action drop
 
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
-		-t ip -q
+	mz_do $h1 "" -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
+		-t ip
 
 	tc_check_packets "dev $h2 ingress" 101 1
 	check_fail $? "Matched on a wrong filter"
@@ -404,7 +404,7 @@ match_mpls_label_test()
 		flower $tcflags mpls_label 1048575 action drop
 
 	pkt="$ethtype $(mpls_lse 1048575 0 1 255)"
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac "$pkt" -q
+	mz_do $h1 "$pkt" -c 1 -p 64 -a $h1mac -b $h2mac
 
 	tc_check_packets "dev $h2 ingress" 101 1
 	check_fail $? "Matched on a wrong filter (1048575)"
@@ -413,7 +413,7 @@ match_mpls_label_test()
 	check_err $? "Did not match on correct filter (1048575)"
 
 	pkt="$ethtype $(mpls_lse 0 0 1 255)"
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac "$pkt" -q
+	mz_do $h1 "$pkt" -c 1 -p 64 -a $h1mac -b $h2mac
 
 	tc_check_packets "dev $h2 ingress" 102 2
 	check_fail $? "Matched on a wrong filter (0)"
@@ -442,7 +442,7 @@ match_mpls_tc_test()
 		flower $tcflags mpls_tc 7 action drop
 
 	pkt="$ethtype $(mpls_lse 0 7 1 255)"
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac "$pkt" -q
+	mz_do $h1 "$pkt" -c 1 -p 64 -a $h1mac -b $h2mac
 
 	tc_check_packets "dev $h2 ingress" 101 1
 	check_fail $? "Matched on a wrong filter (7)"
@@ -451,7 +451,7 @@ match_mpls_tc_test()
 	check_err $? "Did not match on correct filter (7)"
 
 	pkt="$ethtype $(mpls_lse 0 0 1 255)"
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac "$pkt" -q
+	mz_do $h1 "$pkt" -c 1 -p 64 -a $h1mac -b $h2mac
 
 	tc_check_packets "dev $h2 ingress" 102 2
 	check_fail $? "Matched on a wrong filter (0)"
@@ -480,7 +480,7 @@ match_mpls_bos_test()
 		flower $tcflags mpls_bos 1 action drop
 
 	pkt="$ethtype $(mpls_lse 0 0 1 255)"
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac "$pkt" -q
+	mz_do $h1 "$pkt" -c 1 -p 64 -a $h1mac -b $h2mac
 
 	tc_check_packets "dev $h2 ingress" 101 1
 	check_fail $? "Matched on a wrong filter (1)"
@@ -490,7 +490,7 @@ match_mpls_bos_test()
 
 	# Need to add a second label to properly mark the Bottom of Stack
 	pkt="$ethtype $(mpls_lse 0 0 0 255) $(mpls_lse 0 0 1 255)"
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac "$pkt" -q
+	mz_do $h1 "$pkt" -c 1 -p 64 -a $h1mac -b $h2mac
 
 	tc_check_packets "dev $h2 ingress" 102 2
 	check_fail $? "Matched on a wrong filter (0)"
@@ -519,7 +519,7 @@ match_mpls_ttl_test()
 		flower $tcflags mpls_ttl 255 action drop
 
 	pkt="$ethtype $(mpls_lse 0 0 1 255)"
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac "$pkt" -q
+	mz_do $h1 "$pkt" -c 1 -p 64 -a $h1mac -b $h2mac
 
 	tc_check_packets "dev $h2 ingress" 101 1
 	check_fail $? "Matched on a wrong filter (255)"
@@ -528,7 +528,7 @@ match_mpls_ttl_test()
 	check_err $? "Did not match on correct filter (255)"
 
 	pkt="$ethtype $(mpls_lse 0 0 1 0)"
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac "$pkt" -q
+	mz_do $h1 "$pkt" -c 1 -p 64 -a $h1mac -b $h2mac
 
 	tc_check_packets "dev $h2 ingress" 102 2
 	check_fail $? "Matched on a wrong filter (0)"
@@ -581,45 +581,45 @@ match_mpls_lse_test()
 
 	# Base packet, matched by all filters (except for stack depth 3)
 	pkt="$ethtype $(mpls_lse 0 0 0 0) $(mpls_lse 1048575 7 1 255)"
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac "$pkt" -q
+	mz_do $h1 "$pkt" -c 1 -p 64 -a $h1mac -b $h2mac
 
 	# Make a variant of the above packet, with a non-matching value
 	# for each LSE field
 
 	# Wrong label at depth 1
 	pkt="$ethtype $(mpls_lse 1 0 0 0) $(mpls_lse 1048575 7 1 255)"
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac "$pkt" -q
+	mz_do $h1 "$pkt" -c 1 -p 64 -a $h1mac -b $h2mac
 
 	# Wrong TC at depth 1
 	pkt="$ethtype $(mpls_lse 0 1 0 0) $(mpls_lse 1048575 7 1 255)"
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac "$pkt" -q
+	mz_do $h1 "$pkt" -c 1 -p 64 -a $h1mac -b $h2mac
 
 	# Wrong BOS at depth 1 (not adding a second LSE here since BOS is set
 	# in the first label, so anything that'd follow wouldn't be considered)
 	pkt="$ethtype $(mpls_lse 0 0 1 0)"
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac "$pkt" -q
+	mz_do $h1 "$pkt" -c 1 -p 64 -a $h1mac -b $h2mac
 
 	# Wrong TTL at depth 1
 	pkt="$ethtype $(mpls_lse 0 0 0 1) $(mpls_lse 1048575 7 1 255)"
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac "$pkt" -q
+	mz_do $h1 "$pkt" -c 1 -p 64 -a $h1mac -b $h2mac
 
 	# Wrong label at depth 2
 	pkt="$ethtype $(mpls_lse 0 0 0 0) $(mpls_lse 1048574 7 1 255)"
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac "$pkt" -q
+	mz_do $h1 "$pkt" -c 1 -p 64 -a $h1mac -b $h2mac
 
 	# Wrong TC at depth 2
 	pkt="$ethtype $(mpls_lse 0 0 0 0) $(mpls_lse 1048575 6 1 255)"
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac "$pkt" -q
+	mz_do $h1 "$pkt" -c 1 -p 64 -a $h1mac -b $h2mac
 
 	# Wrong BOS at depth 2 (adding a third LSE here since BOS isn't set in
 	# the second label)
 	pkt="$ethtype $(mpls_lse 0 0 0 0) $(mpls_lse 1048575 7 0 255)"
 	pkt="$pkt $(mpls_lse 0 0 1 255)"
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac "$pkt" -q
+	mz_do $h1 "$pkt" -c 1 -p 64 -a $h1mac -b $h2mac
 
 	# Wrong TTL at depth 2
 	pkt="$ethtype $(mpls_lse 0 0 0 0) $(mpls_lse 1048575 7 1 254)"
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac "$pkt" -q
+	mz_do $h1 "$pkt" -c 1 -p 64 -a $h1mac -b $h2mac
 
 	# Filters working at depth 1 should match all packets but one
 

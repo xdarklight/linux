@@ -278,38 +278,42 @@ ping_ipv6()
 
 send_src_ipv4()
 {
-	$MZ $h1 -q -p 64 -A "198.51.100.2-198.51.100.253" -B 203.0.113.2 \
-		-d 1msec -c 50 -t udp "sp=20000,dp=30000"
+	mz_do $h1 "sp=20000,dp=30000" -p 64 \
+		-A "198.51.100.2-198.51.100.253" -B 203.0.113.2 \
+		-d 1msec -c 50 -t udp
 }
 
 send_dst_ipv4()
 {
-	$MZ $h1 -q -p 64 -A 198.51.100.2 -B "203.0.113.2-203.0.113.253" \
-		-d 1msec -c 50 -t udp "sp=20000,dp=30000"
+	mz_do $h1 "sp=20000,dp=30000" -p 64 \
+		-A 198.51.100.2 -B "203.0.113.2-203.0.113.253" \
+		-d 1msec -c 50 -t udp
 }
 
 send_src_udp4()
 {
-	$MZ $h1 -q -p 64 -A 198.51.100.2 -B 203.0.113.2 \
-		-d 1msec -t udp "sp=0-32768,dp=30000"
+	mz_do $h1 "sp=0-32768,dp=30000" -p 64 \
+		-A 198.51.100.2 -B 203.0.113.2 -d 1msec -t udp
 }
 
 send_dst_udp4()
 {
-	$MZ $h1 -q -p 64 -A 198.51.100.2 -B 203.0.113.2 \
-		-d 1msec -t udp "sp=20000,dp=0-32768"
+	mz_do $h1 "sp=20000,dp=0-32768" -p 64 \
+		-A 198.51.100.2 -B 203.0.113.2 -d 1msec -t udp
 }
 
 send_src_ipv6()
 {
-	$MZ -6 $h1 -q -p 64 -A "2001:db8:1::2-2001:db8:1::fd" -B 2001:db8:2::2 \
-		-d 1msec -c 50 -t udp "sp=20000,dp=30000"
+	mz_do $h1 "sp=20000,dp=30000" -6 -p 64 \
+		-A "2001:db8:1::2-2001:db8:1::fd" -B 2001:db8:2::2 \
+		-d 1msec -c 50 -t udp
 }
 
 send_dst_ipv6()
 {
-	$MZ -6 $h1 -q -p 64 -A 2001:db8:1::2 -B "2001:db8:2::2-2001:db8:2::fd" \
-		-d 1msec -c 50 -t udp "sp=20000,dp=30000"
+	mz_do $h1 "sp=20000,dp=30000" -6 -p 64 \
+		-A 2001:db8:1::2 -B "2001:db8:2::2-2001:db8:2::fd" \
+		-d 1msec -c 50 -t udp
 }
 
 send_flowlabel()
@@ -323,14 +327,14 @@ send_flowlabel()
 
 send_src_udp6()
 {
-	$MZ -6 $h1 -q -p 64 -A 2001:db8:1::2 -B 2001:db8:2::2 \
-		-d 1msec -t udp "sp=0-32768,dp=30000"
+	mz_do $h1 "sp=0-32768,dp=30000" -6 -p 64 \
+		-A 2001:db8:1::2 -B 2001:db8:2::2 -d 1msec -t udp
 }
 
 send_dst_udp6()
 {
-	$MZ -6 $h1 -q -p 64 -A 2001:db8:1::2 -B 2001:db8:2::2 \
-		-d 1msec -t udp "sp=20000,dp=0-32768"
+	mz_do $h1 "sp=20000,dp=0-32768" -6 -p 64 \
+		-A 2001:db8:1::2 -B 2001:db8:2::2 -d 1msec -t udp
 }
 
 custom_hash_test()
