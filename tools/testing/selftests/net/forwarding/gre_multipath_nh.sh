@@ -272,7 +272,7 @@ multipath6_test()
 
 	# Generate 16384 echo requests, each with a random flow label.
 	for ((i=0; i < 16384; ++i)); do
-		ip vrf exec v$h1 $PING6 2001:db8:2::2 -F 0 -c 1 -q &> /dev/null
+		ip vrf exec v$h1 $PING6 -F 0 -c 1 -q 2001:db8:2::2 &> /dev/null
 	done
 
 	local t1_111=$(tc_rule_stats_get $ul2 111 ingress)
