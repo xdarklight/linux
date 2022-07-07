@@ -697,8 +697,8 @@ test_learning()
 	# a corresponding entry is created in VxLAN device vx1
 	RET=0
 
-	in_ns ns1 $MZ w2 -c 1 -p 64 -a $mac -b ff:ff:ff:ff:ff:ff -B $dst \
-		-t icmp -q
+	in_ns ns1 $MZ -c 1 -p 64 -a $mac -b ff:ff:ff:ff:ff:ff -B $dst \
+		-t icmp -q w2
 	sleep 1
 
 	bridge fdb show brport vx1 | grep $mac | grep -q self
@@ -729,8 +729,8 @@ test_learning()
 	# Re-learn the first FDB entry and check that it is correctly aged-out
 	RET=0
 
-	in_ns ns1 $MZ w2 -c 1 -p 64 -a $mac -b ff:ff:ff:ff:ff:ff -B $dst \
-		-t icmp -q
+	in_ns ns1 $MZ -c 1 -p 64 -a $mac -b ff:ff:ff:ff:ff:ff -B $dst \
+		-t icmp -q w2
 	sleep 1
 
 	bridge fdb show brport vx1 | grep $mac | grep -q self
@@ -757,8 +757,8 @@ test_learning()
 
 	ip link set dev vx1 type bridge_slave learning off
 
-	in_ns ns1 $MZ w2 -c 1 -p 64 -a $mac -b ff:ff:ff:ff:ff:ff -B $dst \
-		-t icmp -q
+	in_ns ns1 $MZ -c 1 -p 64 -a $mac -b ff:ff:ff:ff:ff:ff -B $dst \
+		-t icmp -q w2
 	sleep 1
 
 	bridge fdb show brport vx1 | grep $mac | grep -q -v self
@@ -766,8 +766,8 @@ test_learning()
 
 	ip link set dev vx1 type bridge_slave learning on
 
-	in_ns ns1 $MZ w2 -c 1 -p 64 -a $mac -b ff:ff:ff:ff:ff:ff -B $dst \
-		-t icmp -q
+	in_ns ns1 $MZ -c 1 -p 64 -a $mac -b ff:ff:ff:ff:ff:ff -B $dst \
+		-t icmp -q w2
 	sleep 1
 
 	bridge fdb show brport vx1 | grep $mac | grep -q -v self
