@@ -266,7 +266,7 @@ multipath6_test()
 
 	# Generate 16384 echo requests, each with a random flow label.
 	for _ in $(seq 1 16384); do
-		ip vrf exec vrf-h1 $PING6 2001:db8:2::2 -F 0 -c 1 -q >/dev/null 2>&1
+		ip vrf exec vrf-h1 $PING6 -F 0 -c 1 -q 2001:db8:2::2 >/dev/null 2>&1
 	done
 
 	t1_rp12=$(link_stats_tx_packets_get $rp12)
