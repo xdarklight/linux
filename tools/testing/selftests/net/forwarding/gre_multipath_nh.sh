@@ -244,8 +244,8 @@ multipath4_test()
 	local t0_222=$(tc_rule_stats_get $ul2 222 ingress)
 
 	ip vrf exec v$h1 \
-	   $MZ $h1 -q -p 64 -A 192.0.2.1 -B 192.0.2.18 \
-	       -d 1msec -t udp "sp=1024,dp=0-32768"
+	   $MZ -q -p 64 -A 192.0.2.1 -B 192.0.2.18 \
+	       -d 1msec -t udp $h1 "sp=1024,dp=0-32768"
 
 	local t1_111=$(tc_rule_stats_get $ul2 111 ingress)
 	local t1_222=$(tc_rule_stats_get $ul2 222 ingress)
@@ -299,8 +299,8 @@ multipath6_l4_test()
 	local t0_222=$(tc_rule_stats_get $ul2 222 ingress)
 
 	ip vrf exec v$h1 \
-		$MZ $h1 -6 -q -p 64 -A 2001:db8:1::1 -B 2001:db8:2::2 \
-		-d 1msec -t udp "sp=1024,dp=0-32768"
+		$MZ -6 -q -p 64 -A 2001:db8:1::1 -B 2001:db8:2::2 \
+		-d 1msec -t udp $h1 "sp=1024,dp=0-32768"
 
 	local t1_111=$(tc_rule_stats_get $ul2 111 ingress)
 	local t1_222=$(tc_rule_stats_get $ul2 222 ingress)
