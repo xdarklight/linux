@@ -9,7 +9,7 @@ ksft_skip=4
 
 # Can be overridden by the configuration file.
 PING=${PING:=ping}
-PING6=${PING6:=ping6}
+PING6=${PING6:=ping -6}
 MZ=${MZ:=mausezahn}
 ARPING=${ARPING:=arping}
 TEAMD=${TEAMD:=teamd}
