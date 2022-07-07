@@ -702,8 +702,8 @@ __test_learning()
 	# a corresponding entry is created in the VxLAN device
 	RET=0
 
-	in_ns ns1 $MZ w2 -Q $vid -c 1 -p 64 -a $mac -b ff:ff:ff:ff:ff:ff \
-		-B $dst -t icmp -q
+	in_ns ns1 $MZ -Q $vid -c 1 -p 64 -a $mac -b ff:ff:ff:ff:ff:ff \
+		-B $dst -t icmp -q w2
 	sleep 1
 
 	bridge fdb show brport $vx | grep $mac | grep -q self
@@ -737,8 +737,8 @@ __test_learning()
 	# Re-learn the first FDB entry and check that it is correctly aged-out
 	RET=0
 
-	in_ns ns1 $MZ w2 -Q $vid -c 1 -p 64 -a $mac -b ff:ff:ff:ff:ff:ff \
-		-B $dst -t icmp -q
+	in_ns ns1 $MZ -Q $vid -c 1 -p 64 -a $mac -b ff:ff:ff:ff:ff:ff \
+		-B $dst -t icmp -q w2
 	sleep 1
 
 	bridge fdb show brport $vx | grep $mac | grep -q self
@@ -769,8 +769,8 @@ __test_learning()
 
 	ip link set dev $vx type bridge_slave learning off
 
-	in_ns ns1 $MZ w2 -Q $vid -c 1 -p 64 -a $mac -b ff:ff:ff:ff:ff:ff \
-		-B $dst -t icmp -q
+	in_ns ns1 $MZ -Q $vid -c 1 -p 64 -a $mac -b ff:ff:ff:ff:ff:ff \
+		-B $dst -t icmp -q w2
 	sleep 1
 
 	bridge fdb show brport $vx | grep $mac | grep "vlan $vid" \
@@ -779,8 +779,8 @@ __test_learning()
 
 	ip link set dev $vx type bridge_slave learning on
 
-	in_ns ns1 $MZ w2 -Q $vid -c 1 -p 64 -a $mac -b ff:ff:ff:ff:ff:ff \
-		-B $dst -t icmp -q
+	in_ns ns1 $MZ -Q $vid -c 1 -p 64 -a $mac -b ff:ff:ff:ff:ff:ff \
+		-B $dst -t icmp -q w2
 	sleep 1
 
 	bridge fdb show brport $vx | grep $mac | grep "vlan $vid" \
