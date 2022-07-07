@@ -395,7 +395,7 @@ vxlan_flood_test()
 	done
 
 	local -a t0s=($(flood_fetch_stats "${counters[@]}"))
-	$MZ $h1 -c 10 -d 100msec -p 64 -b $mac -B $dst -t icmp -q
+	mz_do $h1 -c 10 -d 100msec -p 64 -b $mac -B $dst -t icmp
 	sleep 1
 	local -a t1s=($(flood_fetch_stats "${counters[@]}"))
 
@@ -559,7 +559,7 @@ vxlan_encapped_ping_do()
 	local inner_tos=$1; shift
 	local outer_tos=$1; shift
 
-	$MZ $dev -c $count -d 100msec -q \
+	mz_do $dev -c $count -d 100msec \
 		-b $next_hop_mac -B $dest_ip \
 		-t udp tos=$outer_tos,sp=23456,dp=$VXPORT,p=$(:
 		    )"08:"$(                      : VXLAN flags

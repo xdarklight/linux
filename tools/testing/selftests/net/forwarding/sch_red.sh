@@ -183,7 +183,7 @@ send_packets()
 	local proto=$1; shift
 	local pkts=$1; shift
 
-	$MZ $h2 -p $PKTSZ -a own -b $h3_mac -A 192.0.2.2 -B 192.0.2.3 -t $proto -q -c $pkts "$@"
+	mz_do $h2 -p $PKTSZ -a own -b $h3_mac -A 192.0.2.2 -B 192.0.2.3 -t $proto -c $pkts "$@"
 }
 
 # This sends traffic in an attempt to build a backlog of $size. Returns 0 on
@@ -284,8 +284,8 @@ do_ecn_test()
 	local limit=$1; shift
 	local name=ECN
 
-	$MZ $h1 -p $PKTSZ -A 192.0.2.1 -B 192.0.2.3 -c 0 \
-		-a own -b $h3_mac -t tcp -q tos=0x01 &
+	mz_do $h1 -p $PKTSZ -A 192.0.2.1 -B 192.0.2.3 -c 0 \
+		-a own -b $h3_mac -t tcp tos=0x01 &
 	sleep 1
 
 	ecn_test_common "$name" $limit
@@ -307,8 +307,8 @@ do_ecn_nodrop_test()
 	local limit=$1; shift
 	local name="ECN nodrop"
 
-	$MZ $h1 -p $PKTSZ -A 192.0.2.1 -B 192.0.2.3 -c 0 \
-		-a own -b $h3_mac -t tcp -q tos=0x01 &
+	mz_do $h1 -p $PKTSZ -A 192.0.2.1 -B 192.0.2.3 -c 0 \
+		-a own -b $h3_mac -t tcp tos=0x01 &
 	sleep 1
 
 	ecn_test_common "$name" $limit
@@ -333,8 +333,8 @@ do_red_test()
 
 	# Use ECN-capable TCP to verify there's no marking even though the queue
 	# is above limit.
-	$MZ $h1 -p $PKTSZ -A 192.0.2.1 -B 192.0.2.3 -c 0 \
-		-a own -b $h3_mac -t tcp -q tos=0x01 &
+	mz_do $h1 -p $PKTSZ -A 192.0.2.1 -B 192.0.2.3 -c 0 \
+		-a own -b $h3_mac -t tcp tos=0x01 &
 
 	# Pushing below the queue limit should work.
 	RET=0
@@ -366,8 +366,8 @@ do_red_qevent_test()
 
 	RET=0
 
-	$MZ $h1 -p $PKTSZ -A 192.0.2.1 -B 192.0.2.3 -c 0 \
-		-a own -b $h3_mac -t udp -q &
+	mz_do $h1 -p $PKTSZ -A 192.0.2.1 -B 192.0.2.3 -c 0 \
+		-a own -b $h3_mac -t udp &
 	sleep 1
 
 	tc filter add block 10 pref 1234 handle 102 matchall skip_hw \
@@ -407,8 +407,8 @@ do_ecn_qevent_test()
 
 	RET=0
 
-	$MZ $h1 -p $PKTSZ -A 192.0.2.1 -B 192.0.2.3 -c 0 \
-		-a own -b $h3_mac -t tcp -q tos=0x01 &
+	mz_do $h1 -p $PKTSZ -A 192.0.2.1 -B 192.0.2.3 -c 0 \
+		-a own -b $h3_mac -t tcp tos=0x01 &
 	sleep 1
 
 	tc filter add block 10 pref 1234 handle 102 matchall skip_hw \
