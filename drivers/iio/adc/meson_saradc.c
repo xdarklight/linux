@@ -280,7 +280,7 @@ struct meson_sar_adc_priv {
 	struct mutex				lock;
 	int					calibbias;
 	int					calibscale;
-	struct regmap				*tsc_regmap;
+	struct regmap				*hhi_regmap;
 	bool					temperature_sensor_calibrated;
 	u8					temperature_sensor_coefficient;
 	u16					temperature_sensor_adc_val;
@@ -715,9 +715,9 @@ static int meson_sar_adc_temp_sensor_init(struct iio_dev *indio_dev)
 		return dev_err_probe(dev, ret, "failed to get temperature_calib cell\n");
 	}
 
-	priv->tsc_regmap = syscon_regmap_lookup_by_phandle(dev->of_node, "amlogic,hhi-sysctrl");
-	if (IS_ERR(priv->tsc_regmap))
-		return dev_err_probe(dev, PTR_ERR(priv->tsc_regmap),
+	priv->hhi_regmap = syscon_regmap_lookup_by_phandle(dev->of_node, "amlogic,hhi-sysctrl");
+	if (IS_ERR(priv->hhi_regmap))
+		return dev_err_probe(dev, PTR_ERR(priv->hhi_regmap),
 				     "failed to get amlogic,hhi-sysctrl regmap\n");
 
 	read_len = MESON_SAR_ADC_EFUSE_BYTES;
@@ -862,7 +862,7 @@ static int meson_sar_adc_init(struct iio_dev *indio_dev)
 			 * bit [4] (the 5th bit when starting to count at 1)
 			 * of the TSC is located in the HHI register area.
 			 */
-			regmap_update_bits(priv->tsc_regmap,
+			regmap_update_bits(priv->hhi_regmap,
 					   MESON_HHI_DPLL_TOP_0,
 					   MESON_HHI_DPLL_TOP_0_TSC_BIT4,
 					   regval);
