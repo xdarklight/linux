@@ -151,14 +151,17 @@
 
 /*
  * NOTE: registers from here are undocumented (the vendor Linux kernel driver
- * and u-boot source served as reference). These only seem to be relevant on
- * GXBB and newer.
+ * and u-boot source served as reference). These are only relevant for the
+ * SoC's built-in thermal sensor on GXBB, GXL, GXM and AXG. Starting from G12A
+ * onwards there's a dedicated thermal sensor IP (and not using the SAR ADC
+ * anymore).
  */
 #define MESON_SAR_ADC_REG11					0x2c
 	#define MESON_SAR_ADC_REG11_BANDGAP_EN			BIT(13)
+	#define MESON_SAR_ADC_REG11_TSC_MASK			GENMASK(18, 14)
 
 #define MESON_SAR_ADC_REG13					0x34
-	#define MESON_SAR_ADC_REG13_12BIT_CALIBRATION_MASK	GENMASK(13, 8)
+	#define MESON_SAR_ADC_REG13_THERMAL_VREF_MASK		GENMASK(13, 8)
 
 #define MESON_SAR_ADC_MAX_FIFO_SIZE				32
 #define MESON_SAR_ADC_TIMEOUT					100 /* ms */
@@ -172,6 +175,17 @@
 
 #define MESON_HHI_DPLL_TOP_0					0x318
 #define MESON_HHI_DPLL_TOP_0_TSC_BIT4				BIT(9)
+
+/*
+ * secure register with the temperature sensor calibration information on
+ * GXBB/GXL/GXM/AXG.
+ */
+#define MESON_AO_SEC_SD_CFG12					0xf0
+	#define MESON_AO_SEC_SD_CFG12_TSC			GENMASK(4, 0)
+	#define MESON_AO_SEC_SD_CFG12_TS_ADC_VAL		GENMASK(14, 5)
+	#define MESON_AO_SEC_SD_CFG12_IS_CALIBRATED		BIT(15)
+	#define MESON_AO_SEC_SD_CFG12_THERMAL_VREF		GENMASK(23, 19)
+	#define MESON_AO_SEC_SD_CFG12_VERSION			GENMASK(31, 24)
 
 /* for use with IIO_VAL_INT_PLUS_MICRO */
 #define MILLION							1000000
@@ -258,6 +272,7 @@ struct meson_sar_adc_param {
 	unsigned int				temperature_divider;
 	int					(*temp_sensor_init)(struct iio_dev *);
 	void					(*set_tsc)(struct iio_dev *);
+	void					(*set_thermal_vref)(struct iio_dev *, u8);
 };
 
 struct meson_sar_adc_data {
@@ -285,6 +300,8 @@ struct meson_sar_adc_priv {
 	bool					temperature_sensor_calibrated;
 	u8					temperature_sensor_coefficient;
 	u16					temperature_sensor_adc_val;
+	u8					thermal_vref;
+	u8					thermal_vref_backup;
 	unsigned int				temperature_divider;
 };
 
@@ -565,11 +582,18 @@ static int meson_sar_adc_get_sample(struct iio_dev *indio_dev,
 
 	meson_sar_adc_set_averaging(indio_dev, chan, avg_mode, avg_samples);
 
+	if (chan->type == IIO_TEMP && priv->param->set_thermal_vref)
+		priv->param->set_thermal_vref(indio_dev, priv->thermal_vref);
+
 	meson_sar_adc_enable_channel(indio_dev, chan);
 
 	meson_sar_adc_start_sample_engine(indio_dev);
 	ret = meson_sar_adc_read_raw_sample(indio_dev, chan, val);
 	meson_sar_adc_stop_sample_engine(indio_dev);
+
+	if (chan->type == IIO_TEMP && priv->param->set_thermal_vref)
+		priv->param->set_thermal_vref(indio_dev,
+					      priv->thermal_vref_backup);
 
 	meson_sar_adc_unlock(indio_dev);
 
@@ -750,6 +774,7 @@ static int meson_sar_adc_temp_sensor_init_efuse(struct iio_dev *indio_dev,
 	return 0;
 }
 
+
 static int meson_sar_adc_temp_sensor_init_meson8(struct iio_dev *indio_dev)
 {
 	return meson_sar_adc_temp_sensor_init_efuse(indio_dev, 4);
@@ -758,6 +783,124 @@ static int meson_sar_adc_temp_sensor_init_meson8(struct iio_dev *indio_dev)
 static int meson_sar_adc_temp_sensor_init_meson8b(struct iio_dev *indio_dev)
 {
 	return meson_sar_adc_temp_sensor_init_efuse(indio_dev, 5);
+}
+
+static int meson_sar_adc_temp_sensor_init_gx(struct iio_dev *indio_dev,
+					     unsigned int *ao_sec_sd_cfg12)
+{
+	struct meson_sar_adc_priv *priv = iio_priv(indio_dev);
+	struct device *dev = indio_dev->dev.parent;
+	struct regmap *ao_sec_regmap;
+	unsigned int regval;
+	u8 version;
+
+	ao_sec_regmap = syscon_regmap_lookup_by_compatible("amlogic,meson-gx-ao-secure");
+	if (IS_ERR(ao_sec_regmap))
+		return dev_err_probe(dev, PTR_ERR(ao_sec_regmap),
+				     "failed to get amlogic,meson-gx-ao-secure regmap\n");
+
+	regmap_read(ao_sec_regmap, MESON_AO_SEC_SD_CFG12, ao_sec_sd_cfg12);
+
+	version = FIELD_GET(MESON_AO_SEC_SD_CFG12_VERSION, *ao_sec_sd_cfg12);
+	switch (version) {
+	case 0x05:
+	case 0x06:
+	case 0x07:
+	case 0x09:
+	case 0x0a:
+	case 0x0b:
+	case 0x0d:
+	case 0x0e:
+	case 0x0f:
+	case 0x40:
+	case 0xa0:
+	case 0xc0:
+		if (*ao_sec_sd_cfg12 & MESON_AO_SEC_SD_CFG12_IS_CALIBRATED)
+			priv->temperature_sensor_calibrated = true;
+
+		break;
+
+	default:
+		dev_dbg(dev,
+			"Unsupported version in AO_SEC_SD_CFG12 (0x%08x): 0x%02x - continuing without SoC thermal sensor support\n",
+			*ao_sec_sd_cfg12, version);
+		return 0;
+	}
+
+	priv->temperature_sensor_adc_val = FIELD_GET(MESON_AO_SEC_SD_CFG12_TS_ADC_VAL,
+						     *ao_sec_sd_cfg12);
+
+	/* Scale the TSC for these SoCs from 10 to 12 bit resolution where needed */
+	priv->temperature_sensor_adc_val <<= priv->param->resolution - 10;
+
+	/*
+	 * Shift the value to the left by 1 as MESON_SAR_ADC_REG13[8] has to be
+	 * zero when a THERMAL_VREF value is present. This mimics the behavior
+	 * from vendor u-boot.
+	 */
+	priv->thermal_vref = FIELD_GET(MESON_AO_SEC_SD_CFG12_THERMAL_VREF,
+				       *ao_sec_sd_cfg12) << 1;
+
+	priv->temperature_sensor_coefficient = FIELD_GET(MESON_AO_SEC_SD_CFG12_TSC,
+							 *ao_sec_sd_cfg12);
+
+	regmap_read(priv->regmap, MESON_SAR_ADC_REG13, &regval);
+	priv->thermal_vref_backup = FIELD_GET(MESON_SAR_ADC_REG13_THERMAL_VREF_MASK,
+					      regval);
+
+	return 0;
+}
+
+static int meson_sar_adc_temp_sensor_init_axg(struct iio_dev *indio_dev)
+{
+	struct meson_sar_adc_priv *priv = iio_priv(indio_dev);
+	unsigned int ao_sec_sd_cfg12;
+	int ret;
+
+	ret = meson_sar_adc_temp_sensor_init_gx(indio_dev, &ao_sec_sd_cfg12);
+	if (ret)
+		return ret;
+
+	/*
+	 * The vendor kernel  uses a hard-coded fallback value for version
+	 * 0xc0. */
+	if (!priv->thermal_vref &&
+	    FIELD_GET(MESON_AO_SEC_SD_CFG12_VERSION, ao_sec_sd_cfg12) == 0xc0)
+		priv->thermal_vref = 0x1e;
+
+	return 0;
+}
+
+static int meson_sar_adc_temp_sensor_init_gxbb(struct iio_dev *indio_dev)
+{
+	struct meson_sar_adc_priv *priv = iio_priv(indio_dev);
+	unsigned int ao_sec_sd_cfg12;
+	int ret;
+
+	ret = meson_sar_adc_temp_sensor_init_gx(indio_dev, &ao_sec_sd_cfg12);
+	if (ret)
+		return ret;
+
+	/* The vendor kernel  uses a hard-coded value for "ver 2" (= 0x40) */
+	if (FIELD_GET(MESON_AO_SEC_SD_CFG12_VERSION, ao_sec_sd_cfg12) == 0x40)
+		priv->temperature_sensor_coefficient = 16;
+
+	return 0;
+}
+
+static int meson_sar_adc_temp_sensor_init_gxl(struct iio_dev *indio_dev)
+{
+	struct meson_sar_adc_priv *priv = iio_priv(indio_dev);
+	unsigned int ao_sec_sd_cfg12;
+	int ret;
+
+	ret = meson_sar_adc_temp_sensor_init_gx(indio_dev, &ao_sec_sd_cfg12);
+	if (ret)
+		return ret;
+
+	priv->temperature_divider = priv->thermal_vref ? 153 : 171;
+
+	return 0;
 }
 
 static void meson_sar_adc_set_tsc_meson8(struct iio_dev *indio_dev)
@@ -792,6 +935,32 @@ static void meson_sar_adc_set_tsc_meson8b(struct iio_dev *indio_dev)
 	 */
 	regmap_update_bits(priv->hhi_regmap, MESON_HHI_DPLL_TOP_0,
 			   MESON_HHI_DPLL_TOP_0_TSC_BIT4, regval);
+}
+
+static void meson_sar_adc_set_tsc_gx(struct iio_dev *indio_dev)
+{
+	struct meson_sar_adc_priv *priv = iio_priv(indio_dev);
+
+	regmap_update_bits(priv->regmap, MESON_SAR_ADC_REG11,
+			   MESON_SAR_ADC_REG11_TSC_MASK,
+			   FIELD_PREP(MESON_SAR_ADC_REG11_TSC_MASK,
+				      priv->temperature_sensor_coefficient));
+
+	/* GX SoCs use a hard-coded TS_C_MASK of 0x8 */
+	regmap_update_bits(priv->regmap, MESON_SAR_ADC_DELTA_10,
+			   MESON_SAR_ADC_DELTA_10_TS_C_MASK,
+			   FIELD_PREP(MESON_SAR_ADC_DELTA_10_TS_C_MASK, 0x8));
+}
+
+static void meson_sar_adc_set_thermal_vref_gxl(struct iio_dev *indio_dev,
+					       u8 new_thermal_vref)
+{
+	struct meson_sar_adc_priv *priv = iio_priv(indio_dev);
+
+	regmap_update_bits(priv->regmap, MESON_SAR_ADC_REG13,
+			   MESON_SAR_ADC_REG13_THERMAL_VREF_MASK,
+			   FIELD_PREP(MESON_SAR_ADC_REG13_THERMAL_VREF_MASK,
+				      new_thermal_vref));
 }
 
 static int meson_sar_adc_init(struct iio_dev *indio_dev)
@@ -1083,11 +1252,27 @@ static const struct meson_sar_adc_param meson_sar_adc_meson8b_param = {
 	.set_tsc = meson_sar_adc_set_tsc_meson8b,
 };
 
+static const struct meson_sar_adc_param meson_sar_adc_axg_param = {
+	.has_bl30_integration = true,
+	.clock_rate = 1200000,
+	.regmap_config = &meson_sar_adc_regmap_config_gxbb,
+	.resolution = 12,
+	.temperature_multiplier = 1,
+	.temperature_divider = 17,
+	.temp_sensor_init = meson_sar_adc_temp_sensor_init_axg,
+	.set_tsc = meson_sar_adc_set_tsc_gx,
+	.set_thermal_vref = meson_sar_adc_set_thermal_vref_gxl,
+};
+
 static const struct meson_sar_adc_param meson_sar_adc_gxbb_param = {
 	.has_bl30_integration = true,
 	.clock_rate = 1200000,
 	.regmap_config = &meson_sar_adc_regmap_config_gxbb,
 	.resolution = 10,
+	.temperature_multiplier = 10,
+	.temperature_divider = 37,
+	.temp_sensor_init = meson_sar_adc_temp_sensor_init_gxbb,
+	.set_tsc = meson_sar_adc_set_tsc_gx,
 };
 
 static const struct meson_sar_adc_param meson_sar_adc_gxl_param = {
@@ -1095,6 +1280,11 @@ static const struct meson_sar_adc_param meson_sar_adc_gxl_param = {
 	.clock_rate = 1200000,
 	.regmap_config = &meson_sar_adc_regmap_config_gxbb,
 	.resolution = 12,
+	.temperature_multiplier = 10,
+	.temperature_divider = 171, /* 153 if vref_en is disabled */
+	.temp_sensor_init = meson_sar_adc_temp_sensor_init_gxl,
+	.set_tsc = meson_sar_adc_set_tsc_gx,
+	.set_thermal_vref = meson_sar_adc_set_thermal_vref_gxl,
 };
 
 static const struct meson_sar_adc_param meson_sar_adc_g12a_param = {
@@ -1135,7 +1325,7 @@ static const struct meson_sar_adc_data meson_sar_adc_gxm_data = {
 };
 
 static const struct meson_sar_adc_data meson_sar_adc_axg_data = {
-	.param = &meson_sar_adc_gxl_param,
+	.param = &meson_sar_adc_axg_param,
 	.name = "meson-axg-saradc",
 };
 
