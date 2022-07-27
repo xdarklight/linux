@@ -254,9 +254,10 @@ struct meson_sar_adc_param {
 	unsigned long				clock_rate;
 	unsigned int				resolution;
 	const struct regmap_config		*regmap_config;
-	u8					temperature_trimming_bits;
 	unsigned int				temperature_multiplier;
 	unsigned int				temperature_divider;
+	int					(*temp_sensor_init)(struct iio_dev *);
+	void					(*set_tsc)(struct iio_dev *);
 };
 
 struct meson_sar_adc_data {
@@ -284,6 +285,7 @@ struct meson_sar_adc_priv {
 	bool					temperature_sensor_calibrated;
 	u8					temperature_sensor_coefficient;
 	u16					temperature_sensor_adc_val;
+	unsigned int				temperature_divider;
 };
 
 static const struct regmap_config meson_sar_adc_regmap_config_gxbb = {
@@ -612,7 +614,7 @@ static int meson_sar_adc_iio_info_read_raw(struct iio_dev *indio_dev,
 		} else if (chan->type == IIO_TEMP) {
 			/* SoC specific multiplier and divider */
 			*val = priv->param->temperature_multiplier;
-			*val2 = priv->param->temperature_divider;
+			*val2 = priv->temperature_divider;
 
 			/* celsius to millicelsius */
 			*val *= 1000;
@@ -633,7 +635,7 @@ static int meson_sar_adc_iio_info_read_raw(struct iio_dev *indio_dev,
 
 	case IIO_CHAN_INFO_OFFSET:
 		*val = DIV_ROUND_CLOSEST(MESON_SAR_ADC_TEMP_OFFSET *
-					 priv->param->temperature_divider,
+					 priv->temperature_divider,
 					 priv->param->temperature_multiplier);
 		*val -= priv->temperature_sensor_adc_val;
 		return IIO_VAL_INT;
@@ -692,11 +694,12 @@ static int meson_sar_adc_clk_init(struct iio_dev *indio_dev,
 	return 0;
 }
 
-static int meson_sar_adc_temp_sensor_init(struct iio_dev *indio_dev)
+static int meson_sar_adc_temp_sensor_init_efuse(struct iio_dev *indio_dev,
+						u8 trimming_bits)
 {
 	struct meson_sar_adc_priv *priv = iio_priv(indio_dev);
-	u8 *buf, trimming_bits, trimming_mask, upper_adc_val;
 	struct device *dev = indio_dev->dev.parent;
+	u8 *buf, trimming_mask, upper_adc_val;
 	struct nvmem_cell *temperature_calib;
 	size_t read_len;
 	int ret;
@@ -729,7 +732,6 @@ static int meson_sar_adc_temp_sensor_init(struct iio_dev *indio_dev)
 		return dev_err_probe(dev, -EINVAL, "invalid read size of temperature_calib cell\n");
 	}
 
-	trimming_bits = priv->param->temperature_trimming_bits;
 	trimming_mask = BIT(trimming_bits) - 1;
 
 	priv->temperature_sensor_calibrated =
@@ -746,6 +748,50 @@ static int meson_sar_adc_temp_sensor_init(struct iio_dev *indio_dev)
 	kfree(buf);
 
 	return 0;
+}
+
+static int meson_sar_adc_temp_sensor_init_meson8(struct iio_dev *indio_dev)
+{
+	return meson_sar_adc_temp_sensor_init_efuse(indio_dev, 4);
+}
+
+static int meson_sar_adc_temp_sensor_init_meson8b(struct iio_dev *indio_dev)
+{
+	return meson_sar_adc_temp_sensor_init_efuse(indio_dev, 5);
+}
+
+static void meson_sar_adc_set_tsc_meson8(struct iio_dev *indio_dev)
+{
+	struct meson_sar_adc_priv *priv = iio_priv(indio_dev);
+
+	/*
+	 * set bits [3:0] of the TSC (temperature sensor coefficient) to get
+	 * the correct values when reading the temperature.
+	 */
+	regmap_update_bits(priv->regmap, MESON_SAR_ADC_DELTA_10,
+			   MESON_SAR_ADC_DELTA_10_TS_C_MASK,
+			   FIELD_PREP(MESON_SAR_ADC_DELTA_10_TS_C_MASK,
+				      priv->temperature_sensor_coefficient));
+}
+
+static void meson_sar_adc_set_tsc_meson8b(struct iio_dev *indio_dev)
+{
+	struct meson_sar_adc_priv *priv = iio_priv(indio_dev);
+	unsigned int regval;
+
+	meson_sar_adc_set_tsc_meson8(indio_dev);
+
+	if (priv->temperature_sensor_coefficient & BIT(4))
+		regval = MESON_HHI_DPLL_TOP_0_TSC_BIT4;
+	else
+		regval = 0;
+
+	/*
+	 * bit [4] (the 5th bit when starting to count at 1) of the TSC
+	 * is located in the HHI register area.
+	 */
+	regmap_update_bits(priv->hhi_regmap, MESON_HHI_DPLL_TOP_0,
+			   MESON_HHI_DPLL_TOP_0_TSC_BIT4, regval);
 }
 
 static int meson_sar_adc_init(struct iio_dev *indio_dev)
@@ -843,30 +889,7 @@ static int meson_sar_adc_init(struct iio_dev *indio_dev)
 				   MESON_SAR_ADC_DELTA_10_TS_REVE0,
 				   MESON_SAR_ADC_DELTA_10_TS_REVE0);
 
-		/*
-		 * set bits [3:0] of the TSC (temperature sensor coefficient)
-		 * to get the correct values when reading the temperature.
-		 */
-		regval = FIELD_PREP(MESON_SAR_ADC_DELTA_10_TS_C_MASK,
-				    priv->temperature_sensor_coefficient);
-		regmap_update_bits(priv->regmap, MESON_SAR_ADC_DELTA_10,
-				   MESON_SAR_ADC_DELTA_10_TS_C_MASK, regval);
-
-		if (priv->param->temperature_trimming_bits == 5) {
-			if (priv->temperature_sensor_coefficient & BIT(4))
-				regval = MESON_HHI_DPLL_TOP_0_TSC_BIT4;
-			else
-				regval = 0;
-
-			/*
-			 * bit [4] (the 5th bit when starting to count at 1)
-			 * of the TSC is located in the HHI register area.
-			 */
-			regmap_update_bits(priv->hhi_regmap,
-					   MESON_HHI_DPLL_TOP_0,
-					   MESON_HHI_DPLL_TOP_0_TSC_BIT4,
-					   regval);
-		}
+		priv->param->set_tsc(indio_dev);
 	} else {
 		regmap_update_bits(priv->regmap, MESON_SAR_ADC_DELTA_10,
 				   MESON_SAR_ADC_DELTA_10_TS_REVE1, 0);
@@ -1043,9 +1066,10 @@ static const struct meson_sar_adc_param meson_sar_adc_meson8_param = {
 	.clock_rate = 1150000,
 	.regmap_config = &meson_sar_adc_regmap_config_meson8,
 	.resolution = 10,
-	.temperature_trimming_bits = 4,
 	.temperature_multiplier = 18 * 10000,
 	.temperature_divider = 1024 * 10 * 85,
+	.temp_sensor_init = meson_sar_adc_temp_sensor_init_meson8,
+	.set_tsc = meson_sar_adc_set_tsc_meson8,
 };
 
 static const struct meson_sar_adc_param meson_sar_adc_meson8b_param = {
@@ -1053,9 +1077,10 @@ static const struct meson_sar_adc_param meson_sar_adc_meson8b_param = {
 	.clock_rate = 1150000,
 	.regmap_config = &meson_sar_adc_regmap_config_meson8,
 	.resolution = 10,
-	.temperature_trimming_bits = 5,
 	.temperature_multiplier = 10,
 	.temperature_divider = 32,
+	.temp_sensor_init = meson_sar_adc_temp_sensor_init_meson8b,
+	.set_tsc = meson_sar_adc_set_tsc_meson8b,
 };
 
 static const struct meson_sar_adc_param meson_sar_adc_gxbb_param = {
@@ -1220,8 +1245,10 @@ static int meson_sar_adc_probe(struct platform_device *pdev)
 
 	priv->calibscale = MILLION;
 
-	if (priv->param->temperature_trimming_bits) {
-		ret = meson_sar_adc_temp_sensor_init(indio_dev);
+	if (priv->param->temp_sensor_init) {
+		priv->temperature_divider = priv->param->temperature_divider;
+
+		ret = priv->param->temp_sensor_init(indio_dev);
 		if (ret)
 			return ret;
 	}
