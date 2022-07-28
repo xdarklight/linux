@@ -171,6 +171,7 @@
 #define GSWIP_PCE_PMAP3			0x455	/* Default Unknown Unicast port map */
 #define GSWIP_PCE_GCTRL_0		0x456
 #define  GSWIP_PCE_GCTRL_0_MTFL		BIT(0)  /* MAC Table Flushing */
+#define  GSWIP_PCE_GCTRL_0_PLIMMOD	BIT(1)  /* MAC Address Learning Limitation Mode */
 #define  GSWIP_PCE_GCTRL_0_MC_VALID	BIT(3)
 #define  GSWIP_PCE_GCTRL_0_VLAN		BIT(14) /* VLAN aware Switching */
 #define GSWIP_PCE_GCTRL_1		0x457
@@ -186,6 +187,10 @@
 #define  GSWIP_PCE_PCTRL_0_PSTATE_LEARNING	0x3
 #define  GSWIP_PCE_PCTRL_0_PSTATE_FORWARDING	0x7
 #define  GSWIP_PCE_PCTRL_0_PSTATE_MASK	GENMASK(2, 0)
+#define GSWIP_PCE_PCTRL_1p(p)		(0x481 + ((p) * 0xA))
+#define  GSWIP_PCE_PCTRL_1_LRNLIM	GENMASK(7, 0) /* Learning limit: 0x0 = disabled */
+#define GSWIP_PCE_PCTRL_3p(p)		(0x483 + ((p) * 0xA))
+#define  GSWIP_PCE_PCTRL_3_LNDIS	BIT(15) /* Learning Disable */
 #define GSWIP_PCE_VCTRL(p)		(0x485 + ((p) * 0xA))
 #define  GSWIP_PCE_VCTRL_UVR		BIT(0)	/* Unknown VLAN Rule */
 #define  GSWIP_PCE_VCTRL_VIMR		BIT(3)	/* VLAN Ingress Member violation rule */
@@ -638,6 +643,35 @@ static int gswip_pce_table_entry_write(struct gswip_priv *priv,
 	return err;
 }
 
+static void gswip_port_set_learning(struct gswip_priv *priv, int port,
+				    bool enable)
+{
+	gswip_switch_mask(priv, GSWIP_PCE_PCTRL_1_LRNLIM,
+			  enable ? GSWIP_PCE_PCTRL_1_LRNLIM : 0,
+			  GSWIP_PCE_PCTRL_1p(port));
+
+	/* GSWIP 2.2 (GRX300) and later has a dedicated learning disable bit */
+	gswip_switch_mask(priv, GSWIP_PCE_PCTRL_3_LNDIS,
+			  enable ? 0 : GSWIP_PCE_PCTRL_3_LNDIS,
+			  GSWIP_PCE_PCTRL_3p(port));
+}
+
+static void gswip_port_set_broadcast_flood(struct gswip_priv *priv, int port,
+					   bool enable)
+{
+	/* DMCPMAP: Default Multicast Port Map (also used for broadcasts) */
+	gswip_switch_mask(priv, BIT(port), enable ? BIT(port) : 0,
+			  GSWIP_PCE_PMAP2);
+}
+
+static void gswip_port_set_unicast_flood(struct gswip_priv *priv, int port,
+					 bool enable)
+{
+	/* UUCMAP: Default Unknown Unicast Port Map */
+	gswip_switch_mask(priv, BIT(port), enable ? BIT(port) : 0,
+			  GSWIP_PCE_PMAP3);
+}
+
 /* Add the LAN port into a bridge with the CPU port by
  * default. This prevents automatic forwarding of
  * packages between the LAN ports when no explicit
@@ -770,6 +804,47 @@ static int gswip_pce_load_microcode(struct gswip_priv *priv)
 	return 0;
 }
 
+static int gswip_port_pre_bridge_flags(struct dsa_switch *ds, int port,
+				       struct switchdev_brport_flags flags,
+				       struct netlink_ext_ack *extack)
+{
+	bool broadcast_flood = !!(flags.val & BR_BCAST_FLOOD);
+	bool multicast_flood = !!(flags.val & BR_MCAST_FLOOD);
+
+	if (flags.mask & ~(BR_LEARNING | BR_FLOOD | BR_MCAST_FLOOD |
+			   BR_BCAST_FLOOD))
+		return -EINVAL;
+
+	if (broadcast_flood != multicast_flood) {
+		NL_SET_ERR_MSG_MOD(extack,
+				   "This chip cannot configure multicast flooding independently of broadcast flooding");
+			return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int gswip_port_bridge_flags(struct dsa_switch *ds, int port,
+				   struct switchdev_brport_flags flags,
+				   struct netlink_ext_ack *extack)
+{
+	struct gswip_priv *priv = ds->priv;
+
+	if (flags.mask & BR_LEARNING)
+		gswip_port_set_learning(priv, port,
+					!!(flags.val & BR_LEARNING));
+
+	if (flags.mask & BR_BCAST_FLOOD)
+		gswip_port_set_broadcast_flood(priv, port,
+					       !!(flags.val & BR_BCAST_FLOOD));
+
+	if (flags.mask & BR_FLOOD)
+		gswip_port_set_unicast_flood(priv, port,
+					     !!(flags.val & BR_FLOOD));
+
+	return 0;
+}
+
 static int gswip_port_vlan_filtering(struct dsa_switch *ds, int port,
 				     bool vlan_filtering,
 				     struct netlink_ext_ack *extack)
@@ -833,10 +908,18 @@ static int gswip_setup(struct dsa_switch *ds)
 		return err;
 	}
 
-	/* Default unknown Broadcast/Multicast/Unicast port maps */
+	/* Disable monitoring on all ports except the CPU port */
 	gswip_switch_w(priv, BIT(cpu_port), GSWIP_PCE_PMAP1);
-	gswip_switch_w(priv, BIT(cpu_port), GSWIP_PCE_PMAP2);
-	gswip_switch_w(priv, BIT(cpu_port), GSWIP_PCE_PMAP3);
+
+	for (i = 0; i < priv->hw_info->max_ports; i++) {
+		/* Disable multicast/broadcast flooding on all ports except the
+		 * CPU port
+		 */
+		gswip_port_set_unicast_flood(priv, i, dsa_is_cpu_port(ds, i));
+
+		/* Disable unicast flooding on all ports except the CPU port */
+		gswip_port_set_broadcast_flood(priv, i, dsa_is_cpu_port(ds, i));
+	}
 
 	/* Deactivate MDIO PHY auto polling. Some PHYs as the AR8030 have an
 	 * interoperability problem with this auto polling mechanism because
@@ -878,6 +961,13 @@ static int gswip_setup(struct dsa_switch *ds)
 
 	/* VLAN aware Switching */
 	gswip_switch_mask(priv, 0, GSWIP_PCE_GCTRL_0_VLAN, GSWIP_PCE_GCTRL_0);
+
+	/* Drop frames (instead of forwarding them) when the learning limit
+	 * (GSWIP_PCE_PCTRL_1_LRNLIM) is exceeded (for example when learning on
+	 * a port is disabled).
+	 */
+	gswip_switch_mask(priv, GSWIP_PCE_GCTRL_0_PLIMMOD, 0,
+			  GSWIP_PCE_GCTRL_0);
 
 	/* Flush MAC Table */
 	gswip_switch_mask(priv, 0, GSWIP_PCE_GCTRL_0_MTFL, GSWIP_PCE_GCTRL_0);
@@ -1839,6 +1929,8 @@ static const struct dsa_switch_ops gswip_xrx200_switch_ops = {
 	.port_bridge_join	= gswip_port_bridge_join,
 	.port_bridge_leave	= gswip_port_bridge_leave,
 	.port_fast_age		= gswip_port_fast_age,
+	.port_pre_bridge_flags	= gswip_port_pre_bridge_flags,
+	.port_bridge_flags	= gswip_port_bridge_flags,
 	.port_vlan_filtering	= gswip_port_vlan_filtering,
 	.port_vlan_add		= gswip_port_vlan_add,
 	.port_vlan_del		= gswip_port_vlan_del,
@@ -1865,6 +1957,8 @@ static const struct dsa_switch_ops gswip_xrx300_switch_ops = {
 	.port_bridge_join	= gswip_port_bridge_join,
 	.port_bridge_leave	= gswip_port_bridge_leave,
 	.port_fast_age		= gswip_port_fast_age,
+	.port_pre_bridge_flags	= gswip_port_pre_bridge_flags,
+	.port_bridge_flags	= gswip_port_bridge_flags,
 	.port_vlan_filtering	= gswip_port_vlan_filtering,
 	.port_vlan_add		= gswip_port_vlan_add,
 	.port_vlan_del		= gswip_port_vlan_del,
