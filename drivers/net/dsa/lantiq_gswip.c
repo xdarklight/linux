@@ -908,10 +908,18 @@ static int gswip_setup(struct dsa_switch *ds)
 		return err;
 	}
 
-	/* Default unknown Broadcast/Multicast/Unicast port maps */
+	/* Disable monitoring on all ports except the CPU port */
 	gswip_switch_w(priv, BIT(cpu_port), GSWIP_PCE_PMAP1);
-	gswip_switch_w(priv, BIT(cpu_port), GSWIP_PCE_PMAP2);
-	gswip_switch_w(priv, BIT(cpu_port), GSWIP_PCE_PMAP3);
+
+	/* Zero the multicast (also used for broadcasts) port map (to disable
+	 * broadcast flooding). */
+	gswip_switch_w(priv, 0, GSWIP_PCE_PMAP2);
+
+	/* Zero the unknown unicast port map (to disable unicast flooding). */
+	gswip_switch_w(priv, 0, GSWIP_PCE_PMAP3);
+
+	for (i = 0; i < priv->hw_info->max_ports; i++)
+		gswip_port_set_learning(priv, i, false);
 
 	/* Deactivate MDIO PHY auto polling. Some PHYs as the AR8030 have an
 	 * interoperability problem with this auto polling mechanism because
