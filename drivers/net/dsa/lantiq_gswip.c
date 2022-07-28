@@ -937,14 +937,11 @@ static int gswip_setup(struct dsa_switch *ds)
 		/* Disable learning by default for all ports */
 		gswip_port_set_learning(priv, i, false);
 
-		/*
-		 * Disable multicast/broadcast flooding on all ports except the
-		 * CPU port
-		 */
-		gswip_port_set_unicast_flood(priv, i, dsa_is_cpu_port(i));
+		/* Enable multicast/broadcast flooding on all ports */
+		gswip_port_set_unicast_flood(priv, i, true);
 
-		/* Disable unicast flooding on all ports except the CPU port */
-		gswip_port_set_multicast_flood(priv, i, dsa_is_cpu_port(i));
+		/* Disable unicast flooding on all ports */
+		gswip_port_set_multicast_flood(priv, i, false);
 	}
 
 	/* Deactivate MDIO PHY auto polling. Some PHYs as the AR8030 have an
