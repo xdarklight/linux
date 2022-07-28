@@ -969,6 +969,15 @@ config SPI_MXS
 	help
 	  SPI driver for Freescale MXS devices.
 
+config SPI_REALTEK_RTL
+	tristate "Realtek RTL SPI controller"
+	depends on HAS_IOMEM
+	depends on MACH_REALTEK_RTL || COMPILE_TEST
+	default MACH_REALTEK_RTL
+	help
+	  SPI driver for the hardware found on Realtek RLTL8380, RTL8382,
+	  RTL8391, RTL8392 and RTL8393 SoCs.
+
 config SPI_TEGRA210_QUAD
 	tristate "NVIDIA Tegra QSPI Controller"
 	depends on ARCH_TEGRA || COMPILE_TEST
