@@ -912,13 +912,9 @@ static int gswip_setup(struct dsa_switch *ds)
 	gswip_switch_w(priv, BIT(cpu_port), GSWIP_PCE_PMAP1);
 
 	for (i = 0; i < priv->hw_info->max_ports; i++) {
-		/* Disable multicast/broadcast flooding on all ports except the
-		 * CPU port
-		 */
-		gswip_port_set_unicast_flood(priv, i, dsa_is_cpu_port(ds, i));
-
-		/* Disable unicast flooding on all ports except the CPU port */
-		gswip_port_set_broadcast_flood(priv, i, dsa_is_cpu_port(ds, i));
+		gswip_port_set_learning(priv, i, false);
+		gswip_port_set_unicast_flood(priv, i, false);
+		gswip_port_set_broadcast_flood(priv, i, false);
 	}
 
 	/* Deactivate MDIO PHY auto polling. Some PHYs as the AR8030 have an
