@@ -91,6 +91,8 @@ static struct sk_buff *gswip_tag_rcv(struct sk_buff *skb,
 	if (!skb->dev)
 		return NULL;
 
+	dsa_default_offload_fwd_mark(skb);
+
 	/* remove GSWIP tag */
 	skb_pull_rcsum(skb, GSWIP_RX_HEADER_LEN);
 
