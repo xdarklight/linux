@@ -52,6 +52,8 @@
 #define GSWIP_RX_HEADER_LEN	8
 
 /* special tag in RX path header */
+/* Byte 3 */
+#define GSWIP_RX_MIRRORED		BIT(7)
 /* Byte 7 */
 #define GSWIP_RX_SPPID_SHIFT		4
 #define GSWIP_RX_SPPID_MASK		GENMASK(6, 4)
@@ -90,6 +92,9 @@ static struct sk_buff *gswip_tag_rcv(struct sk_buff *skb,
 	skb->dev = dsa_master_find_slave(dev, 0, port);
 	if (!skb->dev)
 		return NULL;
+
+	if (!(gswip_tag[3] & GSWIP_RX_MIRRORED))
+		dsa_default_offload_fwd_mark(skb);
 
 	/* remove GSWIP tag */
 	skb_pull_rcsum(skb, GSWIP_RX_HEADER_LEN);
