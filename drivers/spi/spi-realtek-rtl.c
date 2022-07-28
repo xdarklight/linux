@@ -20,7 +20,7 @@ struct rtspi {
 #define RTL_SPI_SFCSR_CSB1		BIT(30)
 #define RTL_SPI_SFCSR_RDY		BIT(27)
 #define RTL_SPI_SFCSR_CS		BIT(24)
-#define RTL_SPI_SFCSR_LEN_MASK		~(0x03 << 28)
+#define RTL_SPI_SFCSR_LEN_MASK		(0x03 << 28)
 #define RTL_SPI_SFCSR_LEN1		(0x00 << 28)
 #define RTL_SPI_SFCSR_LEN4		(0x03 << 28)
 
@@ -49,7 +49,7 @@ static void set_size(struct rtspi *rtspi, int size)
 	u32 value;
 
 	value = readl(REG(RTL_SPI_SFCSR));
-	value &= RTL_SPI_SFCSR_LEN_MASK;
+	value &= ~RTL_SPI_SFCSR_LEN_MASK;
 	if (size == 4)
 		value |= RTL_SPI_SFCSR_LEN4;
 	else if (size == 1)
