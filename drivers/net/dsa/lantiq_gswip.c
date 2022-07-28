@@ -290,6 +290,8 @@ struct gswip_priv {
 	struct gswip_gphy_fw *gphy_fw;
 	u32 port_vlan_filter;
 	struct mutex pce_table_lock;
+	u16 host_flood_uc_mask;
+	u16 host_flood_mc_mask;
 };
 
 struct gswip_pce_table_entry {
@@ -829,6 +831,50 @@ static int gswip_port_bridge_flags(struct dsa_switch *ds, int port,
 					     !!(flags.val & BR_FLOOD));
 
 	return 0;
+}
+
+static void gswip_port_set_host_flood(struct dsa_switch *ds, int port,
+				      bool uc, bool mc)
+{
+	struct gswip_priv *priv = ds->priv;
+	u32 plimmod;
+
+	if (uc)
+		priv->host_flood_uc_mask |= BIT(port);
+	else
+		priv->host_flood_uc_mask &= ~BIT(port);
+
+	/*
+	 * Keep flooding unicast traffic to the CPU port as long as at least
+	 * one ports wants to flood unicast traffic to the host.
+	 */
+	gswip_port_set_unicast_flood(priv, priv->hw_info->cpu_port,
+				     !!priv->host_flood_uc_mask);
+
+	if (mc)
+		priv->host_flood_mc_mask |= BIT(port);
+	else
+		priv->host_flood_mc_mask &= ~BIT(port);
+
+	/*
+	 * Keep flooding multicast traffic to the CPU port as long as at least
+	 * one ports wants to flood multicast traffic to the host.
+	 */
+	gswip_port_set_broadcast_flood(priv, priv->hw_info->cpu_port,
+				       !!priv->host_flood_mc_mask);
+
+	/*
+	 * Forward frames (instead of dropping them) even when the learning
+	 * limit (GSWIP_PCE_PCTRL_1_LRNLIM) is exceeded (which is important
+	 * for ports that have learning disabled).
+	 */
+	if (priv->host_flood_uc_mask || priv->host_flood_mc_mask)
+		plimmod = GSWIP_PCE_GCTRL_0_PLIMMOD;
+	else
+		plimmod = 0;
+
+	gswip_switch_mask(priv, GSWIP_PCE_GCTRL_0_PLIMMOD, plimmod,
+			  GSWIP_PCE_GCTRL_0);
 }
 
 static int gswip_port_vlan_filtering(struct dsa_switch *ds, int port,
@@ -1916,6 +1962,7 @@ static const struct dsa_switch_ops gswip_xrx200_switch_ops = {
 	.port_fast_age		= gswip_port_fast_age,
 	.port_pre_bridge_flags	= gswip_port_pre_bridge_flags,
 	.port_bridge_flags	= gswip_port_bridge_flags,
+	.port_set_host_flood	= gswip_port_set_host_flood,
 	.port_vlan_filtering	= gswip_port_vlan_filtering,
 	.port_vlan_add		= gswip_port_vlan_add,
 	.port_vlan_del		= gswip_port_vlan_del,
@@ -1944,6 +1991,7 @@ static const struct dsa_switch_ops gswip_xrx300_switch_ops = {
 	.port_fast_age		= gswip_port_fast_age,
 	.port_pre_bridge_flags	= gswip_port_pre_bridge_flags,
 	.port_bridge_flags	= gswip_port_bridge_flags,
+	.port_set_host_flood	= gswip_port_set_host_flood,
 	.port_vlan_filtering	= gswip_port_vlan_filtering,
 	.port_vlan_add		= gswip_port_vlan_add,
 	.port_vlan_del		= gswip_port_vlan_del,
