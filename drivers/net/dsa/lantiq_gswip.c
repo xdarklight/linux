@@ -178,6 +178,7 @@
 #define  GSWIP_PCE_GCTRL_1_MAC_GLOCK	BIT(2)	/* MAC Address table lock */
 #define  GSWIP_PCE_GCTRL_1_MAC_GLOCK_MOD	BIT(3) /* Mac address table lock forwarding mode */
 #define GSWIP_PCE_PCTRL_0p(p)		(0x480 + ((p) * 0xA))
+#define  GSWIP_PCE_PCTRL_0_PLOCK	BIT(4)	/* Learning Limit Port Lock */
 #define  GSWIP_PCE_PCTRL_0_TVM		BIT(5)	/* Transparent VLAN mode */
 #define  GSWIP_PCE_PCTRL_0_VREP		BIT(6)	/* VLAN Replace Mode */
 #define  GSWIP_PCE_PCTRL_0_INGRESS	BIT(11)	/* Accept special tag in ingress */
@@ -649,6 +650,14 @@ static void gswip_port_set_learning(struct gswip_priv *priv, int port,
 			  GSWIP_PCE_PCTRL_1p(port));
 }
 
+static void gswip_port_set_learning_port_locked(struct gswip_priv *priv,
+						int port, bool enable)
+{
+	gswip_switch_mask(priv, GSWIP_PCE_PCTRL_0_PLOCK,
+			  enable ? GSWIP_PCE_PCTRL_0_PLOCK : 0,
+			  GSWIP_PCE_PCTRL_0p(port));
+}
+
 static void gswip_port_set_broadcast_flood(struct gswip_priv *priv, int port,
 					   bool enable)
 {
@@ -800,7 +809,7 @@ static int gswip_port_pre_bridge_flags(struct dsa_switch *ds, int port,
 	bool multicast_flood = !!(flags.val & BR_MCAST_FLOOD);
 
 	if (flags.mask & ~(BR_LEARNING | BR_FLOOD | BR_MCAST_FLOOD |
-			   BR_BCAST_FLOOD))
+			   BR_BCAST_FLOOD | BR_PORT_LOCKED))
 		return -EINVAL;
 
 	if (broadcast_flood != multicast_flood) {
@@ -829,6 +838,10 @@ static int gswip_port_bridge_flags(struct dsa_switch *ds, int port,
 	if (flags.mask & BR_FLOOD)
 		gswip_port_set_unicast_flood(priv, port,
 					     !!(flags.val & BR_FLOOD));
+
+	if (flags.mask & BR_PORT_LOCKED)
+		gswip_port_set_learning_port_locked(priv, port,
+						    !!(flags.val & BR_PORT_LOCKED));
 
 	return 0;
 }
