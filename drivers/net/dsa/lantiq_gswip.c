@@ -1429,6 +1429,8 @@ static void gswip_port_fast_age(struct dsa_switch *ds, int port)
 	int i;
 	int err;
 
+	dev_err(priv->dev, "%s(%d)\n", __func__, port);
+
 	for (i = 0; i < 2048; i++) {
 		mac_bridge.table = GSWIP_TABLE_MAC_BRIDGE;
 		mac_bridge.index = i;
@@ -1516,14 +1518,18 @@ static int gswip_port_fdb(struct dsa_switch *ds, int port,
 			return -EINVAL;
 		}
 
+		dev_err(priv->dev, "%s(%d, %pM, %s) using bridge FID = %d\n", __func__, port, addr, add ? "add" : "del", fid);
+
 		break;
 
 	case DSA_DB_PORT:
 		/* FID of a standalone port (single port bridge) */
 		fid = db.dp->index + 1;
+		dev_err(priv->dev, "%s(%d, %pM, %s) using port #%d FID = %d\n", __func__, port, addr, add ? "add" : "del", db.dp->index, fid);
 		break;
 
 	default:
+		dev_err(priv->dev, "%s(%d, %pM, %s) for default case will be IGNORED!\n", __func__, port, addr, add ? "add" : "del");
 		return -EOPNOTSUPP;
 	}
 
@@ -1611,6 +1617,8 @@ static int gswip_port_fdb_dump(struct dsa_switch *ds, int port,
 				break;
 			}
 		}
+
+		dev_err(priv->dev, "%s(%d): %s FDB entry for port %u (%u), FID %u and VLAN ID %u: %pM\n", __func__, port, is_static ? "static" : "learned", entry_port, mac_bridge.val[0], fid, vid, addr);
 
 		err = cb(addr, vid, is_static, data);
 		if (err)
