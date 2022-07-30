@@ -688,16 +688,15 @@ static int gswip_port_enable(struct dsa_switch *ds, int port,
 			     struct phy_device *phydev)
 {
 	struct gswip_priv *priv = ds->priv;
+	u32 mdio_phy = 0;
 	int err;
 
-	if (!dsa_is_user_port(ds, port))
+	if (dsa_is_cpu_port(ds, port))
 		return 0;
 
-	if (!dsa_is_cpu_port(ds, port)) {
-		err = gswip_add_single_port_br(priv, port, true);
-		if (err)
-			return err;
-	}
+	err = gswip_add_single_port_br(priv, port, true);
+	if (err)
+		return err;
 
 	/* RMON Counter Enable for port */
 	gswip_switch_w(priv, GSWIP_BM_PCFG_CNTEN, GSWIP_BM_PCFGp(port));
@@ -709,15 +708,11 @@ static int gswip_port_enable(struct dsa_switch *ds, int port,
 	gswip_switch_mask(priv, 0, GSWIP_SDMA_PCTRL_EN,
 			  GSWIP_SDMA_PCTRLp(port));
 
-	if (!dsa_is_cpu_port(ds, port)) {
-		u32 mdio_phy = 0;
+	if (phydev)
+		mdio_phy = phydev->mdio.addr & GSWIP_MDIO_PHY_ADDR_MASK;
 
-		if (phydev)
-			mdio_phy = phydev->mdio.addr & GSWIP_MDIO_PHY_ADDR_MASK;
-
-		gswip_mdio_mask(priv, GSWIP_MDIO_PHY_ADDR_MASK, mdio_phy,
-				GSWIP_MDIO_PHYp(port));
-	}
+	gswip_mdio_mask(priv, GSWIP_MDIO_PHY_ADDR_MASK, mdio_phy,
+			GSWIP_MDIO_PHYp(port));
 
 	return 0;
 }
