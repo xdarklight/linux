@@ -680,6 +680,8 @@ static void gswip_port_set_multicast_broadcast_flood(struct gswip_priv *priv,
 	/* DMCPMAP: Default Multicast Port Map (also used for broadcasts) */
 	gswip_switch_mask(priv, BIT(port), enable ? BIT(port) : 0,
 			  GSWIP_PCE_PMAP2);
+
+	dev_err(priv->dev, "%s(%d, %d)\n", __func__, port, enable);
 }
 
 static void gswip_port_set_unicast_flood(struct gswip_priv *priv, int port,
@@ -688,6 +690,8 @@ static void gswip_port_set_unicast_flood(struct gswip_priv *priv, int port,
 	/* UUCMAP: Default Unknown Unicast Port Map */
 	gswip_switch_mask(priv, BIT(port), enable ? BIT(port) : 0,
 			  GSWIP_PCE_PMAP3);
+
+	dev_err(priv->dev, "%s(%d, %d)\n", __func__, port, enable);
 }
 
 /* Add the LAN port into a bridge with the CPU port by
@@ -855,21 +859,30 @@ static int gswip_port_bridge_flags(struct dsa_switch *ds, int port,
 {
 	struct gswip_priv *priv = ds->priv;
 
-	if (flags.mask & BR_LEARNING)
+	if (flags.mask & BR_LEARNING) {
+		dev_err(priv->dev, "%s(%d) BR_LEARNING = %d\n", __func__, port, !!(flags.val & BR_LEARNING));
 		gswip_port_set_learning(priv, port,
 					!!(flags.val & BR_LEARNING));
+	}
 
-	if (flags.mask & BR_BCAST_FLOOD)
+	if (flags.mask & BR_BCAST_FLOOD) {
+		dev_err(priv->dev, "%s(%d) BR_BCAST_FLOOD = %d\n", __func__, port, !!(flags.val & BR_BCAST_FLOOD));
 		gswip_port_set_multicast_broadcast_flood(priv, port,
 							 !!(flags.val & BR_BCAST_FLOOD));
+	}
 
-	if (flags.mask & BR_FLOOD)
+
+	if (flags.mask & BR_FLOOD) {
+		dev_err(priv->dev, "%s(%d) BR_FLOOD = %d\n", __func__, port, !!(flags.val & BR_FLOOD));
 		gswip_port_set_unicast_flood(priv, port,
 					     !!(flags.val & BR_FLOOD));
+	}
 
-	if (flags.mask & BR_PORT_LOCKED)
+	if (flags.mask & BR_PORT_LOCKED) {
+		dev_err(priv->dev, "%s(%d) BR_PORT_LOCKED = %d\n", __func__, port, !!(flags.val & BR_PORT_LOCKED));
 		gswip_port_set_learning_port_locked(priv, port,
 						    !!(flags.val & BR_PORT_LOCKED));
+	}
 
 	return 0;
 }
@@ -1497,6 +1510,8 @@ static void gswip_port_fast_age(struct dsa_switch *ds, int port)
 {
 	struct gswip_priv *priv = ds->priv;
 
+	dev_err(priv->dev, "%s(%d)\n", __func__, port);
+
 	mutex_lock(&priv->mac_bridge_entries_lock);
 	gswip_mac_bridge_iter(priv, gswip_port_fast_age_entry, &port);
 	mutex_unlock(&priv->mac_bridge_entries_lock);
@@ -1576,14 +1591,18 @@ static int gswip_port_fdb(struct dsa_switch *ds, int port,
 			return -EINVAL;
 		}
 
+		dev_err(priv->dev, "%s(%d, %pM, %s) using bridge FID = %d\n", __func__, port, addr, add ? "add" : "del", fid);
+
 		break;
 
 	case DSA_DB_PORT:
 		/* FID of a standalone port (single port bridge) */
 		fid = db.dp->index + 1;
+		dev_err(priv->dev, "%s(%d, %pM, %s) using port #%d FID = %d\n", __func__, port, addr, add ? "add" : "del", db.dp->index, fid);
 		break;
 
 	default:
+		dev_err(priv->dev, "%s(%d, %pM, %s) for default case will be IGNORED!\n", __func__, port, addr, add ? "add" : "del");
 		return -EOPNOTSUPP;
 	}
 
@@ -1669,6 +1688,8 @@ static int gswip_port_fdb_dump_entry(struct gswip_priv *priv,
 	addr[2] = (mac_bridge->key[1] >> 8) & 0xff;
 	addr[1] = mac_bridge->key[2] & 0xff;
 	addr[0] = (mac_bridge->key[2] >> 8) & 0xff;
+
+	dev_err(priv->dev, "%s for port %d: %s FDB entry with port(mask) 0x%02x and FID %lu: %pM\n", __func__, dump_args->port, is_static ? "static" : "learned", mac_bridge->val[0], FIELD_GET(GSWIP_TABLE_MAC_BRIDGE_FID, mac_bridge->key[3]), addr);
 
 	return dump_args->dump_cb(addr, 0, is_static, dump_args->dump_cb_data);
 }
