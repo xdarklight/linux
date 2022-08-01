@@ -1400,12 +1400,14 @@ static int gswip_port_vlan_del(struct dsa_switch *ds, int port,
 	return gswip_vlan_remove(priv, bridge, port, vlan->vid, pvid, true);
 }
 
-static void gswip_port_fast_age(struct dsa_switch *ds, int port)
+static int gswip_mac_bridge_iter(struct gswip_priv *priv,
+				 int (*process)(struct gswip_priv *,
+						struct gswip_pce_table_entry *,
+						void *),
+				 void *iter_arg)
 {
-	struct gswip_priv *priv = ds->priv;
 	struct gswip_pce_table_entry mac_bridge = {0,};
-	int i;
-	int err;
+	int i, err;
 
 	for (i = 0; i < 2048; i++) {
 		mac_bridge.table = GSWIP_TABLE_MAC_BRIDGE;
@@ -1413,29 +1415,52 @@ static void gswip_port_fast_age(struct dsa_switch *ds, int port)
 
 		err = gswip_pce_table_entry_read(priv, &mac_bridge);
 		if (err) {
-			dev_err(priv->dev, "failed to read mac bridge: %d\n",
-				err);
-			return;
+			dev_err(priv->dev,
+				"failed to read mac bridge entry %d: %d\n",
+				i, err);
+			return err;
 		}
 
 		if (!mac_bridge.valid)
 			continue;
 
-		if (mac_bridge.val[1] & GSWIP_TABLE_MAC_BRIDGE_STATIC)
-			continue;
-
-		if (port != FIELD_GET(GSWIP_TABLE_MAC_BRIDGE_PORT,
-				      mac_bridge.val[0]))
-			continue;
-
-		mac_bridge.valid = false;
-		err = gswip_pce_table_entry_write(priv, &mac_bridge);
-		if (err) {
-			dev_err(priv->dev, "failed to write mac bridge: %d\n",
-				err);
-			return;
-		}
+		err = process(priv, &mac_bridge, iter_arg);
+		if (err)
+			return err;
 	}
+
+	return 0;
+}
+
+static int gswip_port_fast_age_entry(struct gswip_priv *priv,
+				     struct gswip_pce_table_entry *mac_bridge,
+				     void *iter_arg)
+{
+	int err, *port = iter_arg;
+
+	if (mac_bridge->val[1] & GSWIP_TABLE_MAC_BRIDGE_STATIC)
+		return 0;
+
+	if (*port != FIELD_GET(GSWIP_TABLE_MAC_BRIDGE_PORT, mac_bridge->val[0]))
+		return 0;
+
+	mac_bridge->valid = false;
+
+	err = gswip_pce_table_entry_write(priv, mac_bridge);
+	if (err)
+		dev_err(priv->dev,
+			"Failed to invalidate mac bridge entry %d: %d\n",
+			mac_bridge->index, err);
+
+	/* Don't return an error to allow other entries to be fast aged out */
+	return 0;
+}
+
+static void gswip_port_fast_age(struct dsa_switch *ds, int port)
+{
+	struct gswip_priv *priv = ds->priv;
+
+	gswip_mac_bridge_iter(priv, gswip_port_fast_age_entry, &port);
 }
 
 static void gswip_port_stp_state_set(struct dsa_switch *ds, int port, u8 state)
@@ -1538,52 +1563,51 @@ static int gswip_port_fdb_del(struct dsa_switch *ds, int port,
 	return gswip_port_fdb(ds, port, addr, vid, db, false);
 }
 
+struct gswip_mac_bridge_iter_dump_args {
+	dsa_fdb_dump_cb_t	*dump_cb;
+	void			*dump_cb_data;
+	int			port;
+};
+
+static int gswip_port_fdb_dump_entry(struct gswip_priv *priv,
+				     struct gswip_pce_table_entry *mac_bridge,
+				     void *iter_args)
+{
+	struct gswip_mac_bridge_iter_dump_args *dump_args = iter_args;
+	bool is_static, matches_port;
+	unsigned char addr[ETH_ALEN];
+
+	is_static = !!(mac_bridge->val[1] & GSWIP_TABLE_MAC_BRIDGE_STATIC);
+	if (is_static)
+		matches_port = !!(mac_bridge->val[0] & BIT(dump_args->port));
+	else
+		matches_port = dump_args->port == FIELD_GET(GSWIP_TABLE_MAC_BRIDGE_PORT,
+							    mac_bridge->val[0]);
+
+	if (!matches_port)
+		return 0;
+
+	addr[5] = mac_bridge->key[0] & 0xff;
+	addr[4] = (mac_bridge->key[0] >> 8) & 0xff;
+	addr[3] = mac_bridge->key[1] & 0xff;
+	addr[2] = (mac_bridge->key[1] >> 8) & 0xff;
+	addr[1] = mac_bridge->key[2] & 0xff;
+	addr[0] = (mac_bridge->key[2] >> 8) & 0xff;
+
+	return dump_args->dump_cb(addr, 0, is_static, dump_args->dump_cb_data);
+}
+
 static int gswip_port_fdb_dump(struct dsa_switch *ds, int port,
 			       dsa_fdb_dump_cb_t *cb, void *data)
 {
-	struct gswip_priv *priv = ds->priv;
-	struct gswip_pce_table_entry mac_bridge = {0,};
-	unsigned char addr[ETH_ALEN];
-	int i;
-	int err;
+	struct gswip_mac_bridge_iter_dump_args iter_args = {
+		.dump_cb = cb,
+		.dump_cb_data = data,
+		.port = port,
+	};
 
-	for (i = 0; i < 2048; i++) {
-		mac_bridge.table = GSWIP_TABLE_MAC_BRIDGE;
-		mac_bridge.index = i;
-
-		err = gswip_pce_table_entry_read(priv, &mac_bridge);
-		if (err) {
-			dev_err(priv->dev,
-				"failed to read mac bridge entry %d: %d\n",
-				i, err);
-			return err;
-		}
-
-		if (!mac_bridge.valid)
-			continue;
-
-		addr[5] = mac_bridge.key[0] & 0xff;
-		addr[4] = (mac_bridge.key[0] >> 8) & 0xff;
-		addr[3] = mac_bridge.key[1] & 0xff;
-		addr[2] = (mac_bridge.key[1] >> 8) & 0xff;
-		addr[1] = mac_bridge.key[2] & 0xff;
-		addr[0] = (mac_bridge.key[2] >> 8) & 0xff;
-		if (mac_bridge.val[1] & GSWIP_TABLE_MAC_BRIDGE_STATIC) {
-			if (mac_bridge.val[0] & BIT(port)) {
-				err = cb(addr, 0, true, data);
-				if (err)
-					return err;
-			}
-		} else {
-			if (port == FIELD_GET(GSWIP_TABLE_MAC_BRIDGE_PORT,
-					      mac_bridge.val[0])) {
-				err = cb(addr, 0, false, data);
-				if (err)
-					return err;
-			}
-		}
-	}
-	return 0;
+	return gswip_mac_bridge_iter(ds->priv, gswip_port_fdb_dump_entry,
+				     &iter_args);
 }
 
 static int gswip_port_max_mtu(struct dsa_switch *ds, int port)
