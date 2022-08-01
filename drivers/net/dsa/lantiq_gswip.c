@@ -651,7 +651,7 @@ static int gswip_add_single_port_br(struct gswip_priv *priv, int port, bool add)
 	unsigned int max_ports = priv->hw_info->max_ports;
 	int err;
 
-	if (port >= max_ports) {
+	if (port >= max_ports || dsa_is_cpu_port(priv->ds, port)) {
 		dev_err(priv->dev, "single port for %i supported\n", port);
 		return -EIO;
 	}
