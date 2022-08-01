@@ -665,16 +665,18 @@ static int gswip_add_single_port_br(struct gswip_priv *priv, int port, bool add)
 		return err;
 	}
 
-	if (!add)
-		return 0;
-
 	vlan_mapping.index = port + 1;
 	vlan_mapping.table = GSWIP_TABLE_VLAN_MAPPING;
 	vlan_mapping.val[0] = 0 /* vid */;
 	vlan_mapping.val[1] = BIT(port) | BIT(cpu_port);
 	vlan_mapping.val[2] = 0;
+	vlan_mapping.valid = add;
 	err = gswip_pce_table_entry_write(priv, &vlan_mapping);
 	if (err) {
+		/* remove the previously created GSWIP_TABLE_ACTIVE_VLAN */
+		vlan_active.valid = false;
+		gswip_pce_table_entry_write(priv, &vlan_active);
+
 		dev_err(priv->dev, "failed to write VLAN mapping: %d\n", err);
 		return err;
 	}
