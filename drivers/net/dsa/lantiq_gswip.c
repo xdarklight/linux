@@ -236,7 +236,8 @@
 #define GSWIP_TABLE_ACTIVE_VLAN		0x01
 #define GSWIP_TABLE_VLAN_MAPPING	0x02
 #define GSWIP_TABLE_MAC_BRIDGE		0x0b
-#define  GSWIP_TABLE_MAC_BRIDGE_STATIC	0x01	/* Static not, aging entry */
+#define  GSWIP_TABLE_MAC_BRIDGE_STATIC	BIT(0)		/* Static not, aging entry */
+#define  GSWIP_TABLE_MAC_BRIDGE_PORT	GENMASK(7, 4)	/* Port on learned entries */
 
 #define XRX200_GPHY_FW_ALIGN	(16 * 1024)
 
@@ -1305,7 +1306,8 @@ static void gswip_port_fast_age(struct dsa_switch *ds, int port)
 		if (mac_bridge.val[1] & GSWIP_TABLE_MAC_BRIDGE_STATIC)
 			continue;
 
-		if (((mac_bridge.val[0] & GENMASK(7, 4)) >> 4) != port)
+		if (port != FIELD_GET(GSWIP_TABLE_MAC_BRIDGE_PORT,
+				      mac_bridge.val[0]))
 			continue;
 
 		mac_bridge.valid = false;
@@ -1443,7 +1445,8 @@ static int gswip_port_fdb_dump(struct dsa_switch *ds, int port,
 					return err;
 			}
 		} else {
-			if (((mac_bridge.val[0] & GENMASK(7, 4)) >> 4) == port) {
+			if (port == FIELD_GET(GSWIP_TABLE_MAC_BRIDGE_PORT,
+					      mac_bridge.val[0])) {
 				err = cb(addr, 0, false, data);
 				if (err)
 					return err;
