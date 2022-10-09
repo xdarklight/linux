@@ -19,6 +19,8 @@
 #include <linux/memblock.h>
 #include <linux/initrd.h>
 #include <linux/ioport.h>
+#include <linux/kexec.h>
+#include <linux/crash_dump.h>
 #include <linux/root_dev.h>
 #include <linux/console.h>
 #include <linux/pfn.h>
@@ -59,6 +61,10 @@ EXPORT_SYMBOL(cpu_data);
 
 struct loongson_board_info b_info;
 static const char dmi_empty_string[] = "        ";
+
+#ifdef CONFIG_CRASH_DUMP
+static phys_addr_t crashmem_start, crashmem_size;
+#endif
 
 /*
  * Setup information
@@ -157,16 +163,6 @@ static int __init early_parse_mem(char *p)
 		return -EINVAL;
 	}
 
-	/*
-	 * If a user specifies memory size, we
-	 * blow away any automatically generated
-	 * size.
-	 */
-	if (usermem == 0) {
-		usermem = 1;
-		memblock_remove(memblock_start_of_DRAM(),
-			memblock_end_of_DRAM() - memblock_start_of_DRAM());
-	}
 	start = 0;
 	size = memparse(p, &p);
 	if (*p == '@')
@@ -174,6 +170,24 @@ static int __init early_parse_mem(char *p)
 	else {
 		pr_err("Invalid format!\n");
 		return -EINVAL;
+	}
+
+	/*
+	 * If a user specifies memory size, we
+	 * blow away any automatically generated
+	 * size.
+	 */
+	if (usermem == 0) {
+		usermem = 1;
+#ifdef CONFIG_CRASH_DUMP
+		if (strstr(boot_command_line, "elfcorehdr")) {
+			crashmem_start = start;
+			crashmem_size = size;
+			return 0;
+		}
+#endif
+		memblock_remove(memblock_start_of_DRAM(),
+			memblock_end_of_DRAM() - memblock_start_of_DRAM());
 	}
 
 	if (!IS_ENABLED(CONFIG_NUMA))
@@ -185,6 +199,80 @@ static int __init early_parse_mem(char *p)
 }
 early_param("mem", early_parse_mem);
 
+/*
+ * After the kdump operation is performed to enter the capture kernel, the
+ * memory area used by the previous production kernel should be reserved to
+ * avoid destroy to the captured data.
+ */
+static void __init arch_reserve_oldmem(void)
+{
+#ifdef CONFIG_CRASH_DUMP
+	if (!is_kdump_kernel())
+		return;
+
+	memblock_cap_memory_range(crashmem_start, crashmem_size);
+#endif
+}
+
+static void __init arch_reserve_vmcore(void)
+{
+#ifdef CONFIG_PROC_VMCORE
+	u64 i;
+	phys_addr_t start, end;
+
+	if (!is_kdump_kernel())
+		return;
+
+	if (!elfcorehdr_size) {
+		for_each_mem_range(i, &start, &end) {
+			if (elfcorehdr_addr >= start && elfcorehdr_addr < end) {
+				/*
+				 * Reserve from the elf core header to the end of
+				 * the memory segment, that should all be kdump
+				 * reserved memory.
+				 */
+				elfcorehdr_size = end - elfcorehdr_addr;
+				break;
+			}
+		}
+	}
+
+	if (memblock_is_region_reserved(elfcorehdr_addr, elfcorehdr_size)) {
+		pr_warn("elfcorehdr is overlapped\n");
+		return;
+	}
+
+	memblock_reserve(elfcorehdr_addr, elfcorehdr_size);
+
+	pr_info("Reserving %llu KiB of memory at 0x%llx for elfcorehdr\n",
+		elfcorehdr_size >> 10, elfcorehdr_addr);
+#endif
+}
+
+static void __init arch_parse_crashkernel(void)
+{
+#ifdef CONFIG_KEXEC
+	int ret;
+	unsigned long long start;
+	unsigned long long total_mem;
+	unsigned long long crash_base, crash_size;
+
+	total_mem = memblock_phys_mem_size();
+	ret = parse_crashkernel(boot_command_line, total_mem, &crash_size, &crash_base);
+	if (ret < 0 || crash_size <= 0)
+		return;
+
+	start = memblock_phys_alloc_range(crash_size, 1, crash_base, crash_base + crash_size);
+	if (start != crash_base) {
+		pr_warn("Invalid memory region reserved for crash kernel\n");
+		return;
+	}
+
+	crashk_res.start = crash_base;
+	crashk_res.end	 = crash_base + crash_size - 1;
+#endif
+}
+
 void __init platform_init(void)
 {
 #ifdef CONFIG_ACPI_TABLE_UPGRADE
@@ -195,6 +283,10 @@ void __init platform_init(void)
 	acpi_boot_table_init();
 	acpi_boot_init();
 #endif
+
+	arch_reserve_oldmem();
+	arch_reserve_vmcore();
+	arch_parse_crashkernel();
 
 #ifdef CONFIG_NUMA
 	init_numa_memory();
@@ -289,6 +381,15 @@ static void __init resource_init(void)
 		request_resource(res, &data_resource);
 		request_resource(res, &bss_resource);
 	}
+
+#ifdef CONFIG_KEXEC
+	if (crashk_res.start < crashk_res.end) {
+		insert_resource(&iomem_resource, &crashk_res);
+		pr_info("Reserving %ldMB of memory at %ldMB for crashkernel\n",
+			(unsigned long)((crashk_res.end - crashk_res.start + 1) >> 20),
+			(unsigned long)(crashk_res.start  >> 20));
+	}
+#endif
 }
 
 static int __init reserve_memblock_reserved_regions(void)
@@ -348,10 +449,11 @@ void __init setup_arch(char **cmdline_p)
 	init_environ();
 	efi_init();
 	memblock_init();
+	pagetable_init();
 	parse_early_param();
+	reserve_initrd_mem();
 
 	platform_init();
-	pagetable_init();
 	arch_mem_init(cmdline_p);
 
 	resource_init();
