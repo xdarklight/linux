@@ -38,8 +38,8 @@ unreachable_chain_test()
 	tc filter add dev $h2 ingress chain 1 protocol ip pref 1 handle 1101 \
 		flower $tcflags dst_mac $h2mac action drop
 
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
-		-t ip -q
+	mz_do $h1 "" -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
+		-t ip
 
 	tc_check_packets "dev $h2 ingress" 1101 1
 	check_fail $? "matched on filter in unreachable chain"
@@ -61,8 +61,8 @@ gact_goto_chain_test()
 	tc filter add dev $h2 ingress protocol ip pref 1 handle 101 flower \
 		$tcflags dst_mac $h2mac action goto chain 1
 
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
-		-t ip -q
+	mz_do $h1 "" -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
+		-t ip
 
 	tc_check_packets "dev $h2 ingress" 102 1
 	check_fail $? "Matched on a wrong filter"

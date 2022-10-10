@@ -145,7 +145,7 @@ mldv2include_prepare()
 	ip link set dev br0 type bridge mcast_mld_version 2
 	check_err $? "Could not change bridge MLD version to 2"
 
-	$MZ $host1_if $MZPKT_IS_INC -q
+	mz_do $host1_if "$MZPKT_IS_INC"
 	sleep 1
 	bridge -j -d -s mdb show dev br0 \
 		| jq -e ".[].mdb[] | \
@@ -170,7 +170,7 @@ mldv2exclude_prepare()
 
 	mldv2include_prepare $h1
 
-	$MZ $host1_if -c 1 $MZPKT_IS_EXC -q
+	mz_do $host1_if "$MZPKT_IS_EXC" -c 1
 	sleep 1
 	bridge -j -d -s mdb show dev br0 \
 		| jq -e ".[].mdb[] | \
@@ -223,7 +223,7 @@ mldv2inc_allow_test()
 
 	mldv2include_prepare $h1
 
-	$MZ $h1 -c 1 $MZPKT_ALLOW -q
+	mz_do $h1 "$MZPKT_ALLOW" -c 1
 	sleep 1
 	brmcast_check_sg_entries "allow" "${X[@]}"
 
@@ -244,7 +244,7 @@ mldv2inc_is_include_test()
 
 	mldv2include_prepare $h1
 
-	$MZ $h1 -c 1 $MZPKT_IS_INC2 -q
+	mz_do $h1 "$MZPKT_IS_INC2" -c 1
 	sleep 1
 	brmcast_check_sg_entries "is_include" "${X[@]}"
 
@@ -283,7 +283,7 @@ mldv2inc_to_exclude_test()
 	ip link set dev br0 type bridge mcast_last_member_interval 500
 	check_err $? "Could not change mcast_last_member_interval to 5s"
 
-	$MZ $h1 -c 1 $MZPKT_TO_EXC -q
+	mz_do $h1 "$MZPKT_TO_EXC" -c 1
 	sleep 1
 	bridge -j -d -s mdb show dev br0 \
 		| jq -e ".[].mdb[] | \
@@ -327,7 +327,7 @@ mldv2exc_allow_test()
 
 	mldv2exclude_prepare $h1
 
-	$MZ $h1 -c 1 $MZPKT_ALLOW2 -q
+	mz_do $h1 "$MZPKT_ALLOW2" -c 1
 	sleep 1
 	brmcast_check_sg_entries "allow" "${X[@]}" "${Y[@]}"
 
@@ -350,7 +350,7 @@ mldv2exc_is_include_test()
 
 	mldv2exclude_prepare $h1
 
-	$MZ $h1 -c 1 $MZPKT_IS_INC3 -q
+	mz_do $h1 "$MZPKT_IS_INC3" -c 1
 	sleep 1
 	brmcast_check_sg_entries "is_include" "${X[@]}" "${Y[@]}"
 
@@ -373,7 +373,7 @@ mldv2exc_is_exclude_test()
 
 	mldv2exclude_prepare $h1
 
-	$MZ $h1 -c 1 $MZPKT_IS_EXC2 -q
+	mz_do $h1 "$MZPKT_IS_EXC2" -c 1
 	sleep 1
 	brmcast_check_sg_entries "is_exclude" "${X[@]}" "${Y[@]}"
 
@@ -399,7 +399,7 @@ mldv2exc_to_exclude_test()
 	ip link set dev br0 type bridge mcast_last_member_interval 500
 	check_err $? "Could not change mcast_last_member_interval to 5s"
 
-	$MZ $h1 -c 1 $MZPKT_TO_EXC -q
+	mz_do $h1 "$MZPKT_TO_EXC" -c 1
 	sleep 1
 	brmcast_check_sg_entries "to_exclude" "${X[@]}" "${Y[@]}"
 
@@ -423,7 +423,7 @@ mldv2inc_block_test()
 
 	mldv2include_prepare $h1
 
-	$MZ $h1 -c 1 $MZPKT_BLOCK -q
+	mz_do $h1 "$MZPKT_BLOCK" -c 1
 	# make sure the lowered timers have expired (by default 2 seconds)
 	sleep 3
 	brmcast_check_sg_entries "block" "${X[@]}"
@@ -456,7 +456,7 @@ mldv2exc_block_test()
 	ip link set dev br0 type bridge mcast_last_member_interval 500
 	check_err $? "Could not change mcast_last_member_interval to 5s"
 
-	$MZ $h1 -c 1 $MZPKT_BLOCK -q
+	mz_do $h1 "$MZPKT_BLOCK" -c 1
 	sleep 1
 	brmcast_check_sg_entries "block" "${X[@]}" "${Y[@]}"
 
@@ -488,7 +488,7 @@ mldv2exc_timeout_test()
 					mcast_query_response_interval 500 \
 					mcast_membership_interval 1500
 
-	$MZ $h1 -c 1 $MZPKT_ALLOW2 -q
+	mz_do $h1 "$MZPKT_ALLOW2" -c 1
 	sleep 3
 	bridge -j -d -s mdb show dev br0 \
 		| jq -e ".[].mdb[] | \
@@ -531,7 +531,7 @@ mldv2star_ex_auto_add_test()
 
 	mldv2exclude_prepare $h1
 
-	$MZ $h2 -c 1 $MZPKT_IS_INC -q
+	mz_do $h2 "$MZPKT_IS_INC" -c 1
 	sleep 1
 	bridge -j -d -s mdb show dev br0 \
 		| jq -e ".[].mdb[] | \

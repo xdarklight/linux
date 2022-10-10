@@ -131,7 +131,7 @@ extern_learn()
 	bridge fdb show brport $swp1 | grep -q de:ad:be:ef:13:37
 	check_err $? "FDB entry was aged out when should not"
 
-	$MZ $h2 -c 1 -p 64 -a $mac -t ip -q
+	mz_do $h2 "" -c 1 -p 64 -a $mac -t ip
 
 	bridge fdb show brport $swp2 | grep -q de:ad:be:ef:13:37
 	check_err $? "FDB entry did not roam when should"

@@ -53,14 +53,14 @@ shared_block_test()
 	tc filter add block 22 protocol ip pref 1 handle 101 flower \
 		$tcflags dst_ip 192.0.2.2 action drop
 
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $swmac -A 192.0.2.1 -B 192.0.2.2 \
-		-t ip -q
+	mz_do $h1 "" -c 1 -p 64 -a $h1mac -b $swmac -A 192.0.2.1 -B 192.0.2.2 \
+		-t ip
 
 	tc_check_packets "block 22" 101 1
 	check_err $? "Did not match first incoming packet on a block"
 
-	$MZ $h2 -c 1 -p 64 -a $h2mac -b $swmac -A 192.0.2.1 -B 192.0.2.2 \
-		-t ip -q
+	mz_do $h2 "" -c 1 -p 64 -a $h2mac -b $swmac -A 192.0.2.1 -B 192.0.2.2 \
+		-t ip
 
 	tc_check_packets "block 22" 101 2
 	check_err $? "Did not match second incoming packet on a block"
@@ -79,14 +79,14 @@ match_indev_test()
 	tc filter add block 22 protocol ip pref 2 handle 102 flower \
 		$tcflags indev $swp2 dst_mac $swmac action drop
 
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $swmac -A 192.0.2.1 -B 192.0.2.2 \
-		-t ip -q
+	mz_do $h1 "" -c 1 -p 64 -a $h1mac -b $swmac -A 192.0.2.1 -B 192.0.2.2 \
+		-t ip
 
 	tc_check_packets "block 22" 101 1
 	check_err $? "Did not match first incoming packet on a block"
 
-	$MZ $h2 -c 1 -p 64 -a $h2mac -b $swmac -A 192.0.2.1 -B 192.0.2.2 \
-		-t ip -q
+	mz_do $h2 "" -c 1 -p 64 -a $h2mac -b $swmac -A 192.0.2.1 -B 192.0.2.2 \
+		-t ip
 
 	tc_check_packets "block 22" 102 1
 	check_err $? "Did not match second incoming packet on a block"

@@ -183,8 +183,9 @@ send_packets()
 {
 	local proto=$1; shift
 	local pkts=$1; shift
+	local args=$1; shift
 
-	$MZ $h2 -p $PKTSZ -a own -b $h3_mac -A 192.0.2.2 -B 192.0.2.3 -t $proto -q -c $pkts "$@"
+	mz_do $h2 "$args" -p $PKTSZ -a own -b $h3_mac -A 192.0.2.2 -B 192.0.2.3 -t $proto -c $pkts "$@"
 }
 
 # This sends traffic in an attempt to build a backlog of $size. Returns 0 on
@@ -194,6 +195,7 @@ build_backlog()
 {
 	local size=$1; shift
 	local proto=$1; shift
+	local args=$1; shift
 
 	local i=0
 
@@ -210,7 +212,7 @@ build_backlog()
 			return 1
 		fi
 
-		send_packets $proto $pkts "$@"
+		send_packets $proto $pkts "$args" "$@"
 		sleep 1
 	done
 }
@@ -273,7 +275,7 @@ ecn_test_common()
 	# backlog crosses the limit, and we want to make sure that the backlog
 	# is above the limit.
 	RET=0
-	backlog=$(build_backlog $((3 * limit / 2)) tcp tos=0x01)
+	backlog=$(build_backlog $((3 * limit / 2)) tcp "tos=0x01")
 	check_err $? "Could not build the requested backlog"
 	pct=$(check_marking ">= 95")
 	check_err $? "backlog $backlog / $limit Got $pct% marked packets, expected >= 95."
@@ -285,8 +287,8 @@ do_ecn_test()
 	local limit=$1; shift
 	local name=ECN
 
-	$MZ $h1 -p $PKTSZ -A 192.0.2.1 -B 192.0.2.3 -c 0 \
-		-a own -b $h3_mac -t tcp -q tos=0x01 &
+	mz_do $h1 "tos=0x01" -p $PKTSZ -A 192.0.2.1 \
+		-B 192.0.2.3 -c 0 -a own -b $h3_mac -t tcp &
 	sleep 1
 
 	ecn_test_common "$name" $limit
@@ -308,8 +310,8 @@ do_ecn_nodrop_test()
 	local limit=$1; shift
 	local name="ECN nodrop"
 
-	$MZ $h1 -p $PKTSZ -A 192.0.2.1 -B 192.0.2.3 -c 0 \
-		-a own -b $h3_mac -t tcp -q tos=0x01 &
+	mz_do $h1 "tos=0x01" -p $PKTSZ -A 192.0.2.1 \
+		-B 192.0.2.3 -c 0 -a own -b $h3_mac -t tcp &
 	sleep 1
 
 	ecn_test_common "$name" $limit
@@ -334,12 +336,12 @@ do_red_test()
 
 	# Use ECN-capable TCP to verify there's no marking even though the queue
 	# is above limit.
-	$MZ $h1 -p $PKTSZ -A 192.0.2.1 -B 192.0.2.3 -c 0 \
-		-a own -b $h3_mac -t tcp -q tos=0x01 &
+	mz_do $h1 "tos=0x01" -p $PKTSZ -A 192.0.2.1 -B 192.0.2.3 -c 0 \
+		-a own -b $h3_mac -t tcp &
 
 	# Pushing below the queue limit should work.
 	RET=0
-	backlog=$(build_backlog $((2 * limit / 3)) tcp tos=0x01)
+	backlog=$(build_backlog $((2 * limit / 3)) tcp "tos=0x01")
 	check_err $? "Could not build the requested backlog"
 	pct=$(check_marking "== 0")
 	check_err $? "backlog $backlog / $limit Got $pct% marked packets, expected == 0."
@@ -347,7 +349,7 @@ do_red_test()
 
 	# Pushing above should not.
 	RET=0
-	backlog=$(build_backlog $((3 * limit / 2)) tcp tos=0x01)
+	backlog=$(build_backlog $((3 * limit / 2)) tcp "tos=0x01")
 	check_fail $? "Traffic went into backlog instead of being early-dropped"
 	pct=$(check_marking "== 0")
 	check_err $? "backlog $backlog / $limit Got $pct% marked packets, expected == 0."
@@ -367,8 +369,8 @@ do_red_qevent_test()
 
 	RET=0
 
-	$MZ $h1 -p $PKTSZ -A 192.0.2.1 -B 192.0.2.3 -c 0 \
-		-a own -b $h3_mac -t udp -q &
+	mz_do $h1 "" -p $PKTSZ -A 192.0.2.1 -B 192.0.2.3 -c 0 \
+		-a own -b $h3_mac -t udp &
 	sleep 1
 
 	tc filter add block 10 pref 1234 handle 102 matchall skip_hw \
@@ -408,8 +410,8 @@ do_ecn_qevent_test()
 
 	RET=0
 
-	$MZ $h1 -p $PKTSZ -A 192.0.2.1 -B 192.0.2.3 -c 0 \
-		-a own -b $h3_mac -t tcp -q tos=0x01 &
+	mz_do $h1 "tos=0x01" -p $PKTSZ -A 192.0.2.1 -B 192.0.2.3 -c 0 \
+		-a own -b $h3_mac -t tcp &
 	sleep 1
 
 	tc filter add block 10 pref 1234 handle 102 matchall skip_hw \
