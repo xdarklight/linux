@@ -128,7 +128,7 @@ do_test_pedit_ip()
 
 	RET=0
 
-	$MZ $mz_flags $h1 -c 10 -d 20msec -p 100 -a own -b $h2mac -q -t ip
+	mz_do $h1 "" $mz_flags -c 10 -d 20msec -p 100 -a own -b $h2mac -t ip
 
 	local pkts
 	pkts=$(busywait "$TC_HIT_TIMEOUT" until_counter_is ">= 10" \

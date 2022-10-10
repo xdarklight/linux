@@ -62,8 +62,8 @@ mirred_egress_test()
 	tc filter add dev $h2 ingress protocol ip pref 1 handle 101 flower \
 		dst_ip 192.0.2.2 action drop
 
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
-		-t ip -q
+	mz_do $h1 "" -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
+		-t ip
 
 	tc_check_packets "dev $h2 ingress" 101 1
 	check_fail $? "Matched without redirect rule inserted"
@@ -72,8 +72,8 @@ mirred_egress_test()
 		$classifier $tcflags $classifier_args \
 		action mirred egress $action dev $swp2
 
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
-		-t ip -q
+	mz_do $h1 "" -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
+		-t ip
 
 	tc_check_packets "dev $h2 ingress" 101 1
 	check_err $? "Did not match incoming $action packet"
@@ -92,8 +92,8 @@ gact_drop_and_ok_test()
 	tc filter add dev $swp1 ingress protocol ip pref 2 handle 102 flower \
 		$tcflags dst_ip 192.0.2.2 action drop
 
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
-		-t ip -q
+	mz_do $h1 "" -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
+		-t ip
 
 	tc_check_packets "dev $swp1 ingress" 102 1
 	check_err $? "Packet was not dropped"
@@ -101,8 +101,8 @@ gact_drop_and_ok_test()
 	tc filter add dev $swp1 ingress protocol ip pref 1 handle 101 flower \
 		$tcflags dst_ip 192.0.2.2 action ok
 
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
-		-t ip -q
+	mz_do $h1 "" -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
+		-t ip
 
 	tc_check_packets "dev $swp1 ingress" 101 1
 	check_err $? "Did not see passed packet"
@@ -130,8 +130,8 @@ gact_trap_test()
 		$tcflags dst_ip 192.0.2.2 action mirred egress redirect \
 		dev $swp2
 
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
-		-t ip -q
+	mz_do $h1 "" -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
+		-t ip
 
 	tc_check_packets "dev $swp1 ingress" 101 1
 	check_fail $? "Saw packet without trap rule inserted"
@@ -139,8 +139,8 @@ gact_trap_test()
 	tc filter add dev $swp1 ingress protocol ip pref 2 handle 102 flower \
 		$tcflags dst_ip 192.0.2.2 action trap
 
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
-		-t ip -q
+	mz_do $h1 "" -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
+		-t ip
 
 	tc_check_packets "dev $swp1 ingress" 102 1
 	check_err $? "Packet was not trapped"
@@ -171,8 +171,8 @@ mirred_egress_to_ingress_test()
 	tc filter add dev $swp1 protocol ip pref 12 handle 112 ingress flower \
 		ip_proto icmp src_ip 192.0.2.1 dst_ip 192.0.2.2 type 0 action pass
 
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $h2mac -A 192.0.2.1 -B 192.0.2.2 \
-		-t icmp "ping,id=42,seq=10" -q
+	mz_do $h1 "ping,id=42,seq=10" -c 1 -p 64 -a $h1mac -b $h2mac \
+		-A 192.0.2.1 -B 192.0.2.2 -t icmp
 
 	tc_check_packets "dev $h1 egress" 100 1
 	check_err $? "didn't mirror first packet"

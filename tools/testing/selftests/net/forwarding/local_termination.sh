@@ -53,7 +53,7 @@ send_non_ip()
 	local smac=$2
 	local dmac=$3
 
-	$MZ -q $if_name "$dmac $smac $NON_IP_PKT"
+	mz_do $if_name "$dmac $smac $NON_IP_PKT"
 }
 
 send_uc_ipv4()

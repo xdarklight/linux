@@ -38,7 +38,7 @@ loopback_test()
 	tc filter add dev $h1 ingress protocol arp pref 1 handle 101 flower \
 		skip_hw arp_op reply arp_tip 192.0.2.1 action drop
 
-	$MZ $h1 -c 1 -t arp -q
+	mz_do $h1 "" -c 1 -t arp
 
 	tc_check_packets "dev $h1 ingress" 101 1
 	check_fail $? "Matched on a filter without loopback setup"
@@ -48,7 +48,7 @@ loopback_test()
 
 	setup_wait_dev $h1
 
-	$MZ $h1 -c 1 -t arp -q
+	mz_do $h1 "" -c 1 -t arp
 
 	tc_check_packets "dev $h1 ingress" 101 1
 	check_err $? "Did not match on filter with loopback"
@@ -56,7 +56,7 @@ loopback_test()
 	ethtool -K $h1 loopback off
 	check_err $? "Failed to disable loopback"
 
-	$MZ $h1 -c 1 -t arp -q
+	mz_do $h1 "" -c 1 -t arp
 
 	tc_check_packets "dev $h1 ingress" 101 2
 	check_fail $? "Matched on a filter after loopback was removed"
