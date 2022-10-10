@@ -236,8 +236,8 @@ multipath6_l4_test()
 	t0_rp12=$(link_stats_tx_packets_get $rp12)
 	t0_rp13=$(link_stats_tx_packets_get $rp13)
 
-	$MZ $h1 -6 -q -p 64 -A 2001:db8:1::2 -B 2001:db8:2::2 \
-		-d 1msec -t udp "sp=1024,dp=0-32768"
+	mz_do $h1 "sp=1024,dp=0-32768" -6 -p 64 -A 2001:db8:1::2 \
+		-B 2001:db8:2::2 -d 1msec -t udp
 
 	t1_rp12=$(link_stats_tx_packets_get $rp12)
 	t1_rp13=$(link_stats_tx_packets_get $rp13)

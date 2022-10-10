@@ -65,9 +65,9 @@ send_packets_ipv4()
 {
 	# Send 21 packets instead of 20, because the first one might trap and go
 	# through the SW datapath, which might not bump the HW counter.
-	$MZ $h1 -c 21 -d 20msec -p 100 \
+	mz_do $h1 "sp=54321,dp=12345" -c 21 -d 20msec -p 100 \
 	    -a own -b $ol1mac -A 192.0.2.1 -B 192.0.2.18 \
-	    -q -t udp sp=54321,dp=12345
+	    -t udp
 }
 
 test_stats()

@@ -90,8 +90,8 @@ match_indev_egress_test()
 	tc filter add dev $rp3 egress protocol ip pref 2 handle 102 flower \
 		$tcflags indev $rp2 dst_ip 192.0.3.1 action drop
 
-	$MZ $h1 -c 1 -p 64 -a $h1mac -b $rp1mac -A 192.0.1.1 -B 192.0.3.1 \
-		-t ip -q
+	mz_do $h1 "" -c 1 -p 64 -a $h1mac -b $rp1mac -A 192.0.1.1 -B 192.0.3.1 \
+		-t ip
 
 	tc_check_packets "dev $rp3 egress" 102 1
 	check_fail $? "Matched on a wrong filter"
@@ -99,8 +99,8 @@ match_indev_egress_test()
 	tc_check_packets "dev $rp3 egress" 101 1
 	check_err $? "Did not match on correct filter"
 
-	$MZ $h2 -c 1 -p 64 -a $h2mac -b $rp2mac -A 192.0.2.1 -B 192.0.3.1 \
-		-t ip -q
+	mz_do $h2 "" -c 1 -p 64 -a $h2mac -b $rp2mac -A 192.0.2.1 -B 192.0.3.1 \
+		-t ip
 
 	tc_check_packets "dev $rp3 egress" 101 2
 	check_fail $? "Matched on a wrong filter"

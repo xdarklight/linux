@@ -197,8 +197,8 @@ sip_in_class_e()
 	tc filter add dev $rp2 egress protocol ip pref 1 handle 101 \
 		flower src_ip 240.0.0.1 ip_proto udp action pass
 
-	$MZ $h1 -t udp "sp=54321,dp=12345" -c 5 -d 1msec \
-		-A 240.0.0.1 -b $rp1mac -B 198.51.100.2 -q
+	mz_do $h1 "sp=54321,dp=12345" -t udp -c 5 -d 1msec \
+		-A 240.0.0.1 -b $rp1mac -B 198.51.100.2
 
 	tc_check_packets "dev $rp2 egress" 101 5
 	check_err $? "Packets were dropped"
@@ -246,8 +246,8 @@ __mc_mac_mismatch()
 
 	create_mcast_sg $rp1 $sip $dip $rp2
 
-	$MZ $flags $h1 -t udp "sp=54321,dp=12345" -c 5 -d 1msec -b $dmac \
-		-B $dip -q
+	mz_do $h1 "sp=54321,dp=12345" $flags -t udp -c 5 \
+		-d 1msec -b $dmac -B $dip
 
 	tc_check_packets "dev $rp2 egress" 101 5
 	check_err $? "Packets were dropped"
@@ -275,8 +275,8 @@ ipv4_sip_equal_dip()
 	tc filter add dev $rp2 egress protocol ip pref 1 handle 101 \
 		flower src_ip 198.51.100.2  action pass
 
-	$MZ $h1 -t udp "sp=54321,dp=12345" -c 5 -d 1msec \
-		-A 198.51.100.2 -b $rp1mac -B 198.51.100.2 -q
+	mz_do $h1 "sp=54321,dp=12345" -t udp -c 5 -d 1msec \
+		-A 198.51.100.2 -b $rp1mac -B 198.51.100.2
 
 	tc_check_packets "dev $rp2 egress" 101 5
 	check_err $? "Packets were dropped"
@@ -295,8 +295,8 @@ ipv6_sip_equal_dip()
 	tc filter add dev $rp2 egress protocol ipv6 pref 1 handle 101 \
 		flower src_ip 2001:db8:2::2 action pass
 
-	$MZ -6 $h1 -t udp "sp=54321,dp=12345" -c 5 -d 1msec \
-		-A 2001:db8:2::2 -b $rp1mac -B 2001:db8:2::2 -q
+	mz_do $h1 "sp=54321,dp=12345" -6 -t udp -c 5 -d 1msec \
+		-A 2001:db8:2::2 -b $rp1mac -B 2001:db8:2::2
 
 	tc_check_packets "dev $rp2 egress" 101 5
 	check_err $? "Packets were dropped"
@@ -318,7 +318,8 @@ ipv4_dip_link_local()
 	ip neigh add 169.254.1.1 lladdr 00:11:22:33:44:55 dev $rp2
 	ip route add 169.254.1.0/24 dev $rp2
 
-	$MZ $h1 -t udp "sp=54321,dp=12345" -c 5 -d 1msec -b $rp1mac -B $dip -q
+	mz_do $h1 "sp=54321,dp=12345" -t udp -c 5 -d 1msec \
+		-b $rp1mac -B $dip
 
 	tc_check_packets "dev $rp2 egress" 101 5
 	check_err $? "Packets were dropped"

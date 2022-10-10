@@ -128,8 +128,8 @@ do_test_pedit_dsfield_common()
 
 	# TOS 125: DSCP 31, ECN 1. Used for testing that the relevant part is
 	# overwritten when zero is selected.
-	$MZ $mz_flags $h1 -c 10 -d 20msec -p 100 \
-	    -a own -b $h2mac -q -t tcp tos=0x7d,sp=54321,dp=12345
+	mz_do $h1 "tos=0x7d,sp=54321,dp=12345" $mz_flags -c 10 \
+	    -d 20msec -p 100 -a own -b $h2mac -t tcp
 
 	local pkts
 	pkts=$(busywait "$TC_HIT_TIMEOUT" until_counter_is ">= 10" \

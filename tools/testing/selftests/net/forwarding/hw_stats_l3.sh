@@ -166,30 +166,26 @@ send_packets_rx_ipv4()
 {
 	# Send 21 packets instead of 20, because the first one might trap and go
 	# through the SW datapath, which might not bump the HW counter.
-	$MZ $h1.200 -c 21 -d 20msec -p 100 \
-	    -a own -b $rp1mac -A 192.0.2.1 -B 192.0.2.18 \
-	    -q -t udp sp=54321,dp=12345
+	mz_do $h1.200 "sp=54321,dp=12345" -c 21 -d 20msec -p 100 \
+	    -a own -b $rp1mac -A 192.0.2.1 -B 192.0.2.18 -t udp
 }
 
 send_packets_rx_ipv6()
 {
-	$MZ $h1.200 -6 -c 21 -d 20msec -p 100 \
-	    -a own -b $rp1mac -A 2001:db8:1::1 -B 2001:db8:2::1 \
-	    -q -t udp sp=54321,dp=12345
+	mz_do $h1.200 "sp=54321,dp=12345" -6 -c 21 -d 20msec -p 100 \
+	    -a own -b $rp1mac -A 2001:db8:1::1 -B 2001:db8:2::1 -t udp
 }
 
 send_packets_tx_ipv4()
 {
-	$MZ $h2.200 -c 21 -d 20msec -p 100 \
-	    -a own -b $rp2mac -A 192.0.2.18 -B 192.0.2.1 \
-	    -q -t udp sp=54321,dp=12345
+	mz_do $h2.200 "sp=54321,dp=12345" -c 21 -d 20msec -p 100 \
+	    -a own -b $rp2mac -A 192.0.2.18 -B 192.0.2.1 -t udp
 }
 
 send_packets_tx_ipv6()
 {
-	$MZ $h2.200 -6 -c 21 -d 20msec -p 100 \
-	    -a own -b $rp2mac -A 2001:db8:2::1 -B 2001:db8:1::1 \
-	    -q -t udp sp=54321,dp=12345
+	mz_do $h2.200 "sp=54321,dp=12345" -6 -c 21 -d 20msec -p 100 \
+	    -a own -b $rp2mac -A 2001:db8:2::1 -B 2001:db8:1::1 -t udp
 }
 
 ___test_stats()
