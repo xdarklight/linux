@@ -1873,11 +1873,6 @@ static const char * const dsa_switches_apply_workarounds[] = {
 	"brcm,bcm7278-switch-v4.0",
 	"brcm,bcm7278-switch-v4.8",
 #endif
-#if IS_ENABLED(CONFIG_NET_DSA_LANTIQ_GSWIP)
-	"lantiq,xrx200-gswip",
-	"lantiq,xrx300-gswip",
-	"lantiq,xrx330-gswip",
-#endif
 #if IS_ENABLED(CONFIG_NET_DSA_MV88E6060)
 	"marvell,mv88e6060",
 #endif
