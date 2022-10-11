@@ -847,14 +847,19 @@ static bool emit_cached_dirents(struct cached_dirents *cde,
 	int rc;
 
 	list_for_each_entry(dirent, &cde->entries, entry) {
-		if (ctx->pos >= dirent->pos)
+		if (ctx->pos > dirent->pos)
 			continue;
+		/*
+		 * There may be holes in the ->pos sequence
+		 * so always force ctx->pos to the current position.
+		 */
 		ctx->pos = dirent->pos;
 		rc = dir_emit(ctx, dirent->name, dirent->namelen,
 			      dirent->fattr.cf_uniqueid,
 			      dirent->fattr.cf_dtype);
 		if (!rc)
 			return rc;
+		ctx->pos++;
 	}
 	return true;
 }
@@ -994,6 +999,8 @@ static int cifs_filldir(char *find_entry, struct file *file,
 		cifs_unix_basic_to_fattr(&fattr,
 					 &((FILE_UNIX_INFO *)find_entry)->basic,
 					 cifs_sb);
+		if (S_ISLNK(fattr.cf_mode))
+			fattr.cf_flags |= CIFS_FATTR_NEED_REVAL;
 		break;
 	case SMB_FIND_FILE_INFO_STANDARD:
 		cifs_std_info_to_fattr(&fattr,
@@ -1202,10 +1209,10 @@ int cifs_readdir(struct file *file, struct dir_context *ctx)
 				 ctx->pos, tmp_buf);
 			cifs_save_resume_key(current_entry, cifsFile);
 			break;
-		} else
-			current_entry =
-				nxt_dir_entry(current_entry, end_of_smb,
-					cifsFile->srch_inf.info_level);
+		}
+		current_entry =
+			nxt_dir_entry(current_entry, end_of_smb,
+				      cifsFile->srch_inf.info_level);
 	}
 	kfree(tmp_buf);
 
