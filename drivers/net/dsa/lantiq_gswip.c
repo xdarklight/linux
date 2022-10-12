@@ -863,6 +863,7 @@ static int gswip_port_bridge_flags(struct dsa_switch *ds, int port,
 					!!(flags.val & BR_LEARNING));
 	}
 
+#if 0
 	if (flags.mask & BR_BCAST_FLOOD) {
 		dev_err(priv->dev, "%s(%d) BR_BCAST_FLOOD = %d\n", __func__, port, !!(flags.val & BR_BCAST_FLOOD));
 		gswip_port_set_broadcast_flood(priv, port,
@@ -874,6 +875,7 @@ static int gswip_port_bridge_flags(struct dsa_switch *ds, int port,
 		gswip_port_set_unicast_flood(priv, port,
 					     !!(flags.val & BR_FLOOD));
 	}
+#endif
 
 	if (flags.mask & BR_PORT_LOCKED) {
 		dev_err(priv->dev, "%s(%d) BR_PORT_LOCKED = %d\n", __func__, port, !!(flags.val & BR_PORT_LOCKED));
