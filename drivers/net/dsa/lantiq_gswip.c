@@ -863,6 +863,7 @@ static int gswip_port_bridge_flags(struct dsa_switch *ds, int port,
 					!!(flags.val & BR_LEARNING));
 	}
 
+#if 0
 	if (flags.mask & BR_BCAST_FLOOD) {
 		dev_err(priv->dev, "%s(%d) BR_BCAST_FLOOD = %d\n", __func__, port, !!(flags.val & BR_BCAST_FLOOD));
 		gswip_port_set_broadcast_flood(priv, port,
@@ -874,6 +875,7 @@ static int gswip_port_bridge_flags(struct dsa_switch *ds, int port,
 		gswip_port_set_unicast_flood(priv, port,
 					     !!(flags.val & BR_FLOOD));
 	}
+#endif
 
 	if (flags.mask & BR_PORT_LOCKED) {
 		dev_err(priv->dev, "%s(%d) BR_PORT_LOCKED = %d\n", __func__, port, !!(flags.val & BR_PORT_LOCKED));
@@ -980,12 +982,11 @@ static int gswip_setup(struct dsa_switch *ds)
 	/* Disable monitoring on all ports except the CPU port */
 	gswip_switch_w(priv, BIT(cpu_port), GSWIP_PCE_PMAP1);
 
-	/* Disable unicast and multicast/broadcast flooding */
-	gswip_switch_w(priv, 0, GSWIP_PCE_PMAP2);
-	gswip_switch_w(priv, 0, GSWIP_PCE_PMAP3);
-
-	for (i = 0; i < priv->hw_info->max_ports; i++)
+	for (i = 0; i < priv->hw_info->max_ports; i++) {
 		gswip_port_set_learning(priv, i, false);
+		gswip_port_set_unicast_flood(priv, i, false);
+		gswip_port_set_broadcast_flood(priv, i, false);
+	}
 
 	/* Deactivate MDIO PHY auto polling. Some PHYs as the AR8030 have an
 	 * interoperability problem with this auto polling mechanism because
