@@ -326,8 +326,7 @@ static void dsa_slave_change_rx_flags(struct net_device *dev, int change)
 		dev_set_promiscuity(master,
 				    dev->flags & IFF_PROMISC ? 1 : -1);
 
-	if (dsa_switch_supports_uc_filtering(ds) &&
-	    dsa_switch_supports_mc_filtering(ds))
+	if (dsa_switch_supports_uc_filtering(ds))
 		dsa_slave_manage_host_flood(dev);
 }
 
