@@ -745,6 +745,7 @@ static int gswip_add_single_port_br(struct gswip_priv *priv, int port, bool add)
 		return err;
 	}
 
+	gswip_switch_w(priv, port + 1, GSWIP_PCE_DEFPVID(port));
 	return 0;
 }
 
@@ -1184,7 +1185,7 @@ static int gswip_vlan_add_unaware(struct gswip_priv *priv,
 		return err;
 	}
 
-	gswip_switch_w(priv, 0, GSWIP_PCE_DEFPVID(port));
+	gswip_switch_w(priv, idx, GSWIP_PCE_DEFPVID(port));
 	return 0;
 }
 
@@ -1317,7 +1318,7 @@ static int gswip_vlan_remove(struct gswip_priv *priv,
 
 	/* GSWIP 2.2 (GRX300) and later program here the VID directly. */
 	if (pvid)
-		gswip_switch_w(priv, 0, GSWIP_PCE_DEFPVID(port));
+		gswip_switch_w(priv, port + 1, GSWIP_PCE_DEFPVID(port));
 
 	return 0;
 }
