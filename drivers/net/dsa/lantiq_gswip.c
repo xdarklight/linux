@@ -1659,6 +1659,20 @@ static int gswip_port_fdb_dump(struct dsa_switch *ds, int port,
 	return err;
 }
 
+static int gswip_port_mdb_add(struct dsa_switch *ds, int port,
+			      const struct switchdev_obj_port_mdb *mdb,
+			      struct dsa_db db)
+{
+	return gswip_port_fdb(ds, port, mdb->addr, mdb->vid, db, true);
+}
+
+static int gswip_port_mdb_del(struct dsa_switch *ds, int port,
+			      const struct switchdev_obj_port_mdb *mdb,
+			      struct dsa_db db)
+{
+	return gswip_port_fdb(ds, port, mdb->addr, mdb->vid, db, false);
+}
+
 static int gswip_port_max_mtu(struct dsa_switch *ds, int port)
 {
 	/* Includes 8 bytes for special header. */
@@ -2037,6 +2051,8 @@ static const struct dsa_switch_ops gswip_xrx200_switch_ops = {
 	.port_fdb_add		= gswip_port_fdb_add,
 	.port_fdb_del		= gswip_port_fdb_del,
 	.port_fdb_dump		= gswip_port_fdb_dump,
+	.port_mdb_add		= gswip_port_mdb_add,
+	.port_mdb_del		= gswip_port_mdb_del,
 	.port_change_mtu	= gswip_port_change_mtu,
 	.port_max_mtu		= gswip_port_max_mtu,
 	.phylink_get_caps	= gswip_xrx200_phylink_get_caps,
@@ -2065,6 +2081,8 @@ static const struct dsa_switch_ops gswip_xrx300_switch_ops = {
 	.port_fdb_add		= gswip_port_fdb_add,
 	.port_fdb_del		= gswip_port_fdb_del,
 	.port_fdb_dump		= gswip_port_fdb_dump,
+	.port_mdb_add		= gswip_port_mdb_add,
+	.port_mdb_del		= gswip_port_mdb_del,
 	.port_change_mtu	= gswip_port_change_mtu,
 	.port_max_mtu		= gswip_port_max_mtu,
 	.phylink_get_caps	= gswip_xrx300_phylink_get_caps,
