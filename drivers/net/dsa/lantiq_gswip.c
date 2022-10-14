@@ -1494,16 +1494,32 @@ static void gswip_port_stp_state_set(struct dsa_switch *ds, int port, u8 state)
 			  GSWIP_PCE_PCTRL_0p(port));
 }
 
+static int gswip_port_fdb_find_static_entry(struct gswip_priv *priv,
+					    struct gswip_pce_table_entry *mac_bridge,
+					    void *iter_arg)
+{
+	struct gswip_pce_table_entry *mac_bridge_to_update = iter_arg;
+
+	if (!(mac_bridge->val[1] & GSWIP_TABLE_MAC_BRIDGE_STATIC))
+		return 0;
+
+	if (memcmp(mac_bridge->key, mac_bridge_to_update->key,
+		   sizeof(mac_bridge->key)) != 0)
+		return 0;
+
+	memcpy(mac_bridge_to_update, mac_bridge, sizeof(*mac_bridge));
+
+	return 0;
+}
+
 static int gswip_port_fdb(struct dsa_switch *ds, int port,
 			  const unsigned char *addr, u16 vid, struct dsa_db db,
 			  bool add)
 {
 	struct gswip_priv *priv = ds->priv;
-	struct gswip_pce_table_entry mac_bridge = {0,};
 	unsigned int max_ports = priv->hw_info->max_ports;
-	int fid = -1;
-	int i;
-	int err;
+	struct gswip_pce_table_entry mac_bridge = {0,};
+	int i, err, fid = -1;
 
 	switch (db.type) {
 	case DSA_DB_BRIDGE:
@@ -1532,19 +1548,35 @@ static int gswip_port_fdb(struct dsa_switch *ds, int port,
 		return -EOPNOTSUPP;
 	}
 
+	/* Some of these values (such as key_mode and the port map may be
+	 * changed by the memcpy() in gswip_port_fdb_manage_static_entry().
+	 */
 	mac_bridge.table = GSWIP_TABLE_MAC_BRIDGE;
 	mac_bridge.key_mode = true;
 	mac_bridge.key[0] = addr[5] | (addr[4] << 8);
 	mac_bridge.key[1] = addr[3] | (addr[2] << 8);
 	mac_bridge.key[2] = addr[1] | (addr[0] << 8);
 	mac_bridge.key[3] = FIELD_PREP(GSWIP_TABLE_MAC_BRIDGE_FID, fid);
-	mac_bridge.val[0] = add ? BIT(port) : 0; /* port map */
+	mac_bridge.val[0] = 0; /* port map */
 	mac_bridge.val[1] = GSWIP_TABLE_MAC_BRIDGE_STATIC;
-	mac_bridge.valid = add;
+
+	err = gswip_mac_bridge_iter(priv, gswip_port_fdb_find_static_entry,
+				    &mac_bridge);
+	if (err)
+		return err;
+
+	if (add)
+		mac_bridge.val[0] |= BIT(port);
+	else
+		mac_bridge.val[0] &= ~BIT(port);
+
+	/* Static entries are valid as long as they target one port */
+	mac_bridge.valid = !!mac_bridge.val[0];
 
 	err = gswip_pce_table_entry_write(priv, &mac_bridge);
 	if (err)
-		dev_err(priv->dev, "failed to write mac bridge: %d\n", err);
+		dev_err(priv->dev, "Failed to write mac bridge entry: %d\n",
+			err);
 
 	return err;
 }
