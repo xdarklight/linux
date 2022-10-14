@@ -295,6 +295,8 @@ struct gswip_priv {
 	struct gswip_gphy_fw *gphy_fw;
 	u32 port_vlan_filter;
 	struct mutex pce_table_lock;
+	/* Prevent concurrent modifications of the MAC bridge table */
+	struct mutex mac_bridge_entries_lock;
 };
 
 struct gswip_pce_table_entry {
@@ -1409,6 +1411,8 @@ static int gswip_mac_bridge_iter(struct gswip_priv *priv,
 	struct gswip_pce_table_entry mac_bridge = {0,};
 	int i, err;
 
+	WARN_ON(!mutex_is_locked(&priv->mac_bridge_entries_lock));
+
 	for (i = 0; i < 2048; i++) {
 		mac_bridge.table = GSWIP_TABLE_MAC_BRIDGE;
 		mac_bridge.index = i;
@@ -1460,7 +1464,9 @@ static void gswip_port_fast_age(struct dsa_switch *ds, int port)
 {
 	struct gswip_priv *priv = ds->priv;
 
+	mutex_lock(&priv->mac_bridge_entries_lock);
 	gswip_mac_bridge_iter(priv, gswip_port_fast_age_entry, &port);
+	mutex_unlock(&priv->mac_bridge_entries_lock);
 }
 
 static void gswip_port_stp_state_set(struct dsa_switch *ds, int port, u8 state)
@@ -1560,10 +1566,12 @@ static int gswip_port_fdb(struct dsa_switch *ds, int port,
 	mac_bridge.val[0] = 0; /* port map */
 	mac_bridge.val[1] = GSWIP_TABLE_MAC_BRIDGE_STATIC;
 
+	mutex_lock(&priv->mac_bridge_entries_lock);
+
 	err = gswip_mac_bridge_iter(priv, gswip_port_fdb_find_static_entry,
 				    &mac_bridge);
 	if (err)
-		return err;
+		goto out_unlock;
 
 	if (add)
 		mac_bridge.val[0] |= BIT(port);
@@ -1577,6 +1585,9 @@ static int gswip_port_fdb(struct dsa_switch *ds, int port,
 	if (err)
 		dev_err(priv->dev, "Failed to write mac bridge entry: %d\n",
 			err);
+
+out_unlock:
+	mutex_unlock(&priv->mac_bridge_entries_lock);
 
 	return err;
 }
@@ -1637,9 +1648,15 @@ static int gswip_port_fdb_dump(struct dsa_switch *ds, int port,
 		.dump_cb_data = data,
 		.port = port,
 	};
+	struct gswip_priv *priv = ds->priv;
+	int err;
 
-	return gswip_mac_bridge_iter(ds->priv, gswip_port_fdb_dump_entry,
-				     &iter_args);
+	mutex_lock(&priv->mac_bridge_entries_lock);
+	err = gswip_mac_bridge_iter(ds->priv, gswip_port_fdb_dump_entry,
+				    &iter_args);
+	mutex_unlock(&priv->mac_bridge_entries_lock);
+
+	return err;
 }
 
 static int gswip_port_max_mtu(struct dsa_switch *ds, int port)
@@ -2319,6 +2336,7 @@ static int gswip_probe(struct platform_device *pdev)
 	priv->ds->ops = priv->hw_info->ops;
 	priv->dev = dev;
 	mutex_init(&priv->pce_table_lock);
+	mutex_init(&priv->mac_bridge_entries_lock);
 	version = gswip_switch_r(priv, GSWIP_VERSION);
 
 	np = dev->of_node;
