@@ -1375,7 +1375,8 @@ static int gswip_port_fdb(struct dsa_switch *ds, int port,
 	}
 
 	if (fid == -1) {
-		dev_err(priv->dev, "Port not part of a bridge\n");
+		dev_err(priv->dev,
+			"Port %d is not known to be part of bridge\n", port);
 		return -EINVAL;
 	}
 
