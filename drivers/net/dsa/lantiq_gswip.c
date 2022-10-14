@@ -238,6 +238,7 @@
 #define GSWIP_TABLE_MAC_BRIDGE		0x0b
 #define  GSWIP_TABLE_MAC_BRIDGE_STATIC	BIT(0)		/* Static not, aging entry */
 #define  GSWIP_TABLE_MAC_BRIDGE_PORT	GENMASK(7, 4)	/* Port on learned entries */
+#define  GSWIP_TABLE_MAC_BRIDGE_FID	GENMASK(5, 0)	/* Filtering identifier */
 
 #define XRX200_GPHY_FW_ALIGN	(16 * 1024)
 
@@ -1383,7 +1384,7 @@ static int gswip_port_fdb(struct dsa_switch *ds, int port,
 	mac_bridge.key[0] = addr[5] | (addr[4] << 8);
 	mac_bridge.key[1] = addr[3] | (addr[2] << 8);
 	mac_bridge.key[2] = addr[1] | (addr[0] << 8);
-	mac_bridge.key[3] = fid;
+	mac_bridge.key[3] = FIELD_PREP(GSWIP_TABLE_MAC_BRIDGE_FID, fid);
 	mac_bridge.val[0] = add ? BIT(port) : 0; /* port map */
 	mac_bridge.val[1] = GSWIP_TABLE_MAC_BRIDGE_STATIC;
 	mac_bridge.valid = add;
