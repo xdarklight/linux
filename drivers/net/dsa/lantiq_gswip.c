@@ -194,6 +194,10 @@
 #define  GSWIP_PCE_PCTRL_3_LNDIS	BIT(15) /* Learning Disable */
 #define GSWIP_PCE_VCTRL(p)		(0x485 + ((p) * 0xA))
 #define  GSWIP_PCE_VCTRL_UVR		BIT(0)	/* Unknown VLAN Rule */
+#define  GSWIP_PCE_VCTRL_VINR		GENMASK(2, 1)
+#define  GSWIP_PCE_VCTRL_VINR_ALL	0x0
+#define  GSWIP_PCE_VCTRL_VINR_TAGGED	0x1
+#define  GSWIP_PCE_VCTRL_VINR_UNTAGGED	0x2
 #define  GSWIP_PCE_VCTRL_VIMR		BIT(3)	/* VLAN Ingress Member violation rule */
 #define  GSWIP_PCE_VCTRL_VEMR		BIT(4)	/* VLAN Egress Member violation rule */
 #define  GSWIP_PCE_VCTRL_VSR		BIT(5)	/* VLAN Security */
@@ -281,6 +285,11 @@ struct gswip_vlan {
 	u8 fid;
 };
 
+struct gswip_bridge_pvid {
+	u16 vid;
+	bool valid;
+};
+
 struct gswip_priv {
 	__iomem void *gswip;
 	__iomem void *mdio;
@@ -291,6 +300,7 @@ struct gswip_priv {
 	struct device *dev;
 	struct regmap *rcu_regmap;
 	struct gswip_vlan vlans[64];
+	struct gswip_bridge_pvid bridge_pvids[7];
 	int num_gphy_fw;
 	struct gswip_gphy_fw *gphy_fw;
 	u32 port_vlan_filter;
@@ -690,6 +700,52 @@ static void gswip_port_set_unicast_flood(struct gswip_priv *priv, int port,
 			  GSWIP_PCE_PMAP3);
 }
 
+static int gswip_port_commit_pvid(struct gswip_priv *priv, int port,
+				  struct net_device *bridge)
+{
+	struct gswip_bridge_pvid *bridge_pvid = &priv->bridge_pvids[port];
+	unsigned int i, max_ports = priv->hw_info->max_ports;
+	u16 vinr = GSWIP_PCE_VCTRL_VINR_ALL;
+	u16 index;
+
+	if (!bridge_pvid->valid) {
+		index = 0;
+
+		/* Drop untagged frames */
+		vinr = GSWIP_PCE_VCTRL_VINR_TAGGED;
+	} if (bridge) {
+		for (i = max_ports; i < ARRAY_SIZE(priv->vlans); i++) {
+			if (priv->vlans[i].bridge == bridge &&
+			    (!br_vlan_enabled(bridge) ||
+			     priv->vlans[i].vid == bridge_pvid->vid)) {
+				index = i;
+				break;
+			}
+		}
+
+		if (i >= ARRAY_SIZE(priv->vlans)) {
+			dev_err(priv->dev,
+				"Could not find index for VLAN %s bridge and VID %u\n",
+				br_vlan_enabled(bridge) ? "aware" : "unaware",
+				bridge_pvid->vid);
+			return -ENOENT;
+		}
+	} else if (dsa_is_cpu_port(priv->ds, port)) {
+		index = 0;
+	} else {
+		/* standalone port index */
+		index = port + 1;
+	}
+
+	gswip_switch_w(priv, index, GSWIP_PCE_DEFPVID(port));
+
+	gswip_switch_mask(priv, GSWIP_PCE_VCTRL_VINR,
+			  FIELD_PREP(GSWIP_PCE_VCTRL_VINR, vinr),
+			  GSWIP_PCE_VCTRL(port));
+
+	return 0;
+}
+
 /* Add the LAN port into a bridge with the CPU port by
  * default. This prevents automatic forwarding of
  * packages between the LAN ports when no explicit
@@ -736,8 +792,14 @@ static int gswip_add_single_port_br(struct gswip_priv *priv, int port, bool add)
 		return err;
 	}
 
-	if (add)
-		gswip_switch_w(priv, port + 1, GSWIP_PCE_DEFPVID(port));
+	if (add) {
+		priv->bridge_pvids[port].vid = 0;
+		priv->bridge_pvids[port].valid = true;
+
+		err = gswip_port_commit_pvid(priv, port, NULL);
+		if (err)
+			return err;
+	}
 
 	return 0;
 }
@@ -936,7 +998,7 @@ static int gswip_port_vlan_filtering(struct dsa_switch *ds, int port,
 				  GSWIP_PCE_PCTRL_0p(port));
 	}
 
-	return 0;
+	return gswip_port_commit_pvid(priv, port, bridge);
 }
 
 static int gswip_setup(struct dsa_switch *ds)
@@ -1036,7 +1098,7 @@ static int gswip_setup(struct dsa_switch *ds)
 
 	ds->mtu_enforcement_ingress = true;
 
-	ds->configure_vlan_while_not_filtering = false;
+	ds->configure_vlan_while_not_filtering = true;
 	ds->fdb_isolation = true;
 
 	/* We can manage as many bridge as priv->vlans holds minus one entry
@@ -1181,8 +1243,20 @@ static int gswip_vlan_add(struct gswip_priv *priv, struct net_device *bridge,
 		return err;
 	}
 
-	if (pvid)
-		gswip_switch_w(priv, idx, GSWIP_PCE_DEFPVID(port));
+	if (pvid) {
+		priv->bridge_pvids[port].vid = vid;
+		priv->bridge_pvids[port].valid = true;
+
+		err = gswip_port_commit_pvid(priv, port, bridge);
+		if (err)
+			return err;
+	} else if (vid && vid == priv->bridge_pvids[port].vid) {
+		priv->bridge_pvids[port].valid = false;
+
+		err = gswip_port_commit_pvid(priv, port, bridge);
+		if (err)
+			return err;
+	}
 
 	return 0;
 }
@@ -1238,9 +1312,13 @@ static int gswip_vlan_remove(struct gswip_priv *priv,
 		}
 	}
 
-	/* GSWIP 2.2 (GRX300) and later program here the VID directly. */
-	if (pvid)
-		gswip_switch_w(priv, 0, GSWIP_PCE_DEFPVID(port));
+	if (pvid) {
+		priv->bridge_pvids[port].valid = false;
+
+		err = gswip_port_commit_pvid(priv, port, bridge);
+		if (err)
+			return err;
+	}
 
 	return 0;
 }
