@@ -16,10 +16,10 @@
  * to GMT.  Thus  we should always be correct.
  */
 
-int iso_date(u8 *p, int flag)
+time64_t iso_date(u8 *p, int flag)
 {
 	int year, month, day, hour, minute, second, tz;
-	int crtime;
+	time64_t crtime;
 
 	year = p[0];
 	month = p[1];
