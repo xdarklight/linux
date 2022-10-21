@@ -1187,6 +1187,8 @@ static int gswip_vlan_add(struct gswip_priv *priv, struct net_device *bridge,
 	int i;
 	int err;
 
+	dev_err(priv->dev, "%s(%d, %u, %s, %s)\n", __func__, port, vid, untagged ? "untagged" : "tagged", pvid ? "pvid" : "tvid");
+
 	/* Check if there is already a page for this bridge */
 	for (i = max_ports; i < ARRAY_SIZE(priv->vlans); i++) {
 		if (priv->vlans[i].bridge == bridge) {
@@ -1271,6 +1273,8 @@ static int gswip_vlan_remove(struct gswip_priv *priv,
 	int idx = -1;
 	int i;
 	int err;
+
+	dev_err(priv->dev, "%s(%d, %u, %s, %s)\n", __func__, port, vid, pvid ? "pvid" : "tvid", vlan_aware ? "vlan_aware" : "vlan_unaware");
 
 	/* Check if there is already a page for this bridge */
 	for (i = max_ports; i < ARRAY_SIZE(priv->vlans); i++) {
