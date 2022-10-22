@@ -1009,6 +1009,9 @@ static int gswip_vlan_add_unaware(struct gswip_priv *priv,
 	/* Update the VLAN mapping entry and write it to the switch */
 	vlan_mapping.val[1] |= BIT(cpu_port);
 	vlan_mapping.val[1] |= BIT(port);
+
+	vlan_mapping.valid = true;
+
 	err = gswip_pce_table_entry_write(priv, &vlan_mapping);
 	if (err) {
 		dev_err(priv->dev, "failed to write VLAN mapping: %d\n", err);
@@ -1079,10 +1082,14 @@ static int gswip_vlan_add_aware(struct gswip_priv *priv,
 	vlan_mapping.val[1] |= BIT(cpu_port);
 	vlan_mapping.val[2] |= BIT(cpu_port);
 	vlan_mapping.val[1] |= BIT(port);
+
 	if (untagged)
 		vlan_mapping.val[2] &= ~BIT(port);
 	else
 		vlan_mapping.val[2] |= BIT(port);
+
+	vlan_mapping.valid = true;
+
 	err = gswip_pce_table_entry_write(priv, &vlan_mapping);
 	if (err) {
 		dev_err(priv->dev, "failed to write VLAN mapping: %d\n", err);
@@ -1133,14 +1140,17 @@ static int gswip_vlan_remove(struct gswip_priv *priv,
 
 	vlan_mapping.val[1] &= ~BIT(port);
 	vlan_mapping.val[2] &= ~BIT(port);
+
+	/* Remove the VLAN once all user ports have been removed from it. */
+	vlan_mapping.valid = vlan_mapping.val[1] != BIT(cpu_port);
+
 	err = gswip_pce_table_entry_write(priv, &vlan_mapping);
 	if (err) {
 		dev_err(priv->dev, "failed to write VLAN mapping: %d\n", err);
 		return err;
 	}
 
-	/* In case all ports are removed from the bridge, remove the VLAN */
-	if ((vlan_mapping.val[1] & ~BIT(cpu_port)) == 0) {
+	if (!vlan_mapping.valid) {
 		err = gswip_vlan_active_remove(priv, idx);
 		if (err) {
 			dev_err(priv->dev, "failed to write active VLAN: %d\n",
