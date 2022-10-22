@@ -709,6 +709,8 @@ static int gswip_add_single_port_br(struct gswip_priv *priv, int port, bool add)
 		return -EIO;
 	}
 
+	dev_err(priv->dev, "%s(%d)\n", __func__, port);
+
 	vlan_active.index = port + 1;
 	vlan_active.table = GSWIP_TABLE_ACTIVE_VLAN;
 	vlan_active.key[0] = 0; /* vid */
@@ -1060,6 +1062,7 @@ static int gswip_vlan_active_create(struct gswip_priv *priv,
 {
 	struct gswip_pce_table_entry vlan_active = {0,};
 	unsigned int max_ports = priv->hw_info->max_ports;
+	int orig_fid = fid;
 	int idx = -1;
 	int err;
 	int i;
@@ -1094,6 +1097,8 @@ static int gswip_vlan_active_create(struct gswip_priv *priv,
 	priv->vlans[idx].vid = vid;
 	priv->vlans[idx].fid = fid;
 
+	dev_err(priv->dev, "%s(%d, %u) fid = %d\n", __func__, orig_fid, vid, fid);
+
 	return idx;
 }
 
@@ -1124,6 +1129,8 @@ static int gswip_vlan_add(struct gswip_priv *priv, struct net_device *bridge,
 	int fid = -1;
 	int i;
 	int err;
+
+	dev_err(priv->dev, "%s(%d, %u, %s, %s)\n", __func__, port, vid, untagged ? "untagged" : "tagged", pvid ? "pvid" : "tvid");
 
 	/* Check if there is already a page for this bridge */
 	for (i = max_ports; i < ARRAY_SIZE(priv->vlans); i++) {
@@ -1201,6 +1208,8 @@ static int gswip_vlan_remove(struct gswip_priv *priv,
 	int idx = -1;
 	int i;
 	int err;
+
+	dev_err(priv->dev, "%s(%d, %u, %s)\n", __func__, port, vid, vlan_aware ? "vlan_aware" : "vlan_unaware");
 
 	/* Check if there is already a page for this bridge */
 	for (i = max_ports; i < ARRAY_SIZE(priv->vlans); i++) {
@@ -1530,6 +1539,8 @@ static int gswip_port_fdb(struct dsa_switch *ds, int port,
 	default:
 		return -EOPNOTSUPP;
 	}
+
+	dev_err(priv->dev, "%s(%d, %pM, %u, %s) fid = %d\n", __func__, port, addr, vid, add ? "add" : "del", fid);
 
 	/* Some of these values (such as key_mode and the port map may be
 	 * changed by the memcpy() in gswip_port_fdb_manage_static_entry().
