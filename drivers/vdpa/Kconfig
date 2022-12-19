@@ -98,4 +98,14 @@ config ALIBABA_ENI_VDPA
 	  VDPA driver for Alibaba ENI (Elastic Network Interface) which is built upon
 	  virtio 0.9.5 specification.
 
+ config SNET_VDPA
+	tristate "SolidRun's vDPA driver for SolidNET"
+	depends on PCI_MSI && PCI_IOV && (HWMON || HWMON=n)
+	help
+	  vDPA driver for SolidNET DPU.
+	  With this driver, the VirtIO dataplane can be
+	  offloaded to a SolidNET DPU.
+	  This driver includes a HW monitor device that
+	  reads health values from the DPU.
+
 endif # VDPA
