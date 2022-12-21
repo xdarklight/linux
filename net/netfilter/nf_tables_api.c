@@ -3039,7 +3039,7 @@ static const struct nla_policy nft_rule_policy[NFTA_RULE_MAX + 1] = {
 	[NFTA_RULE_CHAIN]	= { .type = NLA_STRING,
 				    .len = NFT_CHAIN_MAXNAMELEN - 1 },
 	[NFTA_RULE_HANDLE]	= { .type = NLA_U64 },
-	[NFTA_RULE_EXPRESSIONS]	= { .type = NLA_NESTED },
+	[NFTA_RULE_EXPRESSIONS]	= NLA_POLICY_NESTED_ARRAY(nft_expr_policy),
 	[NFTA_RULE_COMPAT]	= { .type = NLA_NESTED },
 	[NFTA_RULE_POSITION]	= { .type = NLA_U64 },
 	[NFTA_RULE_USERDATA]	= { .type = NLA_BINARY,
@@ -3047,6 +3047,7 @@ static const struct nla_policy nft_rule_policy[NFTA_RULE_MAX + 1] = {
 	[NFTA_RULE_ID]		= { .type = NLA_U32 },
 	[NFTA_RULE_POSITION_ID]	= { .type = NLA_U32 },
 	[NFTA_RULE_CHAIN_ID]	= { .type = NLA_U32 },
+	[NFTA_RULE_ACTUAL_EXPR]	= NLA_POLICY_NESTED_ARRAY(nft_expr_policy),
 };
 
 static int nf_tables_fill_rule_info(struct sk_buff *skb, struct net *net,
@@ -3084,9 +3085,18 @@ static int nf_tables_fill_rule_info(struct sk_buff *skb, struct net *net,
 	if (chain->flags & NFT_CHAIN_HW_OFFLOAD)
 		nft_flow_rule_stats(chain, rule);
 
-	list = nla_nest_start_noflag(skb, NFTA_RULE_EXPRESSIONS);
-	if (list == NULL)
+	if (rule->dump_expr) {
+		if (nla_put(skb, NFTA_RULE_EXPRESSIONS,
+			    rule->dump_expr->dlen, rule->dump_expr->data) < 0)
+			goto nla_put_failure;
+
+		list = nla_nest_start_noflag(skb, NFTA_RULE_ACTUAL_EXPR);
+	} else {
+		list = nla_nest_start_noflag(skb, NFTA_RULE_EXPRESSIONS);
+	}
+	if (!list)
 		goto nla_put_failure;
+
 	nft_rule_for_each_expr(expr, next, rule) {
 		if (nft_expr_dump(skb, NFTA_LIST_ELEM, expr, reset) < 0)
 			goto nla_put_failure;
@@ -3386,6 +3396,7 @@ static void nf_tables_rule_destroy(const struct nft_ctx *ctx,
 		nf_tables_expr_destroy(ctx, expr);
 		expr = next;
 	}
+	kfree(rule->dump_expr);
 	kfree(rule);
 }
 
@@ -3463,7 +3474,9 @@ static int nf_tables_newrule(struct sk_buff *skb, const struct nfnl_info *info,
 	struct nft_rule *rule, *old_rule = NULL;
 	struct nft_expr_info *expr_info = NULL;
 	u8 family = info->nfmsg->nfgen_family;
+	struct nft_dump_expr *dump_expr = NULL;
 	struct nft_flow_rule *flow = NULL;
+	const struct nlattr *expr_nla;
 	struct net *net = info->net;
 	struct nft_userdata *udata;
 	struct nft_table *table;
@@ -3549,14 +3562,15 @@ static int nf_tables_newrule(struct sk_buff *skb, const struct nfnl_info *info,
 
 	n = 0;
 	size = 0;
-	if (nla[NFTA_RULE_EXPRESSIONS]) {
+	expr_nla = nla[NFTA_RULE_ACTUAL_EXPR] ?: nla[NFTA_RULE_EXPRESSIONS];
+	if (expr_nla) {
 		expr_info = kvmalloc_array(NFT_RULE_MAXEXPRS,
 					   sizeof(struct nft_expr_info),
 					   GFP_KERNEL);
 		if (!expr_info)
 			return -ENOMEM;
 
-		nla_for_each_nested(tmp, nla[NFTA_RULE_EXPRESSIONS], rem) {
+		nla_for_each_nested(tmp, expr_nla, rem) {
 			err = -EINVAL;
 			if (nla_type(tmp) != NFTA_LIST_ELEM)
 				goto err_release_expr;
@@ -3576,6 +3590,19 @@ static int nf_tables_newrule(struct sk_buff *skb, const struct nfnl_info *info,
 	if (size >= 1 << 12)
 		goto err_release_expr;
 
+	if (nla[NFTA_RULE_ACTUAL_EXPR]) {
+		int dlen = nla_len(nla[NFTA_RULE_EXPRESSIONS]);
+
+		/* store unused NFTA_RULE_EXPRESSIONS for later */
+		dump_expr = kvmalloc(sizeof(*dump_expr) + dlen, GFP_KERNEL);
+		if (!dump_expr) {
+			err = -ENOMEM;
+			goto err_release_expr;
+		}
+		dump_expr->dlen = dlen;
+		nla_memcpy(dump_expr->data, nla[NFTA_RULE_EXPRESSIONS], dlen);
+	}
+
 	if (nla[NFTA_RULE_USERDATA]) {
 		ulen = nla_len(nla[NFTA_RULE_USERDATA]);
 		if (ulen > 0)
@@ -3592,6 +3619,7 @@ static int nf_tables_newrule(struct sk_buff *skb, const struct nfnl_info *info,
 	rule->handle = handle;
 	rule->dlen   = size;
 	rule->udata  = ulen ? 1 : 0;
+	rule->dump_expr = dump_expr;
 
 	if (ulen) {
 		udata = nft_userdata(rule);

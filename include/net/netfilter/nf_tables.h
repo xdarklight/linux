@@ -961,9 +961,21 @@ struct nft_expr_ops {
 };
 
 /**
+ *	struct nft_dump_expr - compat expression blob for rule dumps
+ *
+ *	@dlen: length of @data
+ *	@data: blob used as payload of NFTA_RULE_EXPRESSIONS attribute
+ */
+struct nft_dump_expr {
+	int	dlen;
+	char	data[];
+};
+
+/**
  *	struct nft_rule - nf_tables rule
  *
  *	@list: used internally
+ *	@dump_expr: Expression blob to dump instead of live data
  *	@handle: rule handle
  *	@genmask: generation mask
  *	@dlen: length of expression data
@@ -972,6 +984,7 @@ struct nft_expr_ops {
  */
 struct nft_rule {
 	struct list_head		list;
+	struct nft_dump_expr		*dump_expr;
 	u64				handle:42,
 					genmask:2,
 					dlen:12,
