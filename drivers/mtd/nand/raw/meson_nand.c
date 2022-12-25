@@ -1548,11 +1548,11 @@ static int meson_nfc_probe(struct platform_device *pdev)
 
 	nfc->dev = dev;
 
-	nfc->reg_base = devm_platform_ioremap_resource_byname(pdev, "nfc");
+	nfc->reg_base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(nfc->reg_base))
 		return PTR_ERR(nfc->reg_base);
 
-	nfc->reg_clk = devm_platform_ioremap_resource_byname(pdev, "emmc");
+	nfc->reg_clk = devm_platform_ioremap_resource(pdev, 1);
 	if (IS_ERR(nfc->reg_clk))
 		return PTR_ERR(nfc->reg_clk);
 
