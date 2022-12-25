@@ -168,7 +168,6 @@ struct nand_timing {
 struct meson_nfc {
 	struct nand_controller controller;
 	struct clk *core_clk;
-	struct clk *device_clk;
 	struct clk *nand_clk;
 	struct clk_divider nand_divider;
 
@@ -1139,12 +1138,6 @@ static int meson_nfc_clk_init(struct meson_nfc *nfc)
 		return PTR_ERR(nfc->core_clk);
 	}
 
-	nfc->device_clk = devm_clk_get(nfc->dev, "device");
-	if (IS_ERR(nfc->device_clk)) {
-		dev_err(nfc->dev, "failed to get device clock\n");
-		return PTR_ERR(nfc->device_clk);
-	}
-
 	init.name = devm_kasprintf(nfc->dev,
 				   GFP_KERNEL, "%s#div",
 				   dev_name(nfc->dev));
@@ -1177,12 +1170,6 @@ static int meson_nfc_clk_init(struct meson_nfc *nfc)
 		return ret;
 	}
 
-	ret = clk_prepare_enable(nfc->device_clk);
-	if (ret) {
-		dev_err(nfc->dev, "failed to enable device clock\n");
-		goto err_device_clk;
-	}
-
 	ret = clk_prepare_enable(nfc->nand_clk);
 	if (ret) {
 		dev_err(nfc->dev, "pre enable NFC divider fail\n");
@@ -1198,8 +1185,6 @@ static int meson_nfc_clk_init(struct meson_nfc *nfc)
 err_disable_clk:
 	clk_disable_unprepare(nfc->nand_clk);
 err_nand_clk:
-	clk_disable_unprepare(nfc->device_clk);
-err_device_clk:
 	clk_disable_unprepare(nfc->core_clk);
 	return ret;
 }
@@ -1207,7 +1192,6 @@ err_device_clk:
 static void meson_nfc_disable_clk(struct meson_nfc *nfc)
 {
 	clk_disable_unprepare(nfc->nand_clk);
-	clk_disable_unprepare(nfc->device_clk);
 	clk_disable_unprepare(nfc->core_clk);
 }
 
