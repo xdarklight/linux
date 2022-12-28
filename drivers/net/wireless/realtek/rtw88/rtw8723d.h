@@ -39,7 +39,7 @@ struct rtw8723de_efuse {
 	u8 device_id[2];
 	u8 sub_vender_id[2];
 	u8 sub_device_id[2];
-};
+} __packed;
 
 struct rtw8723du_efuse {
 	u8 res4[48];                    /* 0xd0 */
@@ -47,7 +47,7 @@ struct rtw8723du_efuse {
 	u8 product_id[2];               /* 0x102 */
 	u8 usb_option;                  /* 0x104 */
 	u8 mac_addr[ETH_ALEN];          /* 0x107 */
-};
+} __packed;
 
 struct rtw8723d_efuse {
 	__le16 rtl_id;
@@ -81,7 +81,7 @@ struct rtw8723d_efuse {
 		struct rtw8723de_efuse e;
 		struct rtw8723du_efuse u;
 	};
-};
+} __packed;
 
 extern const struct rtw_chip_info rtw8723d_hw_spec;
 
