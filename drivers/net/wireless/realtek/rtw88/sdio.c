@@ -387,78 +387,40 @@ static int rtw_sdio_read_port(struct rtw_dev *rtwdev, u8 *buf, size_t count)
 	return ret;
 }
 
-static int rtw_sdio_check_free_txpg(struct rtw_dev *rtwdev, u8 queue,
-				    size_t count)
+static int rtw_sdio_check_tx_bytes_free(struct rtw_dev *rtwdev,
+					enum rtw_tx_queue_type queue,
+					size_t count)
 {
+	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
 	unsigned int pages_free, pages_needed;
 
-	if (rtw_chip_wcpu_11n(rtwdev)) {
-		u32 free_txpg;
-
-		free_txpg = rtw_sdio_read32(rtwdev, REG_SDIO_FREE_TXPG);
-
-		switch (queue) {
-		case RTW_TX_QUEUE_BCN:
-		case RTW_TX_QUEUE_H2C:
-		case RTW_TX_QUEUE_HI0:
-		case RTW_TX_QUEUE_MGMT:
-			/* high */
-			pages_free = free_txpg & 0xff;
-			break;
-		case RTW_TX_QUEUE_VI:
-		case RTW_TX_QUEUE_VO:
-			/* normal */
-			pages_free = (free_txpg >> 8) & 0xff;
-			break;
-		case RTW_TX_QUEUE_BE:
-		case RTW_TX_QUEUE_BK:
-			/* low */
-			pages_free = (free_txpg >> 16) & 0xff;
-			break;
-		default:
-			rtw_warn(rtwdev, "Unknown mapping for queue %u\n", queue);
-			return -EINVAL;
-		}
-
-		/* add the pages from the public queue */
-		pages_free += (free_txpg >> 24) & 0xff;
-	} else {
-		u32 free_txpg[3];
-
-		free_txpg[0] = rtw_sdio_read32(rtwdev, REG_SDIO_FREE_TXPG);
-		free_txpg[1] = rtw_sdio_read32(rtwdev, REG_SDIO_FREE_TXPG + 4);
-		free_txpg[2] = rtw_sdio_read32(rtwdev, REG_SDIO_FREE_TXPG + 8);
-
-		switch (queue) {
-		case RTW_TX_QUEUE_BCN:
-		case RTW_TX_QUEUE_H2C:
-		case RTW_TX_QUEUE_HI0:
-			/* high */
-			pages_free = free_txpg[0] & 0xfff;
-			break;
-		case RTW_TX_QUEUE_VI:
-		case RTW_TX_QUEUE_VO:
-			/* normal */
-			pages_free = (free_txpg[0] >> 16) & 0xfff;
-			break;
-		case RTW_TX_QUEUE_BE:
-		case RTW_TX_QUEUE_BK:
-			/* low */
-			pages_free = free_txpg[1] & 0xfff;
-			break;
-		case RTW_TX_QUEUE_MGMT:
-			/* extra */
-			pages_free = free_txpg[2] & 0xfff;
-			break;
-		default:
-			rtw_warn(rtwdev, "Unknown mapping for queue %u\n", queue);
-			return -EINVAL;
-		}
-
-		/* add the pages from the public queue */
-		pages_free += (free_txpg[1] >> 16) & 0xfff;
+	switch (queue) {
+	case RTW_TX_QUEUE_BCN:
+	case RTW_TX_QUEUE_H2C:
+	case RTW_TX_QUEUE_HI0:
+		pages_free = rtwsdio->tx_pages_free_high;
+		break;
+	case RTW_TX_QUEUE_VI:
+	case RTW_TX_QUEUE_VO:
+		pages_free = rtwsdio->tx_pages_free_normal;
+		break;
+	case RTW_TX_QUEUE_BE:
+	case RTW_TX_QUEUE_BK:
+		/* low */
+		pages_free = rtwsdio->tx_pages_free_low;
+		break;
+	case RTW_TX_QUEUE_MGMT:
+		if (rtw_chip_wcpu_11n(rtwdev))
+			pages_free = rtwsdio->tx_pages_free_high;
+		else
+			pages_free = rtwsdio->tx_pages_free_extra;
+		break;
+	default:
+		rtw_warn(rtwdev, "Unknown mapping for queue %u\n", queue);
+		return -EINVAL;
 	}
 
+	pages_free += rtwsdio->tx_pages_free_public;
 	pages_needed = DIV_ROUND_UP(count, rtwdev->chip->page_size);
 
 	if (pages_needed > pages_free) {
@@ -469,6 +431,35 @@ static int rtw_sdio_check_free_txpg(struct rtw_dev *rtwdev, u8 queue,
 	}
 
 	return 0;
+}
+
+static void rtw_sdio_update_free_tx_pages(struct rtw_dev *rtwdev)
+{
+	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+	unsigned int i, num_free_txpg;
+	u32 free_txpg[3];
+
+	if (rtw_chip_wcpu_11n(rtwdev))
+		num_free_txpg = 1;
+	else
+		num_free_txpg = 3;
+
+	for (i = 0; i < num_free_txpg; i++)
+		free_txpg[i] = rtw_sdio_read32(rtwdev,
+					       REG_SDIO_FREE_TXPG + (i * 4));
+
+	if (rtw_chip_wcpu_11n(rtwdev)) {
+		rtwsdio->tx_pages_free_high = free_txpg[0] & 0xff;
+		rtwsdio->tx_pages_free_normal = (free_txpg[0] >> 8) & 0xff;
+		rtwsdio->tx_pages_free_low = (free_txpg[0] >> 16) & 0xff;
+		rtwsdio->tx_pages_free_public = (free_txpg[0] >> 24) & 0xff;
+	} else {
+		rtwsdio->tx_pages_free_high = free_txpg[0] & 0xfff;
+		rtwsdio->tx_pages_free_normal = (free_txpg[0] >> 16) & 0xfff;
+		rtwsdio->tx_pages_free_low = free_txpg[1] & 0xfff;
+		rtwsdio->tx_pages_free_public = (free_txpg[1] >> 16) & 0xfff;
+		rtwsdio->tx_pages_free_extra = free_txpg[2] & 0xfff;
+	}
 }
 
 static int rtw_sdio_write_port(struct rtw_dev *rtwdev, struct sk_buff *skb,
@@ -486,8 +477,13 @@ static int rtw_sdio_write_port(struct rtw_dev *rtwdev, struct sk_buff *skb,
 
 	txsize = sdio_align_size(rtwsdio->sdio_func, skb->len);
 
-	ret = rtw_sdio_check_free_txpg(rtwdev, queue, txsize);
-	if (ret)
+	if (!rtwsdio->free_tx_pages_initialized) {
+		rtw_sdio_update_free_tx_pages(rtwdev);
+		rtwsdio->free_tx_pages_initialized = true;
+	}
+
+	ret = rtw_sdio_check_tx_bytes_free(rtwdev, queue, txsize);
+	if (ret < 0)
 		return ret;
 
 	if (!IS_ALIGNED((unsigned long)skb->data, RTW_SDIO_DATA_PTR_ALIGN))
@@ -508,6 +504,8 @@ static int rtw_sdio_write_port(struct rtw_dev *rtwdev, struct sk_buff *skb,
 		rtw_warn(rtwdev,
 			 "Failed to write %zu byte(s) to SDIO port 0x%08x",
 			 txsize, txaddr);
+
+	rtw_sdio_update_free_tx_pages(rtwdev);
 
 	return ret;
 }
@@ -622,7 +620,7 @@ static void rtw_sdio_deep_ps_enter(struct rtw_dev *rtwdev)
 				continue;
 
 			/* check if there is any skb DMAing */
-			if (skb_queue_len(&rtwsdio->tx_queue[queue])) {
+			if (skb_queue_len(&rtwsdio->tx_queue[queue].head)) {
 				tx_empty = false;
 				break;
 			}
@@ -682,6 +680,9 @@ static void rtw_sdio_power_switch(struct rtw_dev *rtwdev, bool on)
 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
 
 	rtwsdio->is_powered_on = on;
+
+	if (!on)
+		rtwsdio->free_tx_pages_initialized = false;
 }
 
 static struct rtw_sdio_tx_data *rtw_sdio_get_tx_data(struct sk_buff *skb)
@@ -778,14 +779,25 @@ static int rtw_sdio_tx_write(struct rtw_dev *rtwdev,
 {
 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
 	enum rtw_tx_queue_type queue = rtw_tx_queue_mapping(skb);
+	struct rtw_sdio_tx_queue *tx_queue = &rtwsdio->tx_queue[queue];
 	struct rtw_sdio_tx_data *tx_data;
+	int ret;
 
 	rtw_sdio_tx_skb_prepare(rtwdev, pkt_info, skb, queue);
 
 	tx_data = rtw_sdio_get_tx_data(skb);
 	tx_data->sn = pkt_info->sn;
 
-	skb_queue_tail(&rtwsdio->tx_queue[queue], skb);
+	skb_queue_tail(&tx_queue->head, skb);
+
+	spin_lock_bh(&tx_queue->lock);
+
+	ret = rtw_sdio_check_tx_bytes_free(rtwdev, queue,
+					   3 * rtwdev->chip->page_size);
+	if (ret == -EBUSY)
+		ieee80211_stop_queue(rtwdev->hw, skb_get_queue_mapping(skb));
+
+	spin_unlock_bh(&tx_queue->lock);
 
 	return 0;
 }
@@ -1045,18 +1057,28 @@ static void rtw_sdio_process_tx_queue(struct rtw_dev *rtwdev,
 				      enum rtw_tx_queue_type queue)
 {
 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+	struct rtw_sdio_tx_queue *tx_queue = &rtwsdio->tx_queue[queue];
 	struct sk_buff *skb;
 	int ret;
 
-	skb = skb_dequeue(&rtwsdio->tx_queue[queue]);
+	skb = skb_dequeue(&tx_queue->head);
 	if (!skb)
 		return;
 
 	ret = rtw_sdio_write_port(rtwdev, skb, queue);
 	if (ret) {
-		skb_queue_head(&rtwsdio->tx_queue[queue], skb);
+		skb_queue_head(&tx_queue->head, skb);
 		return;
 	}
+
+	spin_lock_bh(&tx_queue->lock);
+
+	ret = rtw_sdio_check_tx_bytes_free(rtwdev, queue,
+					   4 * rtwdev->chip->page_size);
+	if (!ret)
+		ieee80211_wake_queue(rtwdev->hw, skb_get_queue_mapping(skb));
+
+	spin_unlock_bh(&tx_queue->lock);
 
 	if (queue <= RTW_TX_QUEUE_VO)
 		rtw_sdio_indicate_tx_status(rtwdev, skb);
@@ -1070,7 +1092,7 @@ static void rtw_sdio_tx_handler(struct work_struct *work)
 		container_of(work, struct rtw_sdio_work_data, work);
 	struct rtw_dev *rtwdev = work_data->rtwdev;
 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
-	int limit, queue;
+	int queue, limit;
 
 	if (!rtw_fw_feature_check(&rtwdev->fw, FW_FEATURE_TX_WAKE))
 		rtw_sdio_deep_ps_leave(rtwdev);
@@ -1079,7 +1101,7 @@ static void rtw_sdio_tx_handler(struct work_struct *work)
 		for (limit = 0; limit < 1000; limit++) {
 			rtw_sdio_process_tx_queue(rtwdev, queue);
 
-			if (skb_queue_empty(&rtwsdio->tx_queue[queue]))
+			if (skb_queue_empty(&rtwsdio->tx_queue[queue].head))
 				break;
 		}
 	}
@@ -1102,8 +1124,11 @@ static int rtw_sdio_init_tx(struct rtw_dev *rtwdev)
 		return -ENOMEM;
 	}
 
-	for (i = 0; i < RTK_MAX_TX_QUEUE_NUM; i++)
-		skb_queue_head_init(&rtwsdio->tx_queue[i]);
+	for (i = 0; i < RTK_MAX_TX_QUEUE_NUM; i++) {
+		spin_lock_init(&rtwsdio->tx_queue[i].lock);
+		skb_queue_head_init(&rtwsdio->tx_queue[i].head);
+	}
+
 	rtwsdio->tx_handler_data = kmalloc(sizeof(*rtwsdio->tx_handler_data),
 					   GFP_KERNEL);
 	if (!rtwsdio->tx_handler_data)
@@ -1125,7 +1150,7 @@ static void rtw_sdio_deinit_tx(struct rtw_dev *rtwdev)
 	int i;
 
 	for (i = 0; i < RTK_MAX_TX_QUEUE_NUM; i++)
-		skb_queue_purge(&rtwsdio->tx_queue[i]);
+		skb_queue_purge(&rtwsdio->tx_queue[i].head);
 
 	flush_workqueue(rtwsdio->txwq);
 	destroy_workqueue(rtwsdio->txwq);
