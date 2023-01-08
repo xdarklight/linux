@@ -83,6 +83,11 @@ struct rtw8723d_efuse {
 	};
 };
 
+static_assert(offsetof(struct rtw8723d_efuse, e) == 0xd0);
+static_assert(sizeof(struct rtw8723de_efuse) == 14);
+static_assert(offsetof(struct rtw8723d_efuse, u) == 0xd0);
+static_assert(sizeof(struct rtw8723du_efuse) == 59);
+
 extern const struct rtw_chip_info rtw8723d_hw_spec;
 
 /* phy status page0 */

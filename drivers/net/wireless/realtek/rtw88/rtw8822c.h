@@ -96,6 +96,11 @@ struct rtw8822c_efuse {
 	};
 };
 
+static_assert(offsetof(struct rtw8822c_efuse, e) == 0x120);
+static_assert(sizeof(struct rtw8822ce_efuse) == 47);
+static_assert(offsetof(struct rtw8822c_efuse, u) == 0x120);
+static_assert(sizeof(struct rtw8822cu_efuse) == 122);
+
 enum rtw8822c_dpk_agc_phase {
 	RTW_DPK_GAIN_CHECK,
 	RTW_DPK_GAIN_LARGE,

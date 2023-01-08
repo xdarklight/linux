@@ -97,6 +97,11 @@ struct rtw8821c_efuse {
 	};
 };
 
+static_assert(offsetof(struct rtw8821c_efuse, e) == 0xd0);
+static_assert(sizeof(struct rtw8821ce_efuse) == 49);
+static_assert(offsetof(struct rtw8821c_efuse, u) == 0xd0);
+static_assert(sizeof(struct rtw8821cu_efuse) == 304);
+
 static inline void
 _rtw_write32s_mask(struct rtw_dev *rtwdev, u32 addr, u32 mask, u32 data)
 {
