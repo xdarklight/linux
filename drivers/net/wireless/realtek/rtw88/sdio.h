@@ -144,12 +144,6 @@ struct rtw_sdio_work_data {
 	struct rtw_dev *rtwdev;
 };
 
-struct rtw_sdio_tx_queue {
-	struct sk_buff_head head;
-	/* protect against concurrent ieee80211_{stop,wake}_queue() calls */
-	spinlock_t lock;
-};
-
 struct rtw_sdio {
 	struct sdio_func *sdio_func;
 
@@ -162,15 +156,7 @@ struct rtw_sdio {
 
 	struct workqueue_struct *txwq;
 	struct rtw_sdio_work_data *tx_handler_data;
-
-	struct rtw_sdio_tx_queue tx_queue[RTK_MAX_TX_QUEUE_NUM];
-
-	u16 tx_pages_free_high;
-	u16 tx_pages_free_normal;
-	u16 tx_pages_free_low;
-	u16 tx_pages_free_public;
-	u16 tx_pages_free_extra;
-	bool free_tx_pages_initialized;
+	struct sk_buff_head tx_queue[RTK_MAX_TX_QUEUE_NUM];
 };
 
 extern const struct dev_pm_ops rtw_sdio_pm_ops;
