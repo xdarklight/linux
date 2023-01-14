@@ -252,7 +252,6 @@ enum meson_sar_adc_chan7_mux_sel {
 struct meson_sar_adc_param {
 	bool					has_bl30_integration;
 	unsigned long				clock_rate;
-	u32					bandgap_reg;
 	unsigned int				resolution;
 	const struct regmap_config		*regmap_config;
 	u8					temperature_trimming_bits;
@@ -424,12 +423,14 @@ static void meson_sar_adc_enable_channel(struct iio_dev *indio_dev,
 
 	if (chan->address == MESON_SAR_ADC_VOLTAGE_AND_TEMP_CHANNEL) {
 		if (chan->type == IIO_TEMP)
-			regval = MESON_SAR_ADC_DELTA_10_TEMP_SEL;
+			regval = MESON_SAR_ADC_DELTA_10_TS_VBG_EN |
+				 MESON_SAR_ADC_DELTA_10_TEMP_SEL;
 		else
 			regval = 0;
 
 		regmap_update_bits(priv->regmap,
 				   MESON_SAR_ADC_DELTA_10,
+				   MESON_SAR_ADC_DELTA_10_TS_VBG_EN |
 				   MESON_SAR_ADC_DELTA_10_TEMP_SEL, regval);
 	}
 }
@@ -884,21 +885,6 @@ static int meson_sar_adc_init(struct iio_dev *indio_dev)
 	return 0;
 }
 
-static void meson_sar_adc_set_bandgap(struct iio_dev *indio_dev, bool on_off)
-{
-	struct meson_sar_adc_priv *priv = iio_priv(indio_dev);
-	const struct meson_sar_adc_param *param = priv->param;
-	u32 enable_mask;
-
-	if (param->bandgap_reg == MESON_SAR_ADC_REG11)
-		enable_mask = MESON_SAR_ADC_REG11_BANDGAP_EN;
-	else
-		enable_mask = MESON_SAR_ADC_DELTA_10_TS_VBG_EN;
-
-	regmap_update_bits(priv->regmap, param->bandgap_reg, enable_mask,
-			   on_off ? enable_mask : 0);
-}
-
 static int meson_sar_adc_hw_enable(struct iio_dev *indio_dev)
 {
 	struct meson_sar_adc_priv *priv = iio_priv(indio_dev);
@@ -926,7 +912,10 @@ static int meson_sar_adc_hw_enable(struct iio_dev *indio_dev)
 	regmap_update_bits(priv->regmap, MESON_SAR_ADC_REG0,
 			   MESON_SAR_ADC_REG0_FIFO_CNT_IRQ_MASK, regval);
 
-	meson_sar_adc_set_bandgap(indio_dev, true);
+	/* Enable bandgap on SoCs with MESON_SAR_ADC_REG11 */
+	regmap_update_bits(priv->regmap, MESON_SAR_ADC_REG11,
+			   MESON_SAR_ADC_REG11_BANDGAP_EN,
+			   MESON_SAR_ADC_REG11_BANDGAP_EN);
 
 	regmap_update_bits(priv->regmap, MESON_SAR_ADC_REG3,
 			   MESON_SAR_ADC_REG3_ADC_EN,
@@ -947,7 +936,8 @@ static int meson_sar_adc_hw_enable(struct iio_dev *indio_dev)
 err_adc_clk:
 	regmap_update_bits(priv->regmap, MESON_SAR_ADC_REG3,
 			   MESON_SAR_ADC_REG3_ADC_EN, 0);
-	meson_sar_adc_set_bandgap(indio_dev, false);
+	regmap_update_bits(priv->regmap, MESON_SAR_ADC_REG11,
+			   MESON_SAR_ADC_REG11_BANDGAP_EN, 0);
 	clk_disable_unprepare(priv->core_clk);
 err_core_clk:
 	regulator_disable(priv->vref);
@@ -971,7 +961,9 @@ static int meson_sar_adc_hw_disable(struct iio_dev *indio_dev)
 	regmap_update_bits(priv->regmap, MESON_SAR_ADC_REG3,
 			   MESON_SAR_ADC_REG3_ADC_EN, 0);
 
-	meson_sar_adc_set_bandgap(indio_dev, false);
+	/* Disable bandgap on SoCs with MESON_SAR_ADC_REG11 */
+	regmap_update_bits(priv->regmap, MESON_SAR_ADC_REG11,
+			   MESON_SAR_ADC_REG11_BANDGAP_EN, 0);
 
 	clk_disable_unprepare(priv->core_clk);
 
@@ -1049,7 +1041,6 @@ static const struct iio_info meson_sar_adc_iio_info = {
 static const struct meson_sar_adc_param meson_sar_adc_meson8_param = {
 	.has_bl30_integration = false,
 	.clock_rate = 1150000,
-	.bandgap_reg = MESON_SAR_ADC_DELTA_10,
 	.regmap_config = &meson_sar_adc_regmap_config_meson8,
 	.resolution = 10,
 	.temperature_trimming_bits = 4,
@@ -1060,7 +1051,6 @@ static const struct meson_sar_adc_param meson_sar_adc_meson8_param = {
 static const struct meson_sar_adc_param meson_sar_adc_meson8b_param = {
 	.has_bl30_integration = false,
 	.clock_rate = 1150000,
-	.bandgap_reg = MESON_SAR_ADC_DELTA_10,
 	.regmap_config = &meson_sar_adc_regmap_config_meson8,
 	.resolution = 10,
 	.temperature_trimming_bits = 5,
@@ -1071,7 +1061,6 @@ static const struct meson_sar_adc_param meson_sar_adc_meson8b_param = {
 static const struct meson_sar_adc_param meson_sar_adc_gxbb_param = {
 	.has_bl30_integration = true,
 	.clock_rate = 1200000,
-	.bandgap_reg = MESON_SAR_ADC_REG11,
 	.regmap_config = &meson_sar_adc_regmap_config_gxbb,
 	.resolution = 10,
 };
@@ -1079,7 +1068,6 @@ static const struct meson_sar_adc_param meson_sar_adc_gxbb_param = {
 static const struct meson_sar_adc_param meson_sar_adc_gxl_param = {
 	.has_bl30_integration = true,
 	.clock_rate = 1200000,
-	.bandgap_reg = MESON_SAR_ADC_REG11,
 	.regmap_config = &meson_sar_adc_regmap_config_gxbb,
 	.resolution = 12,
 };
@@ -1087,7 +1075,6 @@ static const struct meson_sar_adc_param meson_sar_adc_gxl_param = {
 static const struct meson_sar_adc_param meson_sar_adc_g12a_param = {
 	.has_bl30_integration = false,
 	.clock_rate = 1200000,
-	.bandgap_reg = MESON_SAR_ADC_REG11,
 	.regmap_config = &meson_sar_adc_regmap_config_gxbb,
 	.resolution = 12,
 };
