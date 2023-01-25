@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: GPL-2.0
-
 /*
  * dm-init.c
  * Copyright (C) 2017 The Chromium OS Authors <chromium-os-dev@chromium.org>
