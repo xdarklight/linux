@@ -60,16 +60,23 @@ static inline void do_enter_rtas(unsigned long args)
 	srr_regs_clobbered(); /* rtas uses SRRs, invalidate */
 }
 
-struct rtas_t rtas = {
-	.lock = __ARCH_SPIN_LOCK_UNLOCKED
-};
-EXPORT_SYMBOL(rtas);
+struct rtas_t rtas;
+
+/*
+ * Nearly all RTAS calls need to be serialized. All uses of the
+ * default rtas_args block must hold rtas_lock.
+ *
+ * Exceptions to the RTAS serialization requirement (e.g. stop-self)
+ * must use a separate rtas_args structure.
+ */
+static DEFINE_RAW_SPINLOCK(rtas_lock);
+static struct rtas_args rtas_args;
 
 DEFINE_SPINLOCK(rtas_data_buf_lock);
-EXPORT_SYMBOL(rtas_data_buf_lock);
+EXPORT_SYMBOL_GPL(rtas_data_buf_lock);
 
 char rtas_data_buf[RTAS_DATA_BUF_SIZE] __cacheline_aligned;
-EXPORT_SYMBOL(rtas_data_buf);
+EXPORT_SYMBOL_GPL(rtas_data_buf);
 
 unsigned long rtas_rmo_buf;
 
@@ -78,29 +85,7 @@ unsigned long rtas_rmo_buf;
  * This is done like this so rtas_flash can be a module.
  */
 void (*rtas_flash_term_hook)(int);
-EXPORT_SYMBOL(rtas_flash_term_hook);
-
-/* RTAS use home made raw locking instead of spin_lock_irqsave
- * because those can be called from within really nasty contexts
- * such as having the timebase stopped which would lockup with
- * normal locks and spinlock debugging enabled
- */
-static unsigned long lock_rtas(void)
-{
-	unsigned long flags;
-
-	local_irq_save(flags);
-	preempt_disable();
-	arch_spin_lock(&rtas.lock);
-	return flags;
-}
-
-static void unlock_rtas(unsigned long flags)
-{
-	arch_spin_unlock(&rtas.lock);
-	local_irq_restore(flags);
-	preempt_enable();
-}
+EXPORT_SYMBOL_GPL(rtas_flash_term_hook);
 
 /*
  * call_rtas_display_status and call_rtas_display_status_delay
@@ -109,14 +94,14 @@ static void unlock_rtas(unsigned long flags)
  */
 static void call_rtas_display_status(unsigned char c)
 {
-	unsigned long s;
+	unsigned long flags;
 
 	if (!rtas.base)
 		return;
 
-	s = lock_rtas();
-	rtas_call_unlocked(&rtas.args, 10, 1, 1, NULL, c);
-	unlock_rtas(s);
+	raw_spin_lock_irqsave(&rtas_lock, flags);
+	rtas_call_unlocked(&rtas_args, 10, 1, 1, NULL, c);
+	raw_spin_unlock_irqrestore(&rtas_lock, flags);
 }
 
 static void call_rtas_display_status_delay(char c)
@@ -326,7 +311,7 @@ void rtas_progress(char *s, unsigned short hex)
  
 	spin_unlock(&progress_lock);
 }
-EXPORT_SYMBOL(rtas_progress);		/* needed by rtas_flash module */
+EXPORT_SYMBOL_GPL(rtas_progress);		/* needed by rtas_flash module */
 
 int rtas_token(const char *service)
 {
@@ -336,13 +321,12 @@ int rtas_token(const char *service)
 	tokp = of_get_property(rtas.dev, service, NULL);
 	return tokp ? be32_to_cpu(*tokp) : RTAS_UNKNOWN_SERVICE;
 }
-EXPORT_SYMBOL(rtas_token);
+EXPORT_SYMBOL_GPL(rtas_token);
 
 int rtas_service_present(const char *service)
 {
 	return rtas_token(service) != RTAS_UNKNOWN_SERVICE;
 }
-EXPORT_SYMBOL(rtas_service_present);
 
 #ifdef CONFIG_RTAS_ERROR_LOGGING
 
@@ -357,7 +341,6 @@ int rtas_get_error_log_max(void)
 {
 	return rtas_error_log_max;
 }
-EXPORT_SYMBOL(rtas_get_error_log_max);
 
 static void __init init_error_log_max(void)
 {
@@ -387,7 +370,7 @@ static int rtas_last_error_token;
  *  most recent failed call to rtas.  Because the error text
  *  might go stale if there are any other intervening rtas calls,
  *  this routine must be called atomically with whatever produced
- *  the error (i.e. with rtas.lock still held from the previous call).
+ *  the error (i.e. with rtas_lock still held from the previous call).
  */
 static char *__fetch_rtas_last_error(char *altbuf)
 {
@@ -407,13 +390,13 @@ static char *__fetch_rtas_last_error(char *altbuf)
 	err_args.args[1] = cpu_to_be32(bufsz);
 	err_args.args[2] = 0;
 
-	save_args = rtas.args;
-	rtas.args = err_args;
+	save_args = rtas_args;
+	rtas_args = err_args;
 
-	do_enter_rtas(__pa(&rtas.args));
+	do_enter_rtas(__pa(&rtas_args));
 
-	err_args = rtas.args;
-	rtas.args = save_args;
+	err_args = rtas_args;
+	rtas_args = save_args;
 
 	/* Log the error in the unlikely case that there was one. */
 	if (unlikely(err_args.args[2] == 0)) {
@@ -534,8 +517,8 @@ int rtas_call(int token, int nargs, int nret, int *outputs, ...)
 {
 	va_list list;
 	int i;
-	unsigned long s;
-	struct rtas_args *rtas_args;
+	unsigned long flags;
+	struct rtas_args *args;
 	char *buff_copy = NULL;
 	int ret;
 
@@ -557,26 +540,25 @@ int rtas_call(int token, int nargs, int nret, int *outputs, ...)
 		return -1;
 	}
 
-	s = lock_rtas();
-
+	raw_spin_lock_irqsave(&rtas_lock, flags);
 	/* We use the global rtas args buffer */
-	rtas_args = &rtas.args;
+	args = &rtas_args;
 
 	va_start(list, outputs);
-	va_rtas_call_unlocked(rtas_args, token, nargs, nret, list);
+	va_rtas_call_unlocked(args, token, nargs, nret, list);
 	va_end(list);
 
 	/* A -1 return code indicates that the last command couldn't
 	   be completed due to a hardware error. */
-	if (be32_to_cpu(rtas_args->rets[0]) == -1)
+	if (be32_to_cpu(args->rets[0]) == -1)
 		buff_copy = __fetch_rtas_last_error(NULL);
 
 	if (nret > 1 && outputs != NULL)
 		for (i = 0; i < nret-1; ++i)
-			outputs[i] = be32_to_cpu(rtas_args->rets[i+1]);
-	ret = (nret > 0)? be32_to_cpu(rtas_args->rets[0]): 0;
+			outputs[i] = be32_to_cpu(args->rets[i + 1]);
+	ret = (nret > 0) ? be32_to_cpu(args->rets[0]) : 0;
 
-	unlock_rtas(s);
+	raw_spin_unlock_irqrestore(&rtas_lock, flags);
 
 	if (buff_copy) {
 		log_error(buff_copy, ERR_TYPE_RTAS_LOG, 0);
@@ -585,7 +567,7 @@ int rtas_call(int token, int nargs, int nret, int *outputs, ...)
 	}
 	return ret;
 }
-EXPORT_SYMBOL(rtas_call);
+EXPORT_SYMBOL_GPL(rtas_call);
 
 /**
  * rtas_busy_delay_time() - From an RTAS status value, calculate the
@@ -623,7 +605,6 @@ unsigned int rtas_busy_delay_time(int status)
 
 	return ms;
 }
-EXPORT_SYMBOL(rtas_busy_delay_time);
 
 /**
  * rtas_busy_delay() - helper for RTAS busy and extended delay statuses
@@ -697,7 +678,7 @@ bool rtas_busy_delay(int status)
 
 	return ret;
 }
-EXPORT_SYMBOL(rtas_busy_delay);
+EXPORT_SYMBOL_GPL(rtas_busy_delay);
 
 static int rtas_error_rc(int rtas_rc)
 {
@@ -742,7 +723,7 @@ int rtas_get_power_level(int powerdomain, int *level)
 		return rtas_error_rc(rc);
 	return rc;
 }
-EXPORT_SYMBOL(rtas_get_power_level);
+EXPORT_SYMBOL_GPL(rtas_get_power_level);
 
 int rtas_set_power_level(int powerdomain, int level, int *setlevel)
 {
@@ -760,7 +741,7 @@ int rtas_set_power_level(int powerdomain, int level, int *setlevel)
 		return rtas_error_rc(rc);
 	return rc;
 }
-EXPORT_SYMBOL(rtas_set_power_level);
+EXPORT_SYMBOL_GPL(rtas_set_power_level);
 
 int rtas_get_sensor(int sensor, int index, int *state)
 {
@@ -778,7 +759,7 @@ int rtas_get_sensor(int sensor, int index, int *state)
 		return rtas_error_rc(rc);
 	return rc;
 }
-EXPORT_SYMBOL(rtas_get_sensor);
+EXPORT_SYMBOL_GPL(rtas_get_sensor);
 
 int rtas_get_sensor_fast(int sensor, int index, int *state)
 {
@@ -821,7 +802,6 @@ bool rtas_indicator_present(int token, int *maxindex)
 
 	return false;
 }
-EXPORT_SYMBOL(rtas_indicator_present);
 
 int rtas_set_indicator(int indicator, int index, int new_value)
 {
@@ -839,7 +819,7 @@ int rtas_set_indicator(int indicator, int index, int new_value)
 		return rtas_error_rc(rc);
 	return rc;
 }
-EXPORT_SYMBOL(rtas_set_indicator);
+EXPORT_SYMBOL_GPL(rtas_set_indicator);
 
 /*
  * Ignoring RTAS extended delay
@@ -1268,18 +1248,18 @@ SYSCALL_DEFINE1(rtas, struct rtas_args __user *, uargs)
 
 	buff_copy = get_errorlog_buffer();
 
-	flags = lock_rtas();
+	raw_spin_lock_irqsave(&rtas_lock, flags);
 
-	rtas.args = args;
-	do_enter_rtas(__pa(&rtas.args));
-	args = rtas.args;
+	rtas_args = args;
+	do_enter_rtas(__pa(&rtas_args));
+	args = rtas_args;
 
 	/* A -1 return code indicates that the last command couldn't
 	   be completed due to a hardware error. */
 	if (be32_to_cpu(args.rets[0]) == -1)
 		errbuf = __fetch_rtas_last_error(buff_copy);
 
-	unlock_rtas(flags);
+	raw_spin_unlock_irqrestore(&rtas_lock, flags);
 
 	if (buff_copy) {
 		if (errbuf)
@@ -1401,19 +1381,18 @@ int __init early_init_dt_scan_rtas(unsigned long node,
 	return 1;
 }
 
-static arch_spinlock_t timebase_lock;
+static DEFINE_RAW_SPINLOCK(timebase_lock);
 static u64 timebase = 0;
 
 void rtas_give_timebase(void)
 {
 	unsigned long flags;
 
-	local_irq_save(flags);
+	raw_spin_lock_irqsave(&timebase_lock, flags);
 	hard_irq_disable();
-	arch_spin_lock(&timebase_lock);
 	rtas_call(rtas_token("freeze-time-base"), 0, 1, NULL);
 	timebase = get_tb();
-	arch_spin_unlock(&timebase_lock);
+	raw_spin_unlock(&timebase_lock);
 
 	while (timebase)
 		barrier();
@@ -1425,8 +1404,8 @@ void rtas_take_timebase(void)
 {
 	while (!timebase)
 		barrier();
-	arch_spin_lock(&timebase_lock);
+	raw_spin_lock(&timebase_lock);
 	set_tb(timebase >> 32, timebase & 0xffffffff);
 	timebase = 0;
-	arch_spin_unlock(&timebase_lock);
+	raw_spin_unlock(&timebase_lock);
 }
