@@ -1227,8 +1227,10 @@ const char * const vmstat_text[] = {
 	"nr_written",
 	"nr_throttled_written",
 	"nr_kernel_misc_reclaimable",
+#ifdef CONFIG_DEBUG_VM
 	"nr_foll_pin_acquired",
 	"nr_foll_pin_released",
+#endif
 	"nr_kernel_stack",
 #if IS_ENABLED(CONFIG_SHADOW_CALL_STACK)
 	"nr_shadow_call_stack",
