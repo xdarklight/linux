@@ -926,9 +926,6 @@ static int f2fs_tmpfile(struct mnt_idmap *idmap, struct inode *dir,
 static int f2fs_create_whiteout(struct mnt_idmap *idmap,
 				struct inode *dir, struct inode **whiteout)
 {
-	if (unlikely(f2fs_cp_error(F2FS_I_SB(dir))))
-		return -EIO;
-
 	return __f2fs_tmpfile(idmap, dir, NULL,
 				S_IFCHR | WHITEOUT_MODE, true, whiteout);
 }
