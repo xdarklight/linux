@@ -33,6 +33,7 @@
 #include "fixed31_32.h"
 #include "irq_types.h"
 #include "dc_dp_types.h"
+#include "dc_hdmi_types.h"
 #include "dc_hw_types.h"
 #include "dal_types.h"
 #include "grph_object_defs.h"
@@ -690,6 +691,7 @@ struct psr_config {
 	uint8_t su_y_granularity;
 	unsigned int line_time_in_us;
 	uint8_t rate_control_caps;
+	uint16_t dsc_slice_height;
 };
 
 union dmcu_psr_level {
@@ -801,6 +803,7 @@ struct psr_context {
 	uint8_t su_y_granularity;
 	unsigned int line_time_in_us;
 	uint8_t rate_control_caps;
+	uint16_t dsc_slice_height;
 };
 
 struct colorspace_transform {
