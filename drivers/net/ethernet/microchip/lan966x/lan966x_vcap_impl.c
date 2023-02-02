@@ -23,6 +23,7 @@ static struct lan966x_vcap_inst {
 	int first_cid; /* first chain id in this vcap */
 	int last_cid; /* last chain id in this vcap */
 	int count; /* number of available addresses */
+	bool ingress; /* is vcap in the ingress path */
 } lan966x_vcap_inst_cfg[] = {
 	{
 		.vtype = VCAP_TYPE_IS2, /* IS2-0 */
@@ -31,6 +32,7 @@ static struct lan966x_vcap_inst {
 		.first_cid = LAN966X_VCAP_CID_IS2_L0,
 		.last_cid = LAN966X_VCAP_CID_IS2_MAX,
 		.count = 256,
+		.ingress = true,
 	},
 };
 
@@ -390,20 +392,6 @@ static int lan966x_vcap_port_info(struct net_device *dev,
 	return 0;
 }
 
-static int lan966x_vcap_enable(struct net_device *dev,
-			       struct vcap_admin *admin,
-			       bool enable)
-{
-	struct lan966x_port *port = netdev_priv(dev);
-	struct lan966x *lan966x = port->lan966x;
-
-	lan_rmw(ANA_VCAP_S2_CFG_ENA_SET(enable),
-		ANA_VCAP_S2_CFG_ENA,
-		lan966x, ANA_VCAP_S2_CFG(port->chip_port));
-
-	return 0;
-}
-
 static struct vcap_operations lan966x_vcap_ops = {
 	.validate_keyset = lan966x_vcap_validate_keyset,
 	.add_default_fields = lan966x_vcap_add_default_fields,
@@ -414,7 +402,6 @@ static struct vcap_operations lan966x_vcap_ops = {
 	.update = lan966x_vcap_update,
 	.move = lan966x_vcap_move,
 	.port_info = lan966x_vcap_port_info,
-	.enable = lan966x_vcap_enable,
 };
 
 static void lan966x_vcap_admin_free(struct vcap_admin *admin)
@@ -446,6 +433,7 @@ lan966x_vcap_admin_alloc(struct lan966x *lan966x, struct vcap_control *ctrl,
 
 	admin->vtype = cfg->vtype;
 	admin->vinst = 0;
+	admin->ingress = cfg->ingress;
 	admin->w32be = true;
 	admin->tgt_inst = cfg->tgt_inst;
 
@@ -520,6 +508,12 @@ int lan966x_vcap_init(struct lan966x *lan966x)
 
 		list_add_tail(&admin->list, &ctrl->list);
 	}
+
+	for (int p = 0; p < lan966x->num_phys_ports; ++p)
+		if (lan966x->ports[p])
+			lan_rmw(ANA_VCAP_S2_CFG_ENA_SET(true),
+				ANA_VCAP_S2_CFG_ENA, lan966x,
+				ANA_VCAP_S2_CFG(lan966x->ports[p]->chip_port));
 
 	lan966x->vcap_ctrl = ctrl;
 
