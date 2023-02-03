@@ -49,6 +49,59 @@ static unsigned long alloc_preferred_address(unsigned long alloc_size)
 	return ULONG_MAX;
 }
 
+static void efi_remap_image(unsigned long image_base, unsigned alloc_size,
+			    unsigned long code_size)
+{
+	efi_memory_attribute_protocol_t *memattr;
+	efi_status_t status;
+	u64 attr;
+
+	/*
+	 * If the firmware implements the EFI_MEMORY_ATTRIBUTE_PROTOCOL, let's
+	 * invoke it to remap the text/rodata region of the decompressed image
+	 * as read-only and the data/bss region as non-executable.
+	 */
+	status = efi_bs_call(locate_protocol, &EFI_MEMORY_ATTRIBUTE_PROTOCOL_GUID,
+			     NULL, (void **)&memattr);
+	if (status != EFI_SUCCESS)
+		return;
+
+	// Get the current attributes for the entire region
+	status = memattr->get_memory_attributes(memattr, image_base,
+						alloc_size, &attr);
+	if (status != EFI_SUCCESS) {
+		efi_warn("Failed to retrieve memory attributes for image region: 0x%lx\n",
+			 status);
+		return;
+	}
+
+	// Mark the code region as read-only
+	status = memattr->set_memory_attributes(memattr, image_base, code_size,
+						EFI_MEMORY_RO);
+	if (status != EFI_SUCCESS) {
+		efi_warn("Failed to remap code region read-only\n");
+		return;
+	}
+
+	// If the entire region was already mapped as non-exec, clear the
+	// attribute from the code region. Otherwise, set it on the data
+	// region.
+	if (attr & EFI_MEMORY_XP) {
+		status = memattr->clear_memory_attributes(memattr, image_base,
+							  code_size,
+							  EFI_MEMORY_XP);
+		if (status != EFI_SUCCESS)
+			efi_warn("Failed to remap code region executable\n");
+	} else {
+		status = memattr->set_memory_attributes(memattr,
+							image_base + code_size,
+							alloc_size - code_size,
+							EFI_MEMORY_XP);
+		if (status != EFI_SUCCESS)
+			efi_warn("Failed to remap data region non-executable\n");
+	}
+}
+
 void __weak efi_cache_sync_image(unsigned long image_base,
 				 unsigned long alloc_size,
 				 unsigned long code_size)
@@ -136,6 +189,8 @@ efi_zboot_entry(efi_handle_t handle, efi_system_table_t *systab)
 	}
 
 	efi_cache_sync_image(image_base, alloc_size, code_size);
+
+	efi_remap_image(image_base, alloc_size, code_size);
 
 	status = efi_stub_common(handle, image, image_base, cmdline_ptr);
 
