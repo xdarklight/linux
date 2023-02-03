@@ -60,6 +60,7 @@
 
 int isolate_movable_page(struct page *page, isolate_mode_t mode)
 {
+	struct folio *folio = folio_get_nontail_page(page);
 	const struct movable_operations *mops;
 
 	/*
@@ -71,11 +72,11 @@ int isolate_movable_page(struct page *page, isolate_mode_t mode)
 	 * the put_page() at the end of this block will take care of
 	 * release this page, thus avoiding a nasty leakage.
 	 */
-	if (unlikely(!get_page_unless_zero(page)))
+	if (!folio)
 		goto out;
 
-	if (unlikely(PageSlab(page)))
-		goto out_putpage;
+	if (unlikely(folio_test_slab(folio)))
+		goto out_putfolio;
 	/* Pairs with smp_wmb() in slab freeing, e.g. SLUB's __free_slab() */
 	smp_rmb();
 	/*
@@ -83,12 +84,12 @@ int isolate_movable_page(struct page *page, isolate_mode_t mode)
 	 * we use non-atomic bitops on newly allocated page flags so
 	 * unconditionally grabbing the lock ruins page's owner side.
 	 */
-	if (unlikely(!__PageMovable(page)))
-		goto out_putpage;
+	if (unlikely(!__folio_test_movable(folio)))
+		goto out_putfolio;
 	/* Pairs with smp_wmb() in slab allocation, e.g. SLUB's alloc_slab_page() */
 	smp_rmb();
-	if (unlikely(PageSlab(page)))
-		goto out_putpage;
+	if (unlikely(folio_test_slab(folio)))
+		goto out_putfolio;
 
 	/*
 	 * As movable pages are not isolated from LRU lists, concurrent
@@ -101,39 +102,39 @@ int isolate_movable_page(struct page *page, isolate_mode_t mode)
 	 * lets be sure we have the page lock
 	 * before proceeding with the movable page isolation steps.
 	 */
-	if (unlikely(!trylock_page(page)))
-		goto out_putpage;
+	if (unlikely(!folio_trylock(folio)))
+		goto out_putfolio;
 
-	if (!PageMovable(page) || PageIsolated(page))
+	if (!folio_test_movable(folio) || folio_test_isolated(folio))
 		goto out_no_isolated;
 
-	mops = page_movable_ops(page);
-	VM_BUG_ON_PAGE(!mops, page);
+	mops = folio_movable_ops(folio);
+	VM_BUG_ON_FOLIO(!mops, folio);
 
-	if (!mops->isolate_page(page, mode))
+	if (!mops->isolate_page(&folio->page, mode))
 		goto out_no_isolated;
 
 	/* Driver shouldn't use PG_isolated bit of page->flags */
-	WARN_ON_ONCE(PageIsolated(page));
-	SetPageIsolated(page);
-	unlock_page(page);
+	WARN_ON_ONCE(folio_test_isolated(folio));
+	folio_set_isolated(folio);
+	folio_unlock(folio);
 
 	return 0;
 
 out_no_isolated:
-	unlock_page(page);
-out_putpage:
-	put_page(page);
+	folio_unlock(folio);
+out_putfolio:
+	folio_put(folio);
 out:
 	return -EBUSY;
 }
 
-static void putback_movable_page(struct page *page)
+static void putback_movable_folio(struct folio *folio)
 {
-	const struct movable_operations *mops = page_movable_ops(page);
+	const struct movable_operations *mops = folio_movable_ops(folio);
 
-	mops->putback_page(page);
-	ClearPageIsolated(page);
+	mops->putback_page(&folio->page);
+	folio_clear_isolated(folio);
 }
 
 /*
@@ -146,33 +147,33 @@ static void putback_movable_page(struct page *page)
  */
 void putback_movable_pages(struct list_head *l)
 {
-	struct page *page;
-	struct page *page2;
+	struct folio *folio;
+	struct folio *folio2;
 
-	list_for_each_entry_safe(page, page2, l, lru) {
-		if (unlikely(PageHuge(page))) {
-			putback_active_hugepage(page);
+	list_for_each_entry_safe(folio, folio2, l, lru) {
+		if (unlikely(folio_test_hugetlb(folio))) {
+			folio_putback_active_hugetlb(folio);
 			continue;
 		}
-		list_del(&page->lru);
+		list_del(&folio->lru);
 		/*
-		 * We isolated non-lru movable page so here we can use
-		 * __PageMovable because LRU page's mapping cannot have
+		 * We isolated non-lru movable folio so here we can use
+		 * __PageMovable because LRU folio's mapping cannot have
 		 * PAGE_MAPPING_MOVABLE.
 		 */
-		if (unlikely(__PageMovable(page))) {
-			VM_BUG_ON_PAGE(!PageIsolated(page), page);
-			lock_page(page);
-			if (PageMovable(page))
-				putback_movable_page(page);
+		if (unlikely(__folio_test_movable(folio))) {
+			VM_BUG_ON_FOLIO(!folio_test_isolated(folio), folio);
+			folio_lock(folio);
+			if (folio_test_movable(folio))
+				putback_movable_folio(folio);
 			else
-				ClearPageIsolated(page);
-			unlock_page(page);
-			put_page(page);
+				folio_clear_isolated(folio);
+			folio_unlock(folio);
+			folio_put(folio);
 		} else {
-			mod_node_page_state(page_pgdat(page), NR_ISOLATED_ANON +
-					page_is_file_lru(page), -thp_nr_pages(page));
-			putback_lru_page(page);
+			node_stat_mod_folio(folio, NR_ISOLATED_ANON +
+					folio_is_file_lru(folio), -folio_nr_pages(folio));
+			folio_putback_lru(folio);
 		}
 	}
 }
@@ -265,7 +266,7 @@ static bool remove_migration_pte(struct folio *folio,
 			set_pte_at(vma->vm_mm, pvmw.address, pvmw.pte, pte);
 		}
 		if (vma->vm_flags & VM_LOCKED)
-			mlock_page_drain_local();
+			mlock_drain_local();
 
 		trace_remove_migration_pte(pvmw.address, pte_val(pte),
 					   compound_order(new));
@@ -990,7 +991,7 @@ static int move_to_new_folio(struct folio *dst, struct folio *src,
 			goto out;
 		}
 
-		mops = page_movable_ops(&src->page);
+		mops = folio_movable_ops(src);
 		rc = mops->migrate_page(&dst->page, &src->page, mode);
 		WARN_ON_ONCE(rc == MIGRATEPAGE_SUCCESS &&
 				!folio_test_isolated(src));
@@ -1298,7 +1299,7 @@ static int unmap_and_move_huge_page(new_page_t get_new_page,
 
 	if (folio_ref_count(src) == 1) {
 		/* page was freed from under us. So we are done. */
-		putback_active_hugepage(hpage);
+		folio_putback_active_hugetlb(src);
 		return MIGRATEPAGE_SUCCESS;
 	}
 
@@ -1383,7 +1384,7 @@ out_unlock:
 	folio_unlock(src);
 out:
 	if (rc == MIGRATEPAGE_SUCCESS)
-		putback_active_hugepage(hpage);
+		folio_putback_active_hugetlb(src);
 	else if (rc != -EAGAIN)
 		list_move_tail(&src->lru, ret);
 
@@ -1395,7 +1396,7 @@ out:
 	if (put_new_page)
 		put_new_page(new_hpage, private);
 	else
-		putback_active_hugepage(new_hpage);
+		folio_putback_active_hugetlb(dst);
 
 	return rc;
 }
@@ -1663,6 +1664,7 @@ struct page *alloc_migration_target(struct page *page, unsigned long private)
 	struct migration_target_control *mtc;
 	gfp_t gfp_mask;
 	unsigned int order = 0;
+	struct folio *hugetlb_folio = NULL;
 	struct folio *new_folio = NULL;
 	int nid;
 	int zidx;
@@ -1677,7 +1679,9 @@ struct page *alloc_migration_target(struct page *page, unsigned long private)
 		struct hstate *h = folio_hstate(folio);
 
 		gfp_mask = htlb_modify_alloc_mask(h, gfp_mask);
-		return alloc_huge_page_nodemask(h, nid, mtc->nmask, gfp_mask);
+		hugetlb_folio = alloc_hugetlb_folio_nodemask(h, nid,
+						mtc->nmask, gfp_mask);
+		return &hugetlb_folio->page;
 	}
 
 	if (folio_test_large(folio)) {
@@ -1773,7 +1777,7 @@ static int add_page_for_migration(struct mm_struct *mm, unsigned long addr,
 
 	if (PageHuge(page)) {
 		if (PageHead(page)) {
-			err = isolate_hugetlb(page, pagelist);
+			err = isolate_hugetlb(page_folio(page), pagelist);
 			if (!err)
 				err = 1;
 		}
