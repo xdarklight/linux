@@ -154,6 +154,7 @@ static void bus_release(struct kobject *kobj)
 	struct subsys_private *priv = to_subsys_private(kobj);
 	struct bus_type *bus = priv->bus;
 
+	lockdep_unregister_key(&priv->lock_key);
 	kfree(priv);
 	bus->p = NULL;
 }
@@ -338,47 +339,6 @@ struct device *bus_find_device(struct bus_type *bus,
 	return dev;
 }
 EXPORT_SYMBOL_GPL(bus_find_device);
-
-/**
- * subsys_find_device_by_id - find a device with a specific enumeration number
- * @subsys: subsystem
- * @id: index 'id' in struct device
- * @hint: device to check first
- *
- * Check the hint's next object and if it is a match return it directly,
- * otherwise, fall back to a full list search. Either way a reference for
- * the returned object is taken.
- */
-struct device *subsys_find_device_by_id(struct bus_type *subsys, unsigned int id,
-					struct device *hint)
-{
-	struct klist_iter i;
-	struct device *dev;
-
-	if (!subsys)
-		return NULL;
-
-	if (hint) {
-		klist_iter_init_node(&subsys->p->klist_devices, &i, &hint->p->knode_bus);
-		dev = next_device(&i);
-		if (dev && dev->id == id && get_device(dev)) {
-			klist_iter_exit(&i);
-			return dev;
-		}
-		klist_iter_exit(&i);
-	}
-
-	klist_iter_init_node(&subsys->p->klist_devices, &i, NULL);
-	while ((dev = next_device(&i))) {
-		if (dev->id == id && get_device(dev)) {
-			klist_iter_exit(&i);
-			return dev;
-		}
-	}
-	klist_iter_exit(&i);
-	return NULL;
-}
-EXPORT_SYMBOL_GPL(subsys_find_device_by_id);
 
 static struct device_driver *next_driver(struct klist_iter *i)
 {
@@ -784,7 +744,7 @@ int bus_register(struct bus_type *bus)
 {
 	int retval;
 	struct subsys_private *priv;
-	struct lock_class_key *key = &bus->lock_key;
+	struct lock_class_key *key;
 
 	priv = kzalloc(sizeof(struct subsys_private), GFP_KERNEL);
 	if (!priv)
@@ -826,6 +786,8 @@ int bus_register(struct bus_type *bus)
 	}
 
 	INIT_LIST_HEAD(&priv->interfaces);
+	key = &priv->lock_key;
+	lockdep_register_key(key);
 	__mutex_init(&priv->mutex, "subsys mutex", key);
 	klist_init(&priv->klist_devices, klist_devices_get, klist_devices_put);
 	klist_init(&priv->klist_drivers, NULL, NULL);
@@ -891,17 +853,24 @@ int bus_unregister_notifier(struct bus_type *bus, struct notifier_block *nb)
 }
 EXPORT_SYMBOL_GPL(bus_unregister_notifier);
 
+void bus_notify(struct device *dev, enum bus_notifier_event value)
+{
+	struct bus_type *bus = dev->bus;
+
+	if (bus)
+		blocking_notifier_call_chain(&bus->p->bus_notifier, value, dev);
+}
+
 struct kset *bus_get_kset(struct bus_type *bus)
 {
 	return &bus->p->subsys;
 }
 EXPORT_SYMBOL_GPL(bus_get_kset);
 
-struct klist *bus_get_device_klist(struct bus_type *bus)
+static struct klist *bus_get_device_klist(struct bus_type *bus)
 {
 	return &bus->p->klist_devices;
 }
-EXPORT_SYMBOL_GPL(bus_get_device_klist);
 
 /*
  * Yes, this forcibly breaks the klist abstraction temporarily.  It
@@ -953,6 +922,11 @@ void bus_sort_breadthfirst(struct bus_type *bus,
 }
 EXPORT_SYMBOL_GPL(bus_sort_breadthfirst);
 
+struct subsys_dev_iter {
+	struct klist_iter		ki;
+	const struct device_type	*type;
+};
+
 /**
  * subsys_dev_iter_init - initialize subsys device iterator
  * @iter: subsys iterator to initialize
@@ -965,8 +939,8 @@ EXPORT_SYMBOL_GPL(bus_sort_breadthfirst);
  * otherwise if it is NULL, the iteration starts at the beginning of
  * the list.
  */
-void subsys_dev_iter_init(struct subsys_dev_iter *iter, struct bus_type *subsys,
-			  struct device *start, const struct device_type *type)
+static void subsys_dev_iter_init(struct subsys_dev_iter *iter, struct bus_type *subsys,
+				 struct device *start, const struct device_type *type)
 {
 	struct klist_node *start_knode = NULL;
 
@@ -975,7 +949,6 @@ void subsys_dev_iter_init(struct subsys_dev_iter *iter, struct bus_type *subsys,
 	klist_iter_init_node(&subsys->p->klist_devices, &iter->ki, start_knode);
 	iter->type = type;
 }
-EXPORT_SYMBOL_GPL(subsys_dev_iter_init);
 
 /**
  * subsys_dev_iter_next - iterate to the next device
@@ -989,7 +962,7 @@ EXPORT_SYMBOL_GPL(subsys_dev_iter_init);
  * free to do whatever it wants to do with the device including
  * calling back into subsys code.
  */
-struct device *subsys_dev_iter_next(struct subsys_dev_iter *iter)
+static struct device *subsys_dev_iter_next(struct subsys_dev_iter *iter)
 {
 	struct klist_node *knode;
 	struct device *dev;
@@ -1003,7 +976,6 @@ struct device *subsys_dev_iter_next(struct subsys_dev_iter *iter)
 			return dev;
 	}
 }
-EXPORT_SYMBOL_GPL(subsys_dev_iter_next);
 
 /**
  * subsys_dev_iter_exit - finish iteration
@@ -1012,11 +984,10 @@ EXPORT_SYMBOL_GPL(subsys_dev_iter_next);
  * Finish an iteration.  Always call this function after iteration is
  * complete whether the iteration ran till the end or not.
  */
-void subsys_dev_iter_exit(struct subsys_dev_iter *iter)
+static void subsys_dev_iter_exit(struct subsys_dev_iter *iter)
 {
 	klist_iter_exit(&iter->ki);
 }
-EXPORT_SYMBOL_GPL(subsys_dev_iter_exit);
 
 int subsys_interface_register(struct subsys_interface *sif)
 {
