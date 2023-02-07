@@ -2159,25 +2159,9 @@ static struct dm_table *__bind(struct mapped_device *md, struct dm_table *t,
 			       struct queue_limits *limits)
 {
 	struct dm_table *old_map;
-	sector_t size;
 	int ret;
 
 	lockdep_assert_held(&md->suspend_lock);
-
-	size = dm_table_get_size(t);
-
-	/*
-	 * Wipe any geometry if the size of the table changed.
-	 */
-	if (size != dm_get_size(md))
-		memset(&md->geometry, 0, sizeof(md->geometry));
-
-	if (!get_capacity(md->disk))
-		set_capacity(md->disk, size);
-	else
-		set_capacity_and_notify(md->disk, size);
-
-	dm_table_event_callback(t, event_callback, md);
 
 	if (dm_table_request_based(t)) {
 		/*
@@ -2824,7 +2808,7 @@ static int __dm_resume(struct mapped_device *md, struct dm_table *map)
 	return 0;
 }
 
-int dm_resume(struct mapped_device *md)
+int dm_resume(struct mapped_device *md, bool table_swapped)
 {
 	int r;
 	struct dm_table *map = NULL;
@@ -2848,6 +2832,23 @@ retry:
 	map = rcu_dereference_protected(md->map, lockdep_is_held(&md->suspend_lock));
 	if (!map || !dm_table_get_size(map))
 		goto out;
+
+	if (table_swapped) {
+		sector_t size = dm_table_get_size(map);
+
+		/*
+		 * Wipe any geometry if the size of the table changed.
+		 */
+		if (size != dm_get_size(md))
+			memset(&md->geometry, 0, sizeof(md->geometry));
+
+		if (!get_capacity(md->disk))
+			set_capacity(md->disk, size);
+		else
+			set_capacity_and_notify(md->disk, size);
+
+		dm_table_event_callback(map, event_callback, md);
+	}
 
 	r = __dm_resume(md, map);
 	if (r)
@@ -3052,6 +3053,15 @@ out:
 int dm_suspended_md(struct mapped_device *md)
 {
 	return test_bit(DMF_SUSPENDED, &md->flags);
+}
+
+int dm_suspended_md_locked(struct mapped_device *md)
+{
+	int ret;
+	mutex_lock(&md->suspend_lock);
+	ret = test_bit(DMF_SUSPENDED, &md->flags);
+	mutex_unlock(&md->suspend_lock);
+	return ret;
 }
 
 static int dm_post_suspending_md(struct mapped_device *md)

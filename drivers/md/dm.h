@@ -140,6 +140,7 @@ int dm_deleting_md(struct mapped_device *md);
  * Is this mapped_device suspended?
  */
 int dm_suspended_md(struct mapped_device *md);
+int dm_suspended_md_locked(struct mapped_device *md);
 
 /*
  * Internal suspend and resume methods.

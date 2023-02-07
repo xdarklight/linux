@@ -806,7 +806,7 @@ static void __dev_status(struct mapped_device *md, struct dm_ioctl *param)
 	param->flags &= ~(DM_SUSPEND_FLAG | DM_READONLY_FLAG |
 			  DM_ACTIVE_PRESENT_FLAG | DM_INTERNAL_SUSPEND_FLAG);
 
-	if (dm_suspended_md(md))
+	if (dm_suspended_md_locked(md))
 		param->flags |= DM_SUSPEND_FLAG;
 
 	if (dm_suspended_internally_md(md))
@@ -1171,7 +1171,7 @@ static int do_resume(struct dm_ioctl *param)
 	}
 
 	if (dm_suspended_md(md)) {
-		r = dm_resume(md);
+		r = dm_resume(md, new_map != NULL);
 		if (!r) {
 			dm_ima_measure_on_device_resume(md, new_map ? true : false);
 
@@ -2229,7 +2229,7 @@ int __init dm_early_create(struct dm_ioctl *dmi,
 	set_disk_ro(dm_disk(md), !!(dmi->flags & DM_READONLY_FLAG));
 
 	/* resume device */
-	r = dm_resume(md);
+	r = dm_resume(md, true);
 	if (r)
 		goto err_destroy_table;
 
