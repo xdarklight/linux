@@ -748,6 +748,8 @@ struct page *read_cache_page(struct address_space *, pgoff_t index,
 		filler_t *filler, struct file *file);
 extern struct page * read_cache_page_gfp(struct address_space *mapping,
 				pgoff_t index, gfp_t gfp_mask);
+int filemap_get_pages(struct kiocb *iocb, size_t count,
+		      struct folio_batch *fbatch, bool need_uptodate);
 
 static inline struct page *read_mapping_page(struct address_space *mapping,
 				pgoff_t index, struct file *file)
