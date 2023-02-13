@@ -49,6 +49,7 @@
 #include <linux/notifier.h>
 #include <linux/refcount.h>
 #include <linux/auxiliary_bus.h>
+#include <linux/mutex.h>
 
 #include <linux/mlx5/device.h>
 #include <linux/mlx5/doorbell.h>
@@ -100,6 +101,8 @@ enum {
 };
 
 enum {
+	MLX5_REG_SBPR            = 0xb001,
+	MLX5_REG_SBCM            = 0xb002,
 	MLX5_REG_QPTS            = 0x4002,
 	MLX5_REG_QETCR		 = 0x4005,
 	MLX5_REG_QTCT		 = 0x400a,
@@ -308,6 +311,7 @@ struct mlx5_cmd {
 	struct workqueue_struct *wq;
 	struct semaphore sem;
 	struct semaphore pages_sem;
+	struct semaphore throttle_sem;
 	int	mode;
 	u16     allowed_opcode;
 	struct mlx5_cmd_work_ent *ent_arr[MLX5_MAX_COMMANDS];
@@ -427,8 +431,6 @@ struct mlx5_core_health {
 	u8				synd;
 	u32				fatal_error;
 	u32				crdump_size;
-	/* wq spinlock to synchronize draining */
-	spinlock_t			wq_lock;
 	struct workqueue_struct	       *wq;
 	unsigned long			flags;
 	struct work_struct		fatal_report_work;
@@ -513,6 +515,7 @@ struct mlx5_vhca_state_notifier;
 struct mlx5_sf_dev_table;
 struct mlx5_sf_hw_table;
 struct mlx5_sf_table;
+struct mlx5_crypto_dek_priv;
 
 struct mlx5_rate_limit {
 	u32			rate;
@@ -551,10 +554,6 @@ enum {
 	 * creation/deletion on drivers rescan. Unset during device attach.
 	 */
 	MLX5_PRIV_FLAGS_DETACH = 1 << 2,
-	/* Distinguish between mlx5e_probe/remove called by module init/cleanup
-	 * and called by other flows which can already hold devlink lock
-	 */
-	MLX5_PRIV_FLAGS_MLX5E_LOCKED_FLOW = 1 << 3,
 };
 
 struct mlx5_adev {
@@ -681,6 +680,8 @@ struct mlx5e_resources {
 	} hw_objs;
 	struct devlink_port dl_port;
 	struct net_device *uplink_netdev;
+	struct mutex uplink_netdev_lock;
+	struct mlx5_crypto_dek_priv *dek_priv;
 };
 
 enum mlx5_sw_icm_type {
@@ -1017,6 +1018,9 @@ int mlx5_cmd_exec_polling(struct mlx5_core_dev *dev, void *in, int in_size,
 			  void *out, int out_size);
 bool mlx5_cmd_is_down(struct mlx5_core_dev *dev);
 
+void mlx5_core_uplink_netdev_set(struct mlx5_core_dev *mdev, struct net_device *netdev);
+void mlx5_core_uplink_netdev_event_replay(struct mlx5_core_dev *mdev);
+
 int mlx5_core_get_caps(struct mlx5_core_dev *dev, enum mlx5_cap_type cap_type);
 void mlx5_health_cleanup(struct mlx5_core_dev *dev);
 int mlx5_health_init(struct mlx5_core_dev *dev);
@@ -1204,6 +1208,11 @@ static inline bool mlx5_core_is_pf(const struct mlx5_core_dev *dev)
 static inline bool mlx5_core_is_vf(const struct mlx5_core_dev *dev)
 {
 	return dev->coredev_type == MLX5_COREDEV_VF;
+}
+
+static inline bool mlx5_core_is_management_pf(const struct mlx5_core_dev *dev)
+{
+	return MLX5_CAP_GEN(dev, num_ports) == 1 && !MLX5_CAP_GEN(dev, native_port_num);
 }
 
 static inline bool mlx5_core_is_ecpf(const struct mlx5_core_dev *dev)

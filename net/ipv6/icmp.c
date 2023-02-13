@@ -183,6 +183,7 @@ static bool icmpv6_global_allow(struct net *net, int type)
 	if (icmp_global_allow())
 		return true;
 
+	__ICMP_INC_STATS(net, ICMP_MIB_RATELIMITGLOBAL);
 	return false;
 }
 
@@ -224,6 +225,9 @@ static bool icmpv6_xrlim_allow(struct sock *sk, u8 type,
 		if (peer)
 			inet_putpeer(peer);
 	}
+	if (!res)
+		__ICMP6_INC_STATS(net, ip6_dst_idev(dst),
+				  ICMP6_MIB_RATELIMITHOST);
 	dst_release(dst);
 	return res;
 }
@@ -328,7 +332,6 @@ static void mip6_addr_swap(struct sk_buff *skb, const struct inet6_skb_parm *opt
 {
 	struct ipv6hdr *iph = ipv6_hdr(skb);
 	struct ipv6_destopt_hao *hao;
-	struct in6_addr tmp;
 	int off;
 
 	if (opt->dsthao) {
@@ -336,9 +339,7 @@ static void mip6_addr_swap(struct sk_buff *skb, const struct inet6_skb_parm *opt
 		if (likely(off >= 0)) {
 			hao = (struct ipv6_destopt_hao *)
 					(skb_network_header(skb) + off);
-			tmp = iph->saddr;
-			iph->saddr = hao->addr;
-			hao->addr = tmp;
+			swap(iph->saddr, hao->addr);
 		}
 	}
 }

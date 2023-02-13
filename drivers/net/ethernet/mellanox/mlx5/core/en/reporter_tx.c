@@ -81,6 +81,10 @@ static int mlx5e_tx_reporter_err_cqe_recover(void *ctx)
 	sq->stats->recover++;
 	clear_bit(MLX5E_SQ_STATE_RECOVERING, &sq->state);
 	mlx5e_activate_txqsq(sq);
+	if (sq->channel)
+		mlx5e_trigger_napi_icosq(sq->channel);
+	else
+		mlx5e_trigger_napi_sched(sq->cq.napi);
 
 	return 0;
 out:
@@ -609,6 +613,6 @@ void mlx5e_reporter_tx_destroy(struct mlx5e_priv *priv)
 	if (!priv->tx_reporter)
 		return;
 
-	devlink_port_health_reporter_destroy(priv->tx_reporter);
+	devlink_health_reporter_destroy(priv->tx_reporter);
 	priv->tx_reporter = NULL;
 }
