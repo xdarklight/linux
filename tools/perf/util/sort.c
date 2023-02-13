@@ -28,6 +28,7 @@
 #include "time-utils.h"
 #include "cgroup.h"
 #include "machine.h"
+#include "trace-event.h"
 #include <linux/kernel.h>
 #include <linux/string.h>
 
@@ -2132,6 +2133,8 @@ static struct sort_dimension common_sort_dimensions[] = {
 	DIM(SORT_LOCAL_PIPELINE_STAGE_CYC, "local_p_stage_cyc", sort_local_p_stage_cyc),
 	DIM(SORT_GLOBAL_PIPELINE_STAGE_CYC, "p_stage_cyc", sort_global_p_stage_cyc),
 	DIM(SORT_ADDR, "addr", sort_addr),
+	DIM(SORT_LOCAL_RETIRE_LAT, "local_retire_lat", sort_local_p_stage_cyc),
+	DIM(SORT_GLOBAL_RETIRE_LAT, "retire_lat", sort_global_p_stage_cyc),
 };
 
 #undef DIM
@@ -2667,10 +2670,8 @@ static int64_t __sort__hde_cmp(struct perf_hpp_fmt *fmt,
 		tep_read_number_field(field, a->raw_data, &dyn);
 		offset = dyn & 0xffff;
 		size = (dyn >> 16) & 0xffff;
-#ifdef HAVE_LIBTRACEEVENT_TEP_FIELD_IS_RELATIVE
-		if (field->flags & TEP_FIELD_IS_RELATIVE)
+		if (tep_field_is_relative(field->flags))
 			offset += field->offset + field->size;
-#endif
 		/* record max width for output */
 		if (size > hde->dynamic_len)
 			hde->dynamic_len = size;
