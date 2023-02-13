@@ -168,7 +168,9 @@ struct folio *try_grab_folio(struct page *page, int refs, unsigned int flags)
 		 */
 		smp_mb__after_atomic();
 
+#ifdef CONFIG_DEBUG_VM
 		node_stat_mod_folio(folio, NR_FOLL_PIN_ACQUIRED, refs);
+#endif
 
 		return folio;
 	}
@@ -180,7 +182,9 @@ struct folio *try_grab_folio(struct page *page, int refs, unsigned int flags)
 static void gup_put_folio(struct folio *folio, int refs, unsigned int flags)
 {
 	if (flags & FOLL_PIN) {
+#ifdef CONFIG_DEBUG_VM
 		node_stat_mod_folio(folio, NR_FOLL_PIN_RELEASED, refs);
+#endif
 		if (folio_test_large(folio))
 			atomic_sub(refs, folio_pincount_ptr(folio));
 		else
@@ -236,8 +240,9 @@ int __must_check try_grab_page(struct page *page, unsigned int flags)
 		} else {
 			folio_ref_add(folio, GUP_PIN_COUNTING_BIAS);
 		}
-
+#ifdef CONFIG_DEBUG_VM
 		node_stat_mod_folio(folio, NR_FOLL_PIN_ACQUIRED, 1);
+#endif
 	}
 
 	return 0;
