@@ -261,6 +261,8 @@ enum nft_chain_attributes {
  * @NFTA_RULE_USERDATA: user data (NLA_BINARY, NFT_USERDATA_MAXLEN)
  * @NFTA_RULE_ID: uniquely identifies a rule in a transaction (NLA_U32)
  * @NFTA_RULE_POSITION_ID: transaction unique identifier of the previous rule (NLA_U32)
+ * @NFTA_RULE_CHAIN_ID: add the rule to chain by ID, alternative to @NFTA_RULE_CHAIN (NLA_U32)
+ * @NFTA_RULE_ACTUAL_EXPR: list of expressions to really use if @NFTA_RULE_EXPRESSIONS must contain a compatible representation of the rule (NLA_NESTED: nft_expr_attributes)
  */
 enum nft_rule_attributes {
 	NFTA_RULE_UNSPEC,
@@ -275,6 +277,7 @@ enum nft_rule_attributes {
 	NFTA_RULE_ID,
 	NFTA_RULE_POSITION_ID,
 	NFTA_RULE_CHAIN_ID,
+	NFTA_RULE_ACTUAL_EXPR,
 	__NFTA_RULE_MAX
 };
 #define NFTA_RULE_MAX		(__NFTA_RULE_MAX - 1)
