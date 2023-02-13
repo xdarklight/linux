@@ -149,7 +149,6 @@ struct dc_link_settings {
 	enum dc_link_spread link_spread;
 	bool use_link_rate_set;
 	uint8_t link_rate_set;
-	bool dpcd_source_device_specific_field_support;
 };
 
 union dc_dp_ffe_preset {
@@ -362,14 +361,10 @@ enum dpcd_downstream_port_detailed_type {
 union dwnstream_port_caps_byte2 {
 	struct {
 		uint8_t MAX_BITS_PER_COLOR_COMPONENT:2;
-#if defined(CONFIG_DRM_AMD_DC_DCN)
 		uint8_t MAX_ENCODED_LINK_BW_SUPPORT:3;
 		uint8_t SOURCE_CONTROL_MODE_SUPPORT:1;
 		uint8_t CONCURRENT_LINK_BRING_UP_SEQ_SUPPORT:1;
 		uint8_t RESERVED:1;
-#else
-		uint8_t RESERVED:6;
-#endif
 	} bits;
 	uint8_t raw;
 };
@@ -407,7 +402,6 @@ union dwnstream_port_caps_byte3_hdmi {
 	uint8_t raw;
 };
 
-#if defined(CONFIG_DRM_AMD_DC_DCN)
 union hdmi_sink_encoded_link_bw_support {
 	struct {
 		uint8_t HDMI_SINK_ENCODED_LINK_BW_SUPPORT:3;
@@ -429,7 +423,6 @@ union hdmi_encoded_link_bw {
 	} bits;
 	uint8_t raw;
 };
-#endif
 
 /*4-byte structure for detailed capabilities of a down-stream port
 (DP-to-TMDS converter).*/
@@ -509,7 +502,11 @@ union down_spread_ctrl {
 	1 = Main link signal is downspread <= 0.5%
 	with frequency in the range of 30kHz ~ 33kHz*/
 		uint8_t SPREAD_AMP:1;
-		uint8_t RESERVED2:2;/*Bit 6:5 = RESERVED. Read all 0s*/
+		uint8_t RESERVED2:1;/*Bit 5 = RESERVED. Read all 0s*/
+	/* Bit 6 = FIXED_VTOTAL_AS_SDP_EN_IN_PR_ACTIVE.
+	0 = FIXED_VTOTAL_AS_SDP_EN_IN_PR_ACTIVE is not enabled by the Source device (default)
+	1 = FIXED_VTOTAL_AS_SDP_EN_IN_PR_ACTIVE is enabled by Source device */
+		uint8_t FIXED_VTOTAL_AS_SDP_EN_IN_PR_ACTIVE:1;
 	/*Bit 7 = MSA_TIMING_PAR_IGNORE_EN
 	0 = Source device will send valid data for the MSA Timing Params
 	1 = Source device may send invalid data for these MSA Timing Params*/
@@ -865,6 +862,21 @@ struct psr_caps {
 	unsigned int psr_power_opt_flag;
 };
 
+union dpcd_dprx_feature_enumeration_list_cont_1 {
+	struct {
+		uint8_t ADAPTIVE_SYNC_SDP_SUPPORT:1;
+		uint8_t AS_SDP_FIRST_HALF_LINE_OR_3840_PIXEL_CYCLE_WINDOW_NOT_SUPPORTED: 1;
+		uint8_t RESERVED0: 2;
+		uint8_t VSC_EXT_SDP_VER1_SUPPORT: 1;
+		uint8_t RESERVED1: 3;
+	} bits;
+	uint8_t raw;
+};
+
+struct adaptive_sync_caps {
+	union dpcd_dprx_feature_enumeration_list_cont_1 dp_adap_sync_caps;
+};
+
 /* Length of router topology ID read from DPCD in bytes. */
 #define DPCD_USB4_TOPOLOGY_ID_LEN 5
 
@@ -926,6 +938,9 @@ struct dpcd_usb4_dp_tunneling_info {
 #ifndef DP_128b_132b_TRAINING_AUX_RD_INTERVAL
 #define DP_128b_132b_TRAINING_AUX_RD_INTERVAL		0x2216
 #endif
+#ifndef DP_LINK_SQUARE_PATTERN
+#define DP_LINK_SQUARE_PATTERN				0x10F
+#endif
 #ifndef DP_CABLE_ATTRIBUTES_UPDATED_BY_DPRX
 #define DP_CABLE_ATTRIBUTES_UPDATED_BY_DPRX		0x2217
 #endif
@@ -973,6 +988,9 @@ struct dpcd_usb4_dp_tunneling_info {
 /* TODO - Use DRM header to replace above once available */
 #endif // DP_INTRA_HOP_AUX_REPLY_INDICATION
 
+#ifndef DP_REPEATER_CONFIGURATION_AND_STATUS_SIZE
+#define DP_REPEATER_CONFIGURATION_AND_STATUS_SIZE	0x50
+#endif
 union dp_main_line_channel_coding_cap {
 	struct {
 		uint8_t DP_8b_10b_SUPPORTED	:1;
