@@ -10,8 +10,6 @@
 #ifndef __ACRESTYP_H__
 #define __ACRESTYP_H__
 
-#include <linux/stddef.h>
-
 /*
  * Definitions for Resource Attributes
  */
@@ -334,7 +332,7 @@ struct acpi_resource_extended_irq {
 	u8 wake_capable;
 	u8 interrupt_count;
 	struct acpi_resource_source resource_source;
-	u32 interrupts[];
+	u32 interrupts[1];
 };
 
 struct acpi_resource_generic_register {
@@ -681,10 +679,7 @@ struct acpi_pci_routing_table {
 	u32 pin;
 	u64 address;		/* here for 64-bit alignment */
 	u32 source_index;
-	union {
-		char pad[4];	/* pad to 64 bits so sizeof() works in all cases */
-		__DECLARE_FLEX_ARRAY(char, source);
-	};
+	char source[4];		/* pad to 64 bits so sizeof() works in all cases */
 };
 
 #endif				/* __ACRESTYP_H__ */
