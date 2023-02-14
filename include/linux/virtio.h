@@ -225,4 +225,12 @@ dma_addr_t virtio_dma_map(struct device *dev, void *addr, unsigned int length,
 int virtio_dma_mapping_error(struct device *dev, dma_addr_t addr);
 void virtio_dma_unmap(struct device *dev, dma_addr_t dma, unsigned int length,
 		      enum dma_data_direction dir);
+bool virtio_dma_need_sync(struct device *dev, dma_addr_t addr);
+void virtio_dma_sync_single_range_for_cpu(struct device *dev, dma_addr_t addr,
+					  unsigned long offset, size_t size,
+					  enum dma_data_direction dir);
+void virtio_dma_sync_single_range_for_device(struct device *dev,
+					     dma_addr_t addr,
+					     unsigned long offset, size_t size,
+					     enum dma_data_direction dir);
 #endif /* _LINUX_VIRTIO_H */

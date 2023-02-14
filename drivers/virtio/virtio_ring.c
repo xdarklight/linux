@@ -3264,4 +3264,74 @@ void virtio_dma_unmap(struct device *dev, dma_addr_t dma, unsigned int length,
 }
 EXPORT_SYMBOL_GPL(virtio_dma_unmap);
 
+/**
+ * virtio_dma_need_sync - check a dma address needs sync
+ * @dev: virtio device
+ * @addr: DMA address
+ *
+ * This API is only for pre-mapped buffers, for non premapped buffers virtio
+ * core handles DMA API internally.
+ */
+bool virtio_dma_need_sync(struct device *dev, dma_addr_t addr)
+{
+	struct virtio_device *vdev = dev_to_virtio(dev);
+
+	if (!vring_use_dma_api(vdev))
+		return 0;
+
+	return dma_need_sync(vdev->dev.parent, addr);
+}
+EXPORT_SYMBOL_GPL(virtio_dma_need_sync);
+
+/**
+ * virtio_dma_sync_single_range_for_cpu - dma sync for cpu
+ * @dev: virtio device
+ * @addr: DMA address
+ * @offset: DMA address offset
+ * @size: mem size for sync
+ * @dir: DMA direction
+ *
+ * Before calling this function, use virtio_dma_need_sync() to confirm that the
+ * DMA address really needs to be synchronized
+ *
+ * This API is only for pre-mapped buffers, for non premapped buffers virtio
+ * core handles DMA API internally.
+ */
+void virtio_dma_sync_single_range_for_cpu(struct device *dev, dma_addr_t addr,
+					  unsigned long offset, size_t size,
+					  enum dma_data_direction dir)
+{
+	struct virtio_device *vdev = dev_to_virtio(dev);
+
+	dma_sync_single_range_for_cpu(vdev->dev.parent, addr, offset,
+				      size, DMA_BIDIRECTIONAL);
+}
+EXPORT_SYMBOL_GPL(virtio_dma_sync_single_range_for_cpu);
+
+/**
+ * virtio_dma_sync_single_range_for_device - dma sync for device
+ * @dev: virtio device
+ * @addr: DMA address
+ * @offset: DMA address offset
+ * @size: mem size for sync
+ * @dir: DMA direction
+ *
+ * Before calling this function, use virtio_dma_need_sync() to confirm that the
+ * DMA address really needs to be synchronized
+ *
+ * This API is only for pre-mapped buffers, for non premapped buffers virtio
+ * core handles DMA API internally.
+ */
+void virtio_dma_sync_single_range_for_device(struct device *dev,
+					     dma_addr_t addr,
+					     unsigned long offset, size_t size,
+					     enum dma_data_direction dir)
+{
+	struct virtio_device *vdev = dev_to_virtio(dev);
+
+	dma_sync_single_range_for_device(vdev->dev.parent, addr, offset,
+					 size, DMA_BIDIRECTIONAL);
+}
+EXPORT_SYMBOL_GPL(virtio_dma_sync_single_range_for_device);
+
 MODULE_LICENSE("GPL");
