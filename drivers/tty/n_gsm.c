@@ -540,6 +540,11 @@ static u8 gsm_encode_modem(const struct gsm_dlci *dlci)
 		modembits |= MDM_IC;
 	if (dlci->modem_tx & TIOCM_CD || dlci->gsm->initiator)
 		modembits |= MDM_DV;
+	/* special mappings for passive side to operate as UE */
+	if (dlci->modem_tx & TIOCM_OUT1)
+		modembits |= MDM_IC;
+	if (dlci->modem_tx & TIOCM_OUT2)
+		modembits |= MDM_DV;
 	return modembits;
 }
 
@@ -1531,6 +1536,7 @@ static void gsm_process_modem(struct tty_struct *tty, struct gsm_dlci *dlci,
 	if (brk & 0x01)
 		tty_insert_flip_char(&dlci->port, 0, TTY_BREAK);
 	dlci->modem_rx = mlines;
+	wake_up_interruptible(&dlci->gsm->event);
 }
 
 /**
@@ -2059,14 +2065,14 @@ static void gsm_dlci_close(struct gsm_dlci *dlci)
 		tty_port_tty_hangup(&dlci->port, false);
 		gsm_dlci_clear_queues(dlci->gsm, dlci);
 		/* Ensure that gsmtty_open() can return. */
-		tty_port_set_initialized(&dlci->port, 0);
+		tty_port_set_initialized(&dlci->port, false);
 		wake_up_interruptible(&dlci->port.open_wait);
 	} else
 		dlci->gsm->dead = true;
 	/* A DLCI 0 close is a MUX termination so we need to kick that
 	   back to userspace somehow */
 	gsm_dlci_data_kick(dlci);
-	wake_up(&dlci->gsm->event);
+	wake_up_all(&dlci->gsm->event);
 }
 
 /**
@@ -2267,6 +2273,7 @@ static void gsm_dlci_begin_close(struct gsm_dlci *dlci)
 	dlci->state = DLCI_CLOSING;
 	gsm_command(dlci->gsm, dlci->addr, DISC|PF);
 	mod_timer(&dlci->t1, jiffies + gsm->t1 * HZ / 100);
+	wake_up_interruptible(&gsm->event);
 }
 
 /**
@@ -3770,16 +3777,43 @@ static int gsm_modem_update(struct gsm_dlci *dlci, u8 brk)
 	return -EPROTONOSUPPORT;
 }
 
-static int gsm_carrier_raised(struct tty_port *port)
+/**
+ * gsm_wait_modem_change - wait for modem status line change
+ * @dlci: channel
+ * @mask: modem status line bits
+ *
+ * The function returns if:
+ * - any given modem status line bit changed
+ * - the wait event function got interrupted (e.g. by a signal)
+ * - the underlying DLCI was closed
+ * - the underlying ldisc device was removed
+ */
+static int gsm_wait_modem_change(struct gsm_dlci *dlci, u32 mask)
+{
+	struct gsm_mux *gsm = dlci->gsm;
+	u32 old = dlci->modem_rx;
+	int ret;
+
+	ret = wait_event_interruptible(gsm->event, gsm->dead ||
+				       dlci->state != DLCI_OPEN ||
+				       (old ^ dlci->modem_rx) & mask);
+	if (gsm->dead)
+		return -ENODEV;
+	if (dlci->state != DLCI_OPEN)
+		return -EL2NSYNC;
+	return ret;
+}
+
+static bool gsm_carrier_raised(struct tty_port *port)
 {
 	struct gsm_dlci *dlci = container_of(port, struct gsm_dlci, port);
 	struct gsm_mux *gsm = dlci->gsm;
 
 	/* Not yet open so no carrier info */
 	if (dlci->state != DLCI_OPEN)
-		return 0;
+		return false;
 	if (debug & DBG_CD_ON)
-		return 1;
+		return true;
 
 	/*
 	 * Basic mode with control channel in ADM mode may not respond
@@ -3787,16 +3821,16 @@ static int gsm_carrier_raised(struct tty_port *port)
 	 */
 	if (gsm->encoding == GSM_BASIC_OPT &&
 	    gsm->dlci[0]->mode == DLCI_MODE_ADM && !dlci->modem_rx)
-		return 1;
+		return true;
 
 	return dlci->modem_rx & TIOCM_CD;
 }
 
-static void gsm_dtr_rts(struct tty_port *port, int onoff)
+static void gsm_dtr_rts(struct tty_port *port, bool active)
 {
 	struct gsm_dlci *dlci = container_of(port, struct gsm_dlci, port);
 	unsigned int modem_tx = dlci->modem_tx;
-	if (onoff)
+	if (active)
 		modem_tx |= TIOCM_DTR | TIOCM_RTS;
 	else
 		modem_tx &= ~(TIOCM_DTR | TIOCM_RTS);
@@ -3880,7 +3914,7 @@ static int gsmtty_open(struct tty_struct *tty, struct file *filp)
 	dlci->modem_rx = 0;
 	/* We could in theory open and close before we wait - eg if we get
 	   a DM straight back. This is ok as that will have caused a hangup */
-	tty_port_set_initialized(port, 1);
+	tty_port_set_initialized(port, true);
 	/* Start sending off SABM messages */
 	if (gsm->initiator)
 		gsm_dlci_begin_open(dlci);
@@ -4029,6 +4063,8 @@ static int gsmtty_ioctl(struct tty_struct *tty,
 		gsm_destroy_network(dlci);
 		mutex_unlock(&dlci->mutex);
 		return 0;
+	case TIOCMIWAIT:
+		return gsm_wait_modem_change(dlci, (u32)arg);
 	default:
 		return -ENOIOCTLCMD;
 	}
