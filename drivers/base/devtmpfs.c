@@ -13,6 +13,8 @@
  * overwrite the default setting if needed.
  */
 
+#define pr_fmt(fmt) "devtmpfs: " fmt
+
 #include <linux/kernel.h>
 #include <linux/syscalls.h>
 #include <linux/mount.h>
@@ -145,22 +147,22 @@ int devtmpfs_create_node(struct device *dev)
 	return devtmpfs_submit_req(&req, tmp);
 }
 
-int devtmpfs_delete_node(struct device *dev)
+void devtmpfs_delete_node(struct device *dev)
 {
 	const char *tmp = NULL;
 	struct req req;
 
 	if (!thread)
-		return 0;
+		return;
 
 	req.name = device_get_devnode(dev, NULL, NULL, NULL, &tmp);
 	if (!req.name)
-		return -ENOMEM;
+		return;
 
 	req.mode = 0;
 	req.dev = dev;
 
-	return devtmpfs_submit_req(&req, tmp);
+	devtmpfs_submit_req(&req, tmp);
 }
 
 static int dev_mkdir(const char *name, umode_t mode)
@@ -376,9 +378,9 @@ int __init devtmpfs_mount(void)
 
 	err = init_mount("devtmpfs", "dev", "devtmpfs", DEVTMPFS_MFLAGS, NULL);
 	if (err)
-		printk(KERN_INFO "devtmpfs: error mounting %i\n", err);
+		pr_info("error mounting %d\n", err);
 	else
-		printk(KERN_INFO "devtmpfs: mounted\n");
+		pr_info("mounted\n");
 	return err;
 }
 
@@ -387,10 +389,18 @@ static __initdata DECLARE_COMPLETION(setup_done);
 static int handle(const char *name, umode_t mode, kuid_t uid, kgid_t gid,
 		  struct device *dev)
 {
+	int ret;
+
 	if (mode)
-		return handle_create(name, mode, uid, gid, dev);
+		ret = handle_create(name, mode, uid, gid, dev);
 	else
-		return handle_remove(name, dev);
+		ret = handle_remove(name, dev);
+
+	if (ret)
+		dev_err(dev, "failed to %s %s, ret = %d\n",
+			mode ? "create" : "remove", name, ret);
+
+	return ret;
 }
 
 static void __noreturn devtmpfs_work_loop(void)
@@ -460,14 +470,12 @@ int __init devtmpfs_init(void)
 
 	mnt = vfs_kern_mount(&internal_fs_type, 0, "devtmpfs", opts);
 	if (IS_ERR(mnt)) {
-		printk(KERN_ERR "devtmpfs: unable to create devtmpfs %ld\n",
-				PTR_ERR(mnt));
+		pr_err("unable to create devtmpfs %ld\n", PTR_ERR(mnt));
 		return PTR_ERR(mnt);
 	}
 	err = register_filesystem(&dev_fs_type);
 	if (err) {
-		printk(KERN_ERR "devtmpfs: unable to register devtmpfs "
-		       "type %i\n", err);
+		pr_err("unable to register devtmpfs type %d\n", err);
 		return err;
 	}
 
@@ -480,12 +488,12 @@ int __init devtmpfs_init(void)
 	}
 
 	if (err) {
-		printk(KERN_ERR "devtmpfs: unable to create devtmpfs %i\n", err);
+		pr_err("unable to create devtmpfs %d\n", err);
 		unregister_filesystem(&dev_fs_type);
 		thread = NULL;
 		return err;
 	}
 
-	printk(KERN_INFO "devtmpfs: initialized\n");
+	pr_info("initialized\n");
 	return 0;
 }
