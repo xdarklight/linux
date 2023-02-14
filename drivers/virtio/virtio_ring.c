@@ -1330,25 +1330,14 @@ static int virtqueue_add_indirect_packed(struct vring_virtqueue *vq,
 					 unsigned int out_sgs,
 					 unsigned int in_sgs,
 					 void *data,
-					 gfp_t gfp)
+					 struct vring_packed_desc *desc)
 {
-	struct vring_packed_desc *desc;
 	struct scatterlist *sg;
 	unsigned int i, n, err_idx;
 	u16 head, id;
 	dma_addr_t addr;
 
 	head = vq->packed.next_avail_idx;
-	desc = alloc_indirect_packed(total_sg, gfp);
-	if (!desc)
-		return -ENOMEM;
-
-	if (unlikely(vq->vq.num_free < 1)) {
-		pr_debug("Can't add buf len 1 - avail = 0\n");
-		kfree(desc);
-		END_USE(vq);
-		return -ENOSPC;
-	}
 
 	i = 0;
 	id = vq->free_head;
@@ -1470,11 +1459,17 @@ static inline int virtqueue_add_packed(struct virtqueue *_vq,
 	BUG_ON(total_sg == 0);
 
 	if (virtqueue_use_indirect(vq, total_sg)) {
-		err = virtqueue_add_indirect_packed(vq, sgs, total_sg, out_sgs,
-						    in_sgs, data, gfp);
-		if (err != -ENOMEM) {
-			END_USE(vq);
-			return err;
+		desc = alloc_indirect_packed(total_sg, gfp);
+		if (desc) {
+			if (unlikely(vq->vq.num_free < 1)) {
+				pr_debug("Can't add buf len 1 - avail = 0\n");
+				kfree(desc);
+				END_USE(vq);
+				return -ENOSPC;
+			}
+
+			return virtqueue_add_indirect_packed(vq, sgs, total_sg, out_sgs,
+							     in_sgs, data, desc);
 		}
 
 		/* fall back on direct */
