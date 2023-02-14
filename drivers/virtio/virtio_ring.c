@@ -78,6 +78,7 @@ struct vring_desc_state_packed {
 	struct vring_packed_desc *indir_desc; /* Indirect descriptor, if any. */
 	u16 num;			/* Descriptor list length. */
 	u16 last;			/* The last desc state in a list. */
+	bool premapped;
 };
 
 struct vring_desc_extra {
@@ -1318,7 +1319,8 @@ static inline u16 packed_last_used(u16 last_used_idx)
 }
 
 static void vring_unmap_extra_packed(const struct vring_virtqueue *vq,
-				     struct vring_desc_extra *extra)
+				     struct vring_desc_extra *extra,
+				     bool premapped)
 {
 	u16 flags;
 
@@ -1333,6 +1335,9 @@ static void vring_unmap_extra_packed(const struct vring_virtqueue *vq,
 				 (flags & VRING_DESC_F_WRITE) ?
 				 DMA_FROM_DEVICE : DMA_TO_DEVICE);
 	} else {
+		if (premapped)
+			return;
+
 		dma_unmap_page(vring_dma_dev(vq),
 			       extra->addr, extra->len,
 			       (flags & VRING_DESC_F_WRITE) ?
@@ -1382,7 +1387,7 @@ static int virtqueue_add_indirect_packed(struct vring_virtqueue *vq,
 					 struct vring_packed_desc *desc)
 {
 	struct scatterlist *sg;
-	unsigned int i, n, err_idx;
+	unsigned int i, n;
 	u16 head, id;
 	dma_addr_t addr;
 
@@ -1640,6 +1645,51 @@ end:
 	return err;
 }
 
+static inline int virtqueue_add_packed_premapped(struct virtqueue *_vq,
+						 struct scatterlist *sgs[],
+						 unsigned int total_sg,
+						 unsigned int out_sgs,
+						 unsigned int in_sgs,
+						 void *data,
+						 void *ctx,
+						 gfp_t gfp)
+{
+	struct vring_virtqueue *vq = to_vvq(_vq);
+	struct vring_packed_desc *desc;
+	u16 id;
+	int err;
+
+	START_USE(vq);
+
+	/* check vq state and try to alloc desc for indirect. */
+	err = virtqueue_add_packed_prepare(vq, total_sg, data, ctx, &desc, gfp);
+	if (err)
+		goto end;
+
+	id = vq->free_head;
+
+	if (desc) {
+		err = virtqueue_add_indirect_packed(vq, sgs, total_sg, out_sgs, in_sgs, desc);
+		if (err)
+			goto err;
+	} else {
+		virtqueue_add_packed_vring(vq, sgs, total_sg, out_sgs, in_sgs);
+		vq->packed.desc_state[id].indir_desc = ctx;
+	}
+
+	vq->packed.desc_state[id].data = data;
+	vq->packed.desc_state[id].premapped = true;
+
+	goto end;
+
+err:
+	kfree(desc);
+
+end:
+	END_USE(vq);
+	return err;
+}
+
 static bool virtqueue_kick_prepare_packed(struct virtqueue *_vq)
 {
 	struct vring_virtqueue *vq = to_vvq(_vq);
@@ -1695,8 +1745,10 @@ static void detach_buf_packed(struct vring_virtqueue *vq,
 	struct vring_desc_state_packed *state = NULL;
 	struct vring_packed_desc *desc;
 	unsigned int i, curr;
+	bool premapped;
 
 	state = &vq->packed.desc_state[id];
+	premapped = state->premapped;
 
 	/* Clear data ptr. */
 	state->data = NULL;
@@ -1709,7 +1761,8 @@ static void detach_buf_packed(struct vring_virtqueue *vq,
 		curr = id;
 		for (i = 0; i < state->num; i++) {
 			vring_unmap_extra_packed(vq,
-						 &vq->packed.desc_extra[curr]);
+						 &vq->packed.desc_extra[curr],
+						 premapped);
 			curr = vq->packed.desc_extra[curr].next;
 		}
 	}
@@ -1722,7 +1775,7 @@ static void detach_buf_packed(struct vring_virtqueue *vq,
 		if (!desc)
 			return;
 
-		if (vq->use_dma_api) {
+		if (vq->use_dma_api && !premapped) {
 			len = vq->packed.desc_extra[id].len;
 			for (i = 0; i < len / sizeof(struct vring_packed_desc);
 					i++)
@@ -2265,8 +2318,10 @@ static inline int virtqueue_add_premapped(struct virtqueue *_vq,
 {
 	struct vring_virtqueue *vq = to_vvq(_vq);
 
-	return virtqueue_add_split_premapped(_vq, sgs, total_sg, out_sgs,
-					     in_sgs, data, ctx, gfp);
+	return vq->packed_ring ? virtqueue_add_packed_premapped(_vq, sgs, total_sg, out_sgs,
+								in_sgs, data, ctx, gfp) :
+				virtqueue_add_split_premapped(_vq, sgs, total_sg, out_sgs,
+							      in_sgs, data, ctx, gfp);
 }
 
 /**
