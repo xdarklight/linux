@@ -892,6 +892,13 @@ static inline bool get_page_unless_zero(struct page *page)
 	return page_ref_add_unless(page, 1, 0);
 }
 
+static inline struct folio *folio_get_nontail_page(struct page *page)
+{
+	if (unlikely(!get_page_unless_zero(page)))
+		return NULL;
+	return (struct folio *)page;
+}
+
 extern int page_is_ram(unsigned long pfn);
 
 enum {
@@ -1914,6 +1921,24 @@ static inline unsigned int folio_shift(struct folio *folio)
 static inline size_t folio_size(struct folio *folio)
 {
 	return PAGE_SIZE << folio_order(folio);
+}
+
+/**
+ * folio_estimated_sharers - Estimate the number of sharers of a folio.
+ * @folio: The folio.
+ *
+ * folio_estimated_sharers() aims to serve as a function to efficiently
+ * estimate the number of processes sharing a folio. This is done by
+ * looking at the precise mapcount of the first subpage in the folio, and
+ * assuming the other subpages are the same. This may not be true for large
+ * folios. If you want exact mapcounts for exact calculations, look at
+ * page_mapcount() or folio_total_mapcount().
+ *
+ * Return: The estimated number of processes sharing a folio.
+ */
+static inline int folio_estimated_sharers(struct folio *folio)
+{
+	return page_mapcount(folio_page(folio, 0));
 }
 
 #ifndef HAVE_ARCH_MAKE_PAGE_ACCESSIBLE

@@ -18,6 +18,7 @@ struct migration_target_control;
  * - zero on page migration success;
  */
 #define MIGRATEPAGE_SUCCESS		0
+#define MIGRATEPAGE_UNMAP		1
 
 /**
  * struct movable_operations - Driver page migration
@@ -120,6 +121,15 @@ static inline void __ClearPageMovable(struct page *page)
 static inline bool folio_test_movable(struct folio *folio)
 {
 	return PageMovable(&folio->page);
+}
+
+static inline
+const struct movable_operations *folio_movable_ops(struct folio *folio)
+{
+	VM_BUG_ON(!__folio_test_movable(folio));
+
+	return (const struct movable_operations *)
+		((unsigned long)folio->mapping - PAGE_MAPPING_MOVABLE);
 }
 
 static inline
