@@ -520,29 +520,83 @@ static inline unsigned int virtqueue_add_desc_split(struct virtqueue *vq,
 	return next;
 }
 
-static inline int virtqueue_add_split(struct virtqueue *_vq,
-				      struct scatterlist *sgs[],
-				      unsigned int total_sg,
-				      unsigned int out_sgs,
-				      unsigned int in_sgs,
-				      void *data,
-				      void *ctx,
-				      gfp_t gfp)
+static int virtqueue_map_sgs(struct vring_virtqueue *vq,
+			     struct scatterlist *sgs[],
+			     unsigned int total_sg,
+			     unsigned int out_sgs,
+			     unsigned int in_sgs)
 {
-	struct vring_virtqueue *vq = to_vvq(_vq);
 	struct scatterlist *sg;
-	struct vring_desc *desc;
-	unsigned int i, n, avail, descs_used, prev, err_idx;
-	int head;
-	bool indirect;
+	unsigned int n;
 
-	START_USE(vq);
+	for (n = 0; n < out_sgs; n++) {
+		for (sg = sgs[n]; sg; sg = sg_next(sg)) {
+			dma_addr_t addr = vring_map_one_sg(vq, sg, DMA_TO_DEVICE);
+
+			if (vring_mapping_error(vq, addr))
+				return -ENOMEM;
+
+			sg->dma_address = addr;
+		}
+	}
+	for (; n < (out_sgs + in_sgs); n++) {
+		for (sg = sgs[n]; sg; sg = sg_next(sg)) {
+			dma_addr_t addr = vring_map_one_sg(vq, sg, DMA_FROM_DEVICE);
+
+			if (vring_mapping_error(vq, addr))
+				return -ENOMEM;
+
+			sg->dma_address = addr;
+		}
+	}
+
+	return 0;
+}
+
+static void virtqueue_unmap_sgs(struct vring_virtqueue *vq,
+				struct scatterlist *sgs[],
+				unsigned int total_sg,
+				unsigned int out_sgs,
+				unsigned int in_sgs)
+{
+	struct scatterlist *sg;
+	unsigned int n;
+
+	for (n = 0; n < out_sgs; n++) {
+		for (sg = sgs[n]; sg; sg = sg_next(sg)) {
+			if (!sg->dma_address)
+				return;
+
+			dma_unmap_single(vring_dma_dev(vq), sg->dma_address,
+					 sg->length, DMA_TO_DEVICE);
+		}
+	}
+	for (; n < (out_sgs + in_sgs); n++) {
+		for (sg = sgs[n]; sg; sg = sg_next(sg)) {
+			if (!sg->dma_address)
+				return;
+
+			dma_unmap_single(vring_dma_dev(vq), sg->dma_address,
+					 sg->length, DMA_FROM_DEVICE);
+		}
+	}
+}
+
+static inline int virtqueue_add_split_prepare(struct vring_virtqueue *vq,
+					      unsigned int total_sg,
+					      unsigned int out_sgs,
+					      void *data,
+					      void *ctx,
+					      gfp_t gfp,
+					      struct vring_desc **pdesc)
+{
+	struct vring_desc *desc;
+	unsigned int descs_used;
 
 	BUG_ON(data == NULL);
 	BUG_ON(ctx && vq->indirect);
 
 	if (unlikely(vq->broken)) {
-		END_USE(vq);
 		return -EIO;
 	}
 
@@ -550,14 +604,49 @@ static inline int virtqueue_add_split(struct virtqueue *_vq,
 
 	BUG_ON(total_sg == 0);
 
-	head = vq->free_head;
-
 	if (virtqueue_use_indirect(vq, total_sg))
-		desc = alloc_indirect_split(_vq, total_sg, gfp);
+		desc = alloc_indirect_split(&vq->vq, total_sg, gfp);
 	else {
 		desc = NULL;
 		WARN_ON_ONCE(total_sg > vq->split.vring.num && !vq->indirect);
 	}
+
+	if (desc)
+		descs_used = 1;
+	else
+		descs_used = total_sg;
+
+	if (unlikely(vq->vq.num_free < descs_used)) {
+		pr_debug("Can't add buf len %i - avail = %i\n",
+			 descs_used, vq->vq.num_free);
+		/* FIXME: for historical reasons, we force a notify here if
+		 * there are outgoing parts to the buffer.  Presumably the
+		 * host should service the ring ASAP. */
+		if (out_sgs)
+			vq->notify(&vq->vq);
+		kfree(desc);
+		return -ENOSPC;
+	}
+
+	*pdesc = desc;
+
+	return 0;
+}
+
+static inline int virtqueue_add_split_vring(struct vring_virtqueue *vq,
+					    struct scatterlist *sgs[],
+					    unsigned int total_sg,
+					    unsigned int out_sgs,
+					    unsigned int in_sgs,
+					    struct vring_desc *desc)
+{
+	unsigned int n, i, avail, descs_used, prev;
+	struct virtqueue *_vq = &vq->vq;
+	struct scatterlist *sg;
+	bool indirect;
+	int head;
+
+	head = vq->free_head;
 
 	if (desc) {
 		/* Use a single buffer which doesn't continue */
@@ -572,46 +661,27 @@ static inline int virtqueue_add_split(struct virtqueue *_vq,
 		descs_used = total_sg;
 	}
 
-	if (unlikely(vq->vq.num_free < descs_used)) {
-		pr_debug("Can't add buf len %i - avail = %i\n",
-			 descs_used, vq->vq.num_free);
-		/* FIXME: for historical reasons, we force a notify here if
-		 * there are outgoing parts to the buffer.  Presumably the
-		 * host should service the ring ASAP. */
-		if (out_sgs)
-			vq->notify(&vq->vq);
-		if (indirect)
-			kfree(desc);
-		END_USE(vq);
-		return -ENOSPC;
-	}
-
 	for (n = 0; n < out_sgs; n++) {
 		for (sg = sgs[n]; sg; sg = sg_next(sg)) {
-			dma_addr_t addr = vring_map_one_sg(vq, sg, DMA_TO_DEVICE);
-			if (vring_mapping_error(vq, addr))
-				goto unmap_release;
-
 			prev = i;
 			/* Note that we trust indirect descriptor
 			 * table since it use stream DMA mapping.
 			 */
-			i = virtqueue_add_desc_split(_vq, desc, i, addr, sg->length,
+			i = virtqueue_add_desc_split(_vq, desc, i,
+						     sg->dma_address,
+						     sg->length,
 						     VRING_DESC_F_NEXT,
 						     indirect);
 		}
 	}
 	for (; n < (out_sgs + in_sgs); n++) {
 		for (sg = sgs[n]; sg; sg = sg_next(sg)) {
-			dma_addr_t addr = vring_map_one_sg(vq, sg, DMA_FROM_DEVICE);
-			if (vring_mapping_error(vq, addr))
-				goto unmap_release;
-
 			prev = i;
 			/* Note that we trust indirect descriptor
 			 * table since it use stream DMA mapping.
 			 */
-			i = virtqueue_add_desc_split(_vq, desc, i, addr,
+			i = virtqueue_add_desc_split(_vq, desc, i,
+						     sg->dma_address,
 						     sg->length,
 						     VRING_DESC_F_NEXT |
 						     VRING_DESC_F_WRITE,
@@ -630,7 +700,7 @@ static inline int virtqueue_add_split(struct virtqueue *_vq,
 			vq, desc, total_sg * sizeof(struct vring_desc),
 			DMA_TO_DEVICE);
 		if (vring_mapping_error(vq, addr))
-			goto unmap_release;
+			return -ENOMEM;
 
 		virtqueue_add_desc_split(_vq, vq->split.vring.desc,
 					 head, addr,
@@ -647,13 +717,6 @@ static inline int virtqueue_add_split(struct virtqueue *_vq,
 		vq->free_head = vq->split.desc_extra[head].next;
 	else
 		vq->free_head = i;
-
-	/* Store token and indirect buffer state. */
-	vq->split.desc_state[head].data = data;
-	if (indirect)
-		vq->split.desc_state[head].indir_desc = desc;
-	else
-		vq->split.desc_state[head].indir_desc = ctx;
 
 	/* Put entry in available array (but don't update avail->idx until they
 	 * do sync). */
@@ -677,30 +740,52 @@ static inline int virtqueue_add_split(struct virtqueue *_vq,
 		virtqueue_kick(_vq);
 
 	return 0;
+}
 
-unmap_release:
-	err_idx = i;
+static inline int virtqueue_add_split(struct virtqueue *_vq,
+				      struct scatterlist *sgs[],
+				      unsigned int total_sg,
+				      unsigned int out_sgs,
+				      unsigned int in_sgs,
+				      void *data,
+				      void *ctx,
+				      gfp_t gfp)
+{
+	struct vring_virtqueue *vq = to_vvq(_vq);
+	struct vring_desc *desc;
+	int head;
+	int err;
 
-	if (indirect)
-		i = 0;
-	else
-		i = head;
+	START_USE(vq);
 
-	for (n = 0; n < total_sg; n++) {
-		if (i == err_idx)
-			break;
-		if (indirect) {
-			vring_unmap_one_split_indirect(vq, &desc[i]);
-			i = virtio16_to_cpu(_vq->vdev, desc[i].next);
-		} else
-			i = vring_unmap_one_split(vq, i);
-	}
+	/* check vq state and try to alloc desc for indirect. */
+	err = virtqueue_add_split_prepare(vq, total_sg, out_sgs, data, ctx, gfp, &desc);
+	if (err)
+		goto end;
 
-	if (indirect)
-		kfree(desc);
+	err = virtqueue_map_sgs(vq, sgs, total_sg, out_sgs, in_sgs);
+	if (err)
+		goto err;
 
+	head = vq->free_head;
+	err = virtqueue_add_split_vring(vq, sgs, total_sg, out_sgs, in_sgs, desc);
+	if (err)
+		goto err;
+
+	/* Store token and indirect buffer state. */
+	vq->split.desc_state[head].data = data;
+	vq->split.desc_state[head].indir_desc = desc ? desc : ctx;
+
+	goto end;
+
+err:
+	virtqueue_unmap_sgs(vq, sgs, total_sg, out_sgs, in_sgs);
+
+	kfree(desc);
+
+end:
 	END_USE(vq);
-	return -ENOMEM;
+	return err;
 }
 
 static bool virtqueue_kick_prepare_split(struct virtqueue *_vq)
