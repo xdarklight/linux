@@ -705,7 +705,7 @@ static void idxd_groups_clear_state(struct idxd_device *idxd)
 		 */
 		group->rdbufs_allowed = idxd->max_rdbufs;
 		group->rdbufs_reserved = 0;
-		if (idxd->hw.version < DEVICE_VERSION_2 && !tc_override) {
+		if (idxd->hw.version <= DEVICE_VERSION_2 && !tc_override) {
 			group->tc_a = 1;
 			group->tc_b = 1;
 		} else {
