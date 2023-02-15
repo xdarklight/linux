@@ -1962,7 +1962,6 @@ void __init identify_boot_cpu(void)
 	if (HAS_KERNEL_IBT && cpu_feature_enabled(X86_FEATURE_IBT))
 		pr_info("CET detected: Indirect Branch Tracking enabled\n");
 #ifdef CONFIG_X86_32
-	sysenter_setup();
 	enable_sep_cpu();
 #endif
 	cpu_detect_tlb(&boot_cpu_data);
@@ -2135,7 +2134,6 @@ static void wait_for_master_cpu(int cpu)
 #endif
 }
 
-#ifdef CONFIG_X86_64
 static inline void setup_getcpu(int cpu)
 {
 	unsigned long cpudata = vdso_encode_cpunode(cpu, early_cpu_to_node(cpu));
@@ -2157,6 +2155,7 @@ static inline void setup_getcpu(int cpu)
 	write_gdt_entry(get_cpu_gdt_rw(cpu), GDT_ENTRY_CPUNODE, &d, DESCTYPE_S);
 }
 
+#ifdef CONFIG_X86_64
 static inline void ucode_cpu_init(int cpu)
 {
 	if (cpu)
@@ -2175,8 +2174,6 @@ static inline void tss_setup_ist(struct tss_struct *tss)
 }
 
 #else /* CONFIG_X86_64 */
-
-static inline void setup_getcpu(int cpu) { }
 
 static inline void ucode_cpu_init(int cpu)
 {
