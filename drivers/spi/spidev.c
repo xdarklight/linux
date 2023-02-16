@@ -117,6 +117,7 @@ spidev_sync(struct spidev_data *spidev, struct spi_message *message)
 
 	mutex_unlock(&spidev->spi_lock);
 
+	mutex_unlock(&spidev->spi_lock);
 	return status;
 }
 
