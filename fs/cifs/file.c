@@ -260,14 +260,15 @@ static int cifs_nt_open(const char *full_path, struct inode *inode, struct cifs_
 	if (f_flags & O_DIRECT)
 		create_options |= CREATE_NO_BUFFER;
 
-	oparms.tcon = tcon;
-	oparms.cifs_sb = cifs_sb;
-	oparms.desired_access = desired_access;
-	oparms.create_options = cifs_create_options(cifs_sb, create_options);
-	oparms.disposition = disposition;
-	oparms.path = full_path;
-	oparms.fid = fid;
-	oparms.reconnect = false;
+	oparms = (struct cifs_open_parms) {
+		.tcon = tcon,
+		.cifs_sb = cifs_sb,
+		.desired_access = desired_access,
+		.create_options = cifs_create_options(cifs_sb, create_options),
+		.disposition = disposition,
+		.path = full_path,
+		.fid = fid,
+	};
 
 	rc = server->ops->open(xid, &oparms, oplock, buf);
 	if (rc)
@@ -848,14 +849,16 @@ cifs_reopen_file(struct cifsFileInfo *cfile, bool can_flush)
 	if (server->ops->get_lease_key)
 		server->ops->get_lease_key(inode, &cfile->fid);
 
-	oparms.tcon = tcon;
-	oparms.cifs_sb = cifs_sb;
-	oparms.desired_access = desired_access;
-	oparms.create_options = cifs_create_options(cifs_sb, create_options);
-	oparms.disposition = disposition;
-	oparms.path = full_path;
-	oparms.fid = &cfile->fid;
-	oparms.reconnect = true;
+	oparms = (struct cifs_open_parms) {
+		.tcon = tcon,
+		.cifs_sb = cifs_sb,
+		.desired_access = desired_access,
+		.create_options = cifs_create_options(cifs_sb, create_options),
+		.disposition = disposition,
+		.path = full_path,
+		.fid = &cfile->fid,
+		.reconnect = true,
+	};
 
 	/*
 	 * Can not refresh inode by passing in file_info buf to be returned by
@@ -4489,23 +4492,22 @@ cifs_read(struct file *file, char *read_data, size_t read_size, loff_t *offset)
  * If the page is mmap'ed into a process' page tables, then we need to make
  * sure that it doesn't change while being written back.
  */
-static vm_fault_t
-cifs_page_mkwrite(struct vm_fault *vmf)
+static vm_fault_t cifs_page_mkwrite(struct vm_fault *vmf)
 {
-	struct page *page = vmf->page;
+	struct folio *folio = page_folio(vmf->page);
 
-	/* Wait for the page to be written to the cache before we allow it to
-	 * be modified.  We then assume the entire page will need writing back.
+	/* Wait for the folio to be written to the cache before we allow it to
+	 * be modified.  We then assume the entire folio will need writing back.
 	 */
 #ifdef CONFIG_CIFS_FSCACHE
-	if (PageFsCache(page) &&
-	    wait_on_page_fscache_killable(page) < 0)
+	if (folio_test_fscache(folio) &&
+	    folio_wait_fscache_killable(folio) < 0)
 		return VM_FAULT_RETRY;
 #endif
 
-	wait_on_page_writeback(page);
+	folio_wait_writeback(folio);
 
-	if (lock_page_killable(page) < 0)
+	if (folio_lock_killable(folio) < 0)
 		return VM_FAULT_RETRY;
 	return VM_FAULT_LOCKED;
 }
