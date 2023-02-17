@@ -9,6 +9,7 @@
 #include <linux/device.h>
 #include <linux/mod_devicetable.h>
 #include <linux/gfp.h>
+#include <linux/dma-mapping.h>
 
 /**
  * struct virtqueue - a queue to register buffers for sending or receiving.
@@ -43,6 +44,11 @@ int virtqueue_add_outbuf(struct virtqueue *vq,
 			 void *data,
 			 gfp_t gfp);
 
+int virtqueue_add_outbuf_premapped(struct virtqueue *vq,
+				   struct scatterlist *sg, unsigned int num,
+				   void *data,
+				   gfp_t gfp);
+
 int virtqueue_add_inbuf(struct virtqueue *vq,
 			struct scatterlist sg[], unsigned int num,
 			void *data,
@@ -53,6 +59,11 @@ int virtqueue_add_inbuf_ctx(struct virtqueue *vq,
 			    void *data,
 			    void *ctx,
 			    gfp_t gfp);
+
+int virtqueue_add_inbuf_premapped(struct virtqueue *vq,
+				  struct scatterlist *sg, unsigned int num,
+				  void *data,
+				  gfp_t gfp);
 
 int virtqueue_add_sgs(struct virtqueue *vq,
 		      struct scatterlist *sgs[],
@@ -95,6 +106,8 @@ dma_addr_t virtqueue_get_used_addr(struct virtqueue *vq);
 
 int virtqueue_resize(struct virtqueue *vq, u32 num,
 		     void (*recycle)(struct virtqueue *vq, void *buf));
+int virtqueue_reset(struct virtqueue *vq,
+		    void (*recycle)(struct virtqueue *vq, void *buf));
 
 /**
  * struct virtio_device - representation of a device using virtio
@@ -203,4 +216,20 @@ void unregister_virtio_driver(struct virtio_driver *drv);
 #define module_virtio_driver(__virtio_driver) \
 	module_driver(__virtio_driver, register_virtio_driver, \
 			unregister_virtio_driver)
+
+dma_addr_t virtio_dma_map_page(struct device *dev, struct page *page, size_t offset,
+			       unsigned int length, enum dma_data_direction dir);
+dma_addr_t virtio_dma_map(struct device *dev, void *addr, unsigned int length,
+			  enum dma_data_direction dir);
+int virtio_dma_mapping_error(struct device *dev, dma_addr_t addr);
+void virtio_dma_unmap(struct device *dev, dma_addr_t dma, unsigned int length,
+		      enum dma_data_direction dir);
+bool virtio_dma_need_sync(struct device *dev, dma_addr_t addr);
+void virtio_dma_sync_single_range_for_cpu(struct device *dev, dma_addr_t addr,
+					  unsigned long offset, size_t size,
+					  enum dma_data_direction dir);
+void virtio_dma_sync_single_range_for_device(struct device *dev,
+					     dma_addr_t addr,
+					     unsigned long offset, size_t size,
+					     enum dma_data_direction dir);
 #endif /* _LINUX_VIRTIO_H */
