@@ -12,9 +12,9 @@
 #include <linux/notifier.h>
 #include <linux/init.h>
 #include <linux/cpu.h>
-#include <linux/sched/cputime.h>
 #include <trace/events/power.h>
 #include <asm/cpu_mf.h>
+#include <asm/cputime.h>
 #include <asm/nmi.h>
 #include <asm/smp.h>
 #include "entry.h"
@@ -60,7 +60,6 @@ void noinstr arch_cpu_idle(void)
 
 	/* psw_idle() returns with interrupts disabled. */
 	psw_idle(idle, psw_mask);
-	raw_local_irq_enable();
 }
 
 static ssize_t show_idle_count(struct device *dev,
