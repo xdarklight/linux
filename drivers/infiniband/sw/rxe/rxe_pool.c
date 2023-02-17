@@ -276,7 +276,7 @@ int __rxe_cleanup(struct rxe_pool_elem *elem, bool sleepable)
 		pool->cleanup(elem);
 
 	if (pool->type == RXE_TYPE_MR)
-		kfree_rcu(elem->obj);
+		kfree_rcu_mightsleep(elem->obj);
 
 	atomic_dec(&pool->num_elem);
 
