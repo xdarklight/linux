@@ -52,6 +52,14 @@ struct aes_gcm_keymat {
 	u32   aes_key[256 / 32];
 };
 
+struct upspec {
+	u16 dport;
+	u16 dport_mask;
+	u16 sport;
+	u16 sport_mask;
+	u8 proto;
+};
+
 struct mlx5_accel_esp_xfrm_attrs {
 	u32   esn;
 	u32   spi;
@@ -68,6 +76,7 @@ struct mlx5_accel_esp_xfrm_attrs {
 		__be32 a6[4];
 	} daddr;
 
+	struct upspec upspec;
 	u8 dir : 2;
 	u8 esn_overlap : 1;
 	u8 esn_trigger : 1;
@@ -120,7 +129,7 @@ struct mlx5e_ipsec_work {
 };
 
 struct mlx5e_ipsec_aso {
-	u8 ctx[MLX5_ST_SZ_BYTES(ipsec_aso)];
+	u8 __aligned(64) ctx[MLX5_ST_SZ_BYTES(ipsec_aso)];
 	dma_addr_t dma_addr;
 	struct mlx5_aso *aso;
 	/* Protect ASO WQ access, as it is global to whole IPsec */
@@ -183,6 +192,7 @@ struct mlx5_accel_pol_xfrm_attrs {
 		__be32 a6[4];
 	} daddr;
 
+	struct upspec upspec;
 	u8 family;
 	u8 action;
 	u8 type : 2;
