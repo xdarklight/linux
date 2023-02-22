@@ -23,21 +23,31 @@ properties:
   compatible:
     oneOf:
       - description: Always-on power domain UART controller
-        items:
+        oneOf:
+          - items:
+              - enum:
+                  - amlogic,meson6-uart
+                  - amlogic,meson8-uart
+                  - amlogic,meson8b-uart
+                  - amlogic,meson-gx-uart
+                  - amlogic,meson-s4-uart
+              - const: amlogic,meson-ao-uart
+          - items:
+              - const: amlogic,meson-g12a-uart
+              - const: amlogic,meson-gx-uart
+              - const: amlogic,meson-ao-uart
+      - description: Everything-Else power domain UART controller
+        oneOf:
           - enum:
               - amlogic,meson6-uart
               - amlogic,meson8-uart
               - amlogic,meson8b-uart
               - amlogic,meson-gx-uart
+              - amlogic,meson-g12a-uart
               - amlogic,meson-s4-uart
-          - const: amlogic,meson-ao-uart
-      - description: Everything-Else power domain UART controller
-        enum:
-          - amlogic,meson6-uart
-          - amlogic,meson8-uart
-          - amlogic,meson8b-uart
-          - amlogic,meson-gx-uart
-          - amlogic,meson-s4-uart
+          - items:
+              - const: amlogic,meson-g12a-uart
+              - const: amlogic,meson-gx-uart
 
   reg:
     maxItems: 1
