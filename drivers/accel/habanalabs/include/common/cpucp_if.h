@@ -33,6 +33,10 @@
 #define PLL_MAP_MAX_BITS	128
 #define PLL_MAP_LEN		(PLL_MAP_MAX_BITS / 8)
 
+enum eq_event_id {
+	EQ_EVENT_NIC_STS_REQUEST = 0,
+};
+
 /*
  * info of the pkt queue pointers in the first async occurrence
  */
@@ -354,9 +358,48 @@ struct hl_eq_addr_dec_intr_data {
 	__u8 pad[7];
 };
 
+enum hl_mme_acc_err_type {
+	MME_ACC_WBC_ERR_RESP_LEGACY,
+	MME_ACC_WBC_ERR_RESP_SET0_CH0,
+	MME_ACC_WBC_ERR_RESP_SET0_CH1,
+	MME_ACC_WBC_ERR_RESP_SET1_CH0,
+	MME_ACC_WBC_ERR_RESP_SET1_CH1,
+	MME_ACC_WBC_BUSER_NUMERICAL_INF_ERR_SET0_CH0,
+	MME_ACC_WBC_BUSER_NUMERICAL_INF_ERR_SET0_CH1,
+	MME_ACC_WBC_BUSER_NUMERICAL_NINF_ERR_SET0_CH0,
+	MME_ACC_WBC_BUSER_NUMERICAL_NINF_ERR_SET0_CH1,
+	MME_ACC_WBC_BUSER_NUMERICAL_NAN_ERR_SET0_CH0,
+	MME_ACC_WBC_BUSER_NUMERICAL_NAN_ERR_SET0_CH1,
+	MME_ACC_WBC_BUSER_RR_DBG_ERR_SET0_CH0,
+	MME_ACC_WBC_BUSER_RR_DBG_ERR_SET0_CH1,
+	MME_ACC_WBC_BUSER_NUMERICAL_INF_ERR_SET1_CH0,
+	MME_ACC_WBC_BUSER_NUMERICAL_INF_ERR_SET1_CH1,
+	MME_ACC_WBC_BUSER_NUMERICAL_NINF_ERR_SET1_CH0,
+	MME_ACC_WBC_BUSER_NUMERICAL_NINF_ERR_SET1_CH1,
+	MME_ACC_WBC_BUSER_NUMERICAL_NAN_ERR_SET1_CH0,
+	MME_ACC_WBC_BUSER_NUMERICAL_NAN_ERR_SET1_CH1,
+	MME_ACC_WBC_BUSER_RR_DBG_ERR_SET1_CH0,
+	MME_ACC_WBC_BUSER_RR_DBG_ERR_SET1_CH1,
+	MME_ACC_AP_STS_SRC_DNRM,
+	MME_ACC_AP_STS_SRC_INF,
+	MME_ACC_AP_STS_SRC_NINF,
+	MME_ACC_AP_STS_SRC_NAN,
+	MME_ACC_AP_STS_RES_INF,
+	MME_ACC_AP_STS_RES_NINF,
+	MME_ACC_AP_STS_RES_NAN
+};
+
+struct hl_eq_mme_acc_data {
+	__u8 mme_id;
+	__u8 err_type; /* enum hl_mme_acc_err_type */
+	__le16 ctx_id;
+	__u8 pad[4];
+};
+
 struct hl_eq_entry {
 	struct hl_eq_header hdr;
 	union {
+		__le64 data_placeholder;
 		struct hl_eq_ecc_data ecc_data;
 		struct hl_eq_hbm_ecc_data hbm_ecc_data;	/* Gaudi1 HBM */
 		struct hl_eq_sm_sei_data sm_sei_data;
@@ -661,6 +704,9 @@ enum pq_init_status {
  * CPUCP_PACKET_ACTIVE_STATUS_SET -
  *       LKD sends FW indication whether device is free or in use, this indication is reported
  *       also to the BMC.
+ *
+ * CPUCP_PACKET_REGISTER_INTERRUPTS -
+ *       Packet to register interrupts indicating LKD is ready to receive events from FW.
  */
 
 enum cpucp_packet_id {
@@ -725,6 +771,8 @@ enum cpucp_packet_id {
 	CPUCP_PACKET_RESERVED9,			/* not used */
 	CPUCP_PACKET_RESERVED10,		/* not used */
 	CPUCP_PACKET_RESERVED11,		/* not used */
+	CPUCP_PACKET_RESERVED12,		/* internal */
+	CPUCP_PACKET_REGISTER_INTERRUPTS,	/* internal */
 	CPUCP_PACKET_ID_MAX			/* must be last */
 };
 
@@ -1127,6 +1175,7 @@ struct cpucp_security_info {
  *                     (0 = functional 1 = binned)
  * @interposer_version: Interposer version programmed in eFuse
  * @substrate_version: Substrate version programmed in eFuse
+ * @fw_hbm_region_size: Size in bytes of FW reserved region in HBM.
  * @fw_os_version: Firmware OS Version
  */
 struct cpucp_info {
@@ -1154,7 +1203,7 @@ struct cpucp_info {
 	__u8 substrate_version;
 	__u8 reserved2;
 	struct cpucp_security_info sec_info;
-	__le32 reserved3;
+	__le32 fw_hbm_region_size;
 	__u8 pll_map[PLL_MAP_LEN];
 	__le64 mme_binning_mask;
 	__u8 fw_os_version[VERSION_MAX_LEN];
