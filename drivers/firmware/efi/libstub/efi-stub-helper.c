@@ -554,7 +554,8 @@ efi_status_t efi_load_initrd_cmdline(efi_loaded_image_t *image,
  *
  * Return:	status code
  */
-efi_status_t efi_load_initrd(efi_loaded_image_t *image,
+efi_status_t efi_load_initrd(efi_handle_t handle,
+			     efi_loaded_image_t *image,
 			     unsigned long soft_limit,
 			     unsigned long hard_limit,
 			     const struct linux_efi_initrd **out)
