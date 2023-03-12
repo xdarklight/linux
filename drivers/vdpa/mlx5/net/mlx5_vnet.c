@@ -3288,8 +3288,6 @@ static void mlx5_vdpa_dev_del(struct vdpa_mgmt_dev *v_mdev, struct vdpa_device *
 	struct mlx5_vdpa_net *ndev = to_mlx5_vdpa_ndev(mvdev);
 	struct workqueue_struct *wq;
 
-	mlx5_vdpa_remove_debugfs(ndev->debugfs);
-	ndev->debugfs = NULL;
 	if (ndev->nb_registered) {
 		ndev->nb_registered = false;
 		mlx5_notifier_unregister(mvdev->mdev, &ndev->nb);
@@ -3298,6 +3296,8 @@ static void mlx5_vdpa_dev_del(struct vdpa_mgmt_dev *v_mdev, struct vdpa_device *
 	mvdev->wq = NULL;
 	destroy_workqueue(wq);
 	_vdpa_unregister_device(dev);
+	mlx5_vdpa_remove_debugfs(ndev->debugfs);
+	ndev->debugfs = NULL;
 	mgtdev->ndev = NULL;
 }
 
