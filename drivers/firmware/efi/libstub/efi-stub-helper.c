@@ -499,12 +499,12 @@ efi_status_t efi_load_initrd_dev_path(struct linux_efi_initrd *initrd,
 				      unsigned long max)
 {
 	efi_guid_t lf2_proto_guid = EFI_LOAD_FILE2_PROTOCOL_GUID;
-	efi_device_path_protocol_t *dp;
+	const efi_device_path_protocol_t *dp;
 	efi_load_file2_protocol_t *lf2;
 	efi_handle_t handle;
 	efi_status_t status;
 
-	dp = (efi_device_path_protocol_t *)&initrd_dev_path;
+	dp = &initrd_dev_path.vendor.header;
 	status = efi_bs_call(locate_device_path, &lf2_proto_guid, &dp, &handle);
 	if (status != EFI_SUCCESS)
 		return status;

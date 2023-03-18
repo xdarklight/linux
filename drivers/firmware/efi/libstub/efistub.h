@@ -285,7 +285,7 @@ union efi_boot_services {
 						       void *, unsigned long *,
 						       efi_handle_t *);
 		efi_status_t (__efiapi *locate_device_path)(efi_guid_t *,
-							    efi_device_path_protocol_t **,
+							    const efi_device_path_protocol_t **,
 							    efi_handle_t *);
 		efi_status_t (__efiapi *install_configuration_table)(efi_guid_t *,
 								     void *);
@@ -894,7 +894,7 @@ typedef union efi_load_file_protocol efi_load_file2_protocol_t;
 union efi_load_file_protocol {
 	struct {
 		efi_status_t (__efiapi *load_file)(efi_load_file_protocol_t *,
-						   efi_device_path_protocol_t *,
+						   const efi_device_path_protocol_t *,
 						   bool, unsigned long *, void *);
 	};
 	struct {
