@@ -832,8 +832,7 @@ static struct lp872x_platform_data
 		return ERR_PTR(-ENOMEM);
 
 	of_property_read_u8(np, "ti,general-config", &pdata->general_config);
-	if (of_find_property(np, "ti,update-config", NULL))
-		pdata->update_config = true;
+	pdata->update_config = of_property_read_bool(np, "ti,update-config");
 
 	pdata->dvs = devm_kzalloc(dev, sizeof(struct lp872x_dvs), GFP_KERNEL);
 	if (!pdata->dvs)
@@ -928,7 +927,7 @@ static int lp872x_probe(struct i2c_client *cl)
 	return lp872x_regulator_register(lp);
 }
 
-static const struct of_device_id lp872x_dt_ids[] = {
+static const struct of_device_id lp872x_dt_ids[] __maybe_unused = {
 	{ .compatible = "ti,lp8720", },
 	{ .compatible = "ti,lp8725", },
 	{ }
