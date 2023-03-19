@@ -129,7 +129,8 @@ int ip_local_out(struct net *net, struct sock *sk, struct sk_buff *skb)
 }
 EXPORT_SYMBOL_GPL(ip_local_out);
 
-static inline int ip_select_ttl(struct inet_sock *inet, struct dst_entry *dst)
+static inline int ip_select_ttl(const struct inet_sock *inet,
+				const struct dst_entry *dst)
 {
 	int ttl = inet->uc_ttl;
 
@@ -146,7 +147,7 @@ int ip_build_and_send_pkt(struct sk_buff *skb, const struct sock *sk,
 			  __be32 saddr, __be32 daddr, struct ip_options_rcu *opt,
 			  u8 tos)
 {
-	struct inet_sock *inet = inet_sk(sk);
+	const struct inet_sock *inet = inet_sk(sk);
 	struct rtable *rt = skb_rtable(skb);
 	struct net *net = sock_net(sk);
 	struct iphdr *iph;
@@ -990,7 +991,7 @@ static int __ip_append_data(struct sock *sk,
 	mtu = cork->gso_size ? IP_MAX_MTU : cork->fragsize;
 	paged = !!cork->gso_size;
 
-	if (cork->tx_flags & SKBTX_ANY_SW_TSTAMP &&
+	if (cork->tx_flags & SKBTX_ANY_TSTAMP &&
 	    sk->sk_tsflags & SOF_TIMESTAMPING_OPT_ID)
 		tskey = atomic_inc_return(&sk->sk_tskey) - 1;
 

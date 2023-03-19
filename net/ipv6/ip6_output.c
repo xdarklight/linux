@@ -1153,7 +1153,7 @@ static int ip6_dst_lookup_tail(struct net *net, const struct sock *sk,
 	rcu_read_lock_bh();
 	n = __ipv6_neigh_lookup_noref(rt->dst.dev,
 				      rt6_nexthop(rt, &fl6->daddr));
-	err = n && !(n->nud_state & NUD_VALID) ? -EINVAL : 0;
+	err = n && !(READ_ONCE(n->nud_state) & NUD_VALID) ? -EINVAL : 0;
 	rcu_read_unlock_bh();
 
 	if (err) {
@@ -1500,7 +1500,7 @@ static int __ip6_append_data(struct sock *sk,
 	mtu = cork->gso_size ? IP6_MAX_MTU : cork->fragsize;
 	orig_mtu = mtu;
 
-	if (cork->tx_flags & SKBTX_ANY_SW_TSTAMP &&
+	if (cork->tx_flags & SKBTX_ANY_TSTAMP &&
 	    sk->sk_tsflags & SOF_TIMESTAMPING_OPT_ID)
 		tskey = atomic_inc_return(&sk->sk_tskey) - 1;
 
