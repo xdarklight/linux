@@ -45,18 +45,21 @@ static inline void io_req_set_cqe32_extra(struct io_kiocb *req,
 void io_uring_cmd_done(struct io_uring_cmd *ioucmd, ssize_t ret, ssize_t res2)
 {
 	struct io_kiocb *req = cmd_to_io_kiocb(ioucmd);
+	struct io_ring_ctx *ctx = req->ctx;
 
 	if (ret < 0)
 		req_set_fail(req);
 
 	io_req_set_res(req, ret, 0);
-	if (req->ctx->flags & IORING_SETUP_CQE32)
+	if (ctx->flags & IORING_SETUP_CQE32)
 		io_req_set_cqe32_extra(req, res2, 0);
-	if (req->ctx->flags & IORING_SETUP_IOPOLL)
+	if (ctx->flags & IORING_SETUP_IOPOLL) {
 		/* order with io_iopoll_req_issued() checking ->iopoll_complete */
 		smp_store_release(&req->iopoll_completed, 1);
-	else
-		io_req_complete_post(req, 0);
+		return;
+	}
+	req->io_task_work.func = io_req_task_complete;
+	io_req_task_work_add(req);
 }
 EXPORT_SYMBOL_GPL(io_uring_cmd_done);
 
