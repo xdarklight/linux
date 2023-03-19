@@ -100,13 +100,16 @@ static void page_cache_pipe_buf_release(struct pipe_inode_info *pipe,
  * is a page cache page, IO may be in flight.
  */
 static int page_cache_pipe_buf_confirm(struct pipe_inode_info *pipe,
-				       struct pipe_buffer *buf)
+				       struct pipe_buffer *buf, bool nonblock)
 {
 	struct page *page = buf->page;
 	int err;
 
 	if (!PageUptodate(page)) {
-		lock_page(page);
+		if (nonblock && !trylock_page(page))
+			return -EAGAIN;
+		else
+			lock_page(page);
 
 		/*
 		 * Page got truncated/unhashed. This will cause a 0-byte
@@ -498,7 +501,7 @@ static int splice_from_pipe_feed(struct pipe_inode_info *pipe, struct splice_des
 		if (sd->len > sd->total_len)
 			sd->len = sd->total_len;
 
-		ret = pipe_buf_confirm(pipe, buf);
+		ret = pipe_buf_confirm(pipe, buf, false);
 		if (unlikely(ret)) {
 			if (ret == -ENODATA)
 				ret = 0;
@@ -761,7 +764,7 @@ iter_file_splice_write(struct pipe_inode_info *pipe, struct file *out,
 				continue;
 			this_len = min(this_len, left);
 
-			ret = pipe_buf_confirm(pipe, buf);
+			ret = pipe_buf_confirm(pipe, buf, false);
 			if (unlikely(ret)) {
 				if (ret == -ENODATA)
 					ret = 0;
