@@ -867,8 +867,8 @@ asmlinkage unsigned long efi_main(efi_handle_t handle,
 	 * arguments will be processed only if image is not NULL, which will be
 	 * the case only if we were loaded via the PE entry point.
 	 */
-	status = efi_load_initrd(image, hdr->initrd_addr_max, ULONG_MAX,
-				 &initrd);
+	status = efi_load_initrd(handle, image, hdr->initrd_addr_max,
+				 ULONG_MAX, &initrd);
 	if (status != EFI_SUCCESS)
 		goto fail;
 	if (initrd && initrd->size > 0) {
