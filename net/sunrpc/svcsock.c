@@ -1086,9 +1086,9 @@ static int svc_tcp_sendmsg(struct socket *sock, struct xdr_buf *xdr,
 		.iov_len	= sizeof(marker),
 	};
 	struct msghdr msg = {
-		.msg_flags	= 0,
+		.msg_flags	= MSG_MORE,
 	};
-	int ret;
+	int flags, ret;
 
 	*sentp = 0;
 	ret = xdr_alloc_bvec(xdr, GFP_KERNEL);
@@ -1101,8 +1101,8 @@ static int svc_tcp_sendmsg(struct socket *sock, struct xdr_buf *xdr,
 	*sentp += ret;
 	if (ret != rm.iov_len)
 		return -EAGAIN;
-
-	ret = svc_tcp_send_kvec(sock, head, 0);
+	flags = head->iov_len < xdr->len ? MSG_MORE | MSG_SENDPAGE_NOTLAST : 0;
+	ret = svc_tcp_send_kvec(sock, head, flags);
 	if (ret < 0)
 		return ret;
 	*sentp += ret;
@@ -1117,10 +1117,12 @@ static int svc_tcp_sendmsg(struct socket *sock, struct xdr_buf *xdr,
 		offset = offset_in_page(xdr->page_base);
 		remaining = xdr->page_len;
 		while (remaining > 0) {
+			if (remaining <= PAGE_SIZE && tail->iov_len == 0)
+				flags = 0;
 			len = min(remaining, bvec->bv_len - offset);
 			ret = kernel_sendpage(sock, bvec->bv_page,
 					      bvec->bv_offset + offset,
-					      len, 0);
+					      len, flags);
 			if (ret < 0)
 				return ret;
 			*sentp += ret;
