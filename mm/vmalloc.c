@@ -40,6 +40,7 @@
 #include <linux/hugetlb.h>
 #include <linux/sched/mm.h>
 #include <linux/rwsem.h>
+#include <linux/uio.h>
 #include <asm/tlbflush.h>
 #include <asm/shmparam.h>
 
