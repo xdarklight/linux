@@ -87,7 +87,7 @@ static const struct kobj_type class_ktype = {
 static struct kset *class_kset;
 
 
-int class_create_file_ns(struct class *cls, const struct class_attribute *attr,
+int class_create_file_ns(const struct class *cls, const struct class_attribute *attr,
 			 const void *ns)
 {
 	int error;
@@ -101,7 +101,7 @@ int class_create_file_ns(struct class *cls, const struct class_attribute *attr,
 }
 EXPORT_SYMBOL_GPL(class_create_file_ns);
 
-void class_remove_file_ns(struct class *cls, const struct class_attribute *attr,
+void class_remove_file_ns(const struct class *cls, const struct class_attribute *attr,
 			  const void *ns)
 {
 	if (cls)
@@ -178,13 +178,7 @@ int __class_register(struct class *cls, struct lock_class_key *key)
 	if (!cls->dev_kobj)
 		cls->dev_kobj = sysfs_dev_char_kobj;
 
-#if defined(CONFIG_BLOCK)
-	/* let the block class directory show up in the root of sysfs */
-	if (!sysfs_deprecated || cls != &block_class)
-		cp->subsys.kobj.kset = class_kset;
-#else
 	cp->subsys.kobj.kset = class_kset;
-#endif
 	cp->subsys.kobj.ktype = &class_ktype;
 	cp->class = cls;
 	cls->p = cp;
@@ -225,7 +219,6 @@ static void class_create_release(struct class *cls)
 
 /**
  * __class_create - create a struct class structure
- * @owner: pointer to the module that is to "own" this struct class
  * @name: pointer to a string for the name of this class.
  * @key: the lock_class_key for this class; used by mutex lock debugging
  *
@@ -237,8 +230,7 @@ static void class_create_release(struct class *cls)
  * Note, the pointer created here is to be destroyed when finished by
  * making a call to class_destroy().
  */
-struct class *__class_create(struct module *owner, const char *name,
-			     struct lock_class_key *key)
+struct class *__class_create(const char *name, struct lock_class_key *key)
 {
 	struct class *cls;
 	int retval;
@@ -250,7 +242,6 @@ struct class *__class_create(struct module *owner, const char *name,
 	}
 
 	cls->name = name;
-	cls->owner = owner;
 	cls->class_release = class_create_release;
 
 	retval = __class_register(cls, key);
@@ -293,8 +284,8 @@ EXPORT_SYMBOL_GPL(class_destroy);
  * otherwise if it is NULL, the iteration starts at the beginning of
  * the list.
  */
-void class_dev_iter_init(struct class_dev_iter *iter, struct class *class,
-			 struct device *start, const struct device_type *type)
+void class_dev_iter_init(struct class_dev_iter *iter, const struct class *class,
+			 const struct device *start, const struct device_type *type)
 {
 	struct klist_node *start_knode = NULL;
 
@@ -364,7 +355,7 @@ EXPORT_SYMBOL_GPL(class_dev_iter_exit);
  * @fn is allowed to do anything including calling back into class
  * code.  There's no locking restriction.
  */
-int class_for_each_device(struct class *class, struct device *start,
+int class_for_each_device(const struct class *class, const struct device *start,
 			  void *data, int (*fn)(struct device *, void *))
 {
 	struct class_dev_iter iter;
@@ -411,7 +402,7 @@ EXPORT_SYMBOL_GPL(class_for_each_device);
  * @match is allowed to do anything including calling back into class
  * code.  There's no locking restriction.
  */
-struct device *class_find_device(struct class *class, struct device *start,
+struct device *class_find_device(const struct class *class, const struct device *start,
 				 const void *data,
 				 int (*match)(struct device *, const void *))
 {
