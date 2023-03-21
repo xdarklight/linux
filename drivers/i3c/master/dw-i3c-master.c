@@ -1182,20 +1182,15 @@ err_disable_core_clk:
 	return ret;
 }
 
-static int dw_i3c_remove(struct platform_device *pdev)
+static void dw_i3c_remove(struct platform_device *pdev)
 {
 	struct dw_i3c_master *master = platform_get_drvdata(pdev);
-	int ret;
 
-	ret = i3c_master_unregister(&master->base);
-	if (ret)
-		return ret;
+	i3c_master_unregister(&master->base);
 
 	reset_control_assert(master->core_rst);
 
 	clk_disable_unprepare(master->core_clk);
-
-	return 0;
 }
 
 static const struct of_device_id dw_i3c_master_of_match[] = {
@@ -1206,10 +1201,10 @@ MODULE_DEVICE_TABLE(of, dw_i3c_master_of_match);
 
 static struct platform_driver dw_i3c_driver = {
 	.probe = dw_i3c_probe,
-	.remove = dw_i3c_remove,
+	.remove_new = dw_i3c_remove,
 	.driver = {
 		.name = "dw-i3c-master",
-		.of_match_table = of_match_ptr(dw_i3c_master_of_match),
+		.of_match_table = dw_i3c_master_of_match,
 	},
 };
 module_platform_driver(dw_i3c_driver);
