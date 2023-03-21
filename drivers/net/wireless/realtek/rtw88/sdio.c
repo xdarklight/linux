@@ -104,6 +104,12 @@ static u8 rtw_sdio_read_indirect8(struct rtw_dev *rtwdev, u32 addr,
 	int retry;
 	u8 tmp;
 
+	if (rtw_chip_wcpu_11n(rtwdev)) {
+		addr = rtw_sdio_to_bus_offset(rtwdev,
+					      addr | WLAN_IOREG_OFFSET);
+		return sdio_readb(rtwsdio->sdio_func, addr, err_ret);
+	}
+
 	reg_cfg = rtw_sdio_to_bus_offset(rtwdev, REG_SDIO_INDIRECT_REG_CFG);
 	reg_data = rtw_sdio_to_bus_offset(rtwdev, REG_SDIO_INDIRECT_REG_DATA);
 
@@ -144,6 +150,12 @@ static u32 rtw_sdio_read_indirect32(struct rtw_dev *rtwdev, u32 addr,
 	u32 reg_cfg, reg_data;
 	int retry;
 	u8 tmp;
+
+	if (rtw_chip_wcpu_11n(rtwdev)) {
+		addr = rtw_sdio_to_bus_offset(rtwdev,
+					      addr | WLAN_IOREG_OFFSET);
+		return rtw_sdio_readl(rtwdev, addr, err_ret);
+	}
 
 	reg_cfg = rtw_sdio_to_bus_offset(rtwdev, REG_SDIO_INDIRECT_REG_CFG);
 	reg_data = rtw_sdio_to_bus_offset(rtwdev, REG_SDIO_INDIRECT_REG_DATA);
