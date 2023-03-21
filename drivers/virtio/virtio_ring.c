@@ -2192,6 +2192,10 @@ static inline int virtqueue_add(struct virtqueue *_vq,
  * Caller must ensure we don't call this with other virtqueue operations
  * at the same time (except where noted).
  *
+ * If the caller has done dma map then use sg->dma_address to pass dma address.
+ * If one sg->dma_address is used, then all sgs must use sg->dma_address;
+ * otherwise all sg->dma_address must be NULL.
+ *
  * Returns zero or a negative error (ie. ENOSPC, ENOMEM, EIO).
  */
 int virtqueue_add_sgs(struct virtqueue *_vq,
@@ -2226,6 +2230,10 @@ EXPORT_SYMBOL_GPL(virtqueue_add_sgs);
  * Caller must ensure we don't call this with other virtqueue operations
  * at the same time (except where noted).
  *
+ * If the caller has done dma map then use sg->dma_address to pass dma address.
+ * If one sg->dma_address is used, then all sgs must use sg->dma_address;
+ * otherwise all sg->dma_address must be NULL.
+ *
  * Returns zero or a negative error (ie. ENOSPC, ENOMEM, EIO).
  */
 int virtqueue_add_outbuf(struct virtqueue *vq,
@@ -2247,6 +2255,10 @@ EXPORT_SYMBOL_GPL(virtqueue_add_outbuf);
  *
  * Caller must ensure we don't call this with other virtqueue operations
  * at the same time (except where noted).
+ *
+ * If the caller has done dma map then use sg->dma_address to pass dma address.
+ * If one sg->dma_address is used, then all sgs must use sg->dma_address;
+ * otherwise all sg->dma_address must be NULL.
  *
  * Returns zero or a negative error (ie. ENOSPC, ENOMEM, EIO).
  */
@@ -2270,6 +2282,10 @@ EXPORT_SYMBOL_GPL(virtqueue_add_inbuf);
  *
  * Caller must ensure we don't call this with other virtqueue operations
  * at the same time (except where noted).
+ *
+ * If the caller has done dma map then use sg->dma_address to pass dma address.
+ * If one sg->dma_address is used, then all sgs must use sg->dma_address;
+ * otherwise all sg->dma_address must be NULL.
  *
  * Returns zero or a negative error (ie. ENOSPC, ENOMEM, EIO).
  */
