@@ -100,7 +100,8 @@ struct pipe_buf_operations {
 	 * hook. Returns 0 for good, or a negative error value in case of
 	 * error.  If not present all pages are considered good.
 	 */
-	int (*confirm)(struct pipe_inode_info *, struct pipe_buffer *);
+	int (*confirm)(struct pipe_inode_info *, struct pipe_buffer *,
+			bool nonblock);
 
 	/*
 	 * When the contents of this pipe buffer has been completely
@@ -207,13 +208,14 @@ static inline void pipe_buf_release(struct pipe_inode_info *pipe,
  * pipe_buf_confirm - verify contents of the pipe buffer
  * @pipe:	the pipe that the buffer belongs to
  * @buf:	the buffer to confirm
+ * @nonblock:	whether the operation should be nonblocking
  */
 static inline int pipe_buf_confirm(struct pipe_inode_info *pipe,
-				   struct pipe_buffer *buf)
+				   struct pipe_buffer *buf, bool nonblock)
 {
 	if (!buf->ops->confirm)
 		return 0;
-	return buf->ops->confirm(pipe, buf);
+	return buf->ops->confirm(pipe, buf, nonblock);
 }
 
 /**
