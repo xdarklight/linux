@@ -94,8 +94,7 @@ struct sifive_fu540_macb_mgmt {
 /* Graceful stop timeouts in us. We should allow up to
  * 1 frame time (10 Mbits/s, full-duplex, ignoring collisions)
  */
-#define MACB_HALT_TIMEOUT	1230
-
+#define MACB_HALT_TIMEOUT	14000
 #define MACB_PM_TIMEOUT  100 /* ms */
 
 #define MACB_MDIO_TIMEOUT	1000000 /* in usecs */
@@ -1071,6 +1070,7 @@ static void macb_tx_error_task(struct work_struct *work)
 {
 	struct macb_queue	*queue = container_of(work, struct macb_queue,
 						      tx_error_task);
+	bool			halt_timeout = false;
 	struct macb		*bp = queue->bp;
 	struct macb_tx_skb	*tx_skb;
 	struct macb_dma_desc	*desc;
@@ -1098,9 +1098,11 @@ static void macb_tx_error_task(struct work_struct *work)
 	 * (in case we have just queued new packets)
 	 * macb/gem must be halted to write TBQP register
 	 */
-	if (macb_halt_tx(bp))
-		/* Just complain for now, reinitializing TX path can be good */
+	if (macb_halt_tx(bp)) {
 		netdev_err(bp->dev, "BUG: halt tx timed out\n");
+		macb_writel(bp, NCR, macb_readl(bp, NCR) & (~MACB_BIT(TE)));
+		halt_timeout = true;
+	}
 
 	/* Treat frames in TX queue including the ones that caused the error.
 	 * Free transmit buffers in upper layer.
@@ -1170,6 +1172,9 @@ static void macb_tx_error_task(struct work_struct *work)
 	/* Housework before enabling TX IRQ */
 	macb_writel(bp, TSR, macb_readl(bp, TSR));
 	queue_writel(queue, IER, MACB_TX_INT_FLAGS);
+
+	if (halt_timeout)
+		macb_writel(bp, NCR, macb_readl(bp, NCR) | MACB_BIT(TE));
 
 	/* Now we are ready to start transmission again */
 	netif_tx_start_all_queues(bp->dev);
@@ -2641,8 +2646,12 @@ static u32 gem_mdc_clk_div(struct macb *bp)
 		config = GEM_BF(CLK, GEM_CLK_DIV48);
 	else if (pclk_hz <= 160000000)
 		config = GEM_BF(CLK, GEM_CLK_DIV64);
-	else
+	else if (pclk_hz <= 240000000)
 		config = GEM_BF(CLK, GEM_CLK_DIV96);
+	else if (pclk_hz <= 320000000)
+		config = GEM_BF(CLK, GEM_CLK_DIV128);
+	else
+		config = GEM_BF(CLK, GEM_CLK_DIV224);
 
 	return config;
 }
@@ -4844,7 +4853,7 @@ static const struct macb_config mpfs_config = {
 
 static const struct macb_config sama7g5_gem_config = {
 	.caps = MACB_CAPS_GIGABIT_MODE_AVAILABLE | MACB_CAPS_CLK_HW_CHG |
-		MACB_CAPS_MIIONRGMII,
+		MACB_CAPS_MIIONRGMII | MACB_CAPS_GEM_HAS_PTP,
 	.dma_burst_length = 16,
 	.clk_init = macb_clk_init,
 	.init = macb_init,
@@ -4853,7 +4862,8 @@ static const struct macb_config sama7g5_gem_config = {
 
 static const struct macb_config sama7g5_emac_config = {
 	.caps = MACB_CAPS_USRIO_DEFAULT_IS_MII_GMII |
-		MACB_CAPS_USRIO_HAS_CLKEN | MACB_CAPS_MIIONRGMII,
+		MACB_CAPS_USRIO_HAS_CLKEN | MACB_CAPS_MIIONRGMII |
+		MACB_CAPS_GEM_HAS_PTP,
 	.dma_burst_length = 16,
 	.clk_init = macb_clk_init,
 	.init = macb_init,

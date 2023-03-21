@@ -404,10 +404,13 @@ struct mlx5_ifc_flow_table_fields_supported_bits {
 	u8         metadata_reg_c_0[0x1];
 };
 
+/* Table 2170 - Flow Table Fields Supported 2 Format */
 struct mlx5_ifc_flow_table_fields_supported_2_bits {
 	u8         reserved_at_0[0xe];
 	u8         bth_opcode[0x1];
-	u8         reserved_at_f[0x11];
+	u8         reserved_at_f[0x1];
+	u8         tunnel_header_0_1[0x1];
+	u8         reserved_at_11[0xf];
 
 	u8         reserved_at_20[0x60];
 };
@@ -895,7 +898,13 @@ struct mlx5_ifc_flow_table_eswitch_cap_bits {
 
 	struct mlx5_ifc_flow_table_prop_layout_bits flow_table_properties_esw_acl_egress;
 
-	u8      reserved_at_800[0x1000];
+	u8      reserved_at_800[0xC00];
+
+	struct mlx5_ifc_flow_table_fields_supported_2_bits ft_field_support_2_esw_fdb;
+
+	struct mlx5_ifc_flow_table_fields_supported_2_bits ft_field_bitmask_support_2_esw_fdb;
+
+	u8      reserved_at_1500[0x300];
 
 	u8      sw_steering_fdb_action_drop_icm_address_rx[0x40];
 
@@ -10869,6 +10878,31 @@ struct mlx5_ifc_mrtc_reg_bits {
 	u8         time_l[0x20];
 };
 
+struct mlx5_ifc_mtmp_reg_bits {
+	u8         reserved_at_0[0x14];
+	u8         sensor_index[0xc];
+
+	u8         reserved_at_20[0x10];
+	u8         temperature[0x10];
+
+	u8         mte[0x1];
+	u8         mtr[0x1];
+	u8         reserved_at_42[0xe];
+	u8         max_temperature[0x10];
+
+	u8         tee[0x2];
+	u8         reserved_at_62[0xe];
+	u8         temp_threshold_hi[0x10];
+
+	u8         reserved_at_80[0x10];
+	u8         temp_threshold_lo[0x10];
+
+	u8         reserved_at_a0[0x20];
+
+	u8         sensor_name_hi[0x20];
+	u8         sensor_name_lo[0x20];
+};
+
 union mlx5_ifc_ports_control_registers_document_bits {
 	struct mlx5_ifc_bufferx_reg_bits bufferx_reg;
 	struct mlx5_ifc_eth_2819_cntrs_grp_data_layout_bits eth_2819_cntrs_grp_data_layout;
@@ -10931,6 +10965,7 @@ union mlx5_ifc_ports_control_registers_document_bits {
 	struct mlx5_ifc_mfrl_reg_bits mfrl_reg;
 	struct mlx5_ifc_mtutc_reg_bits mtutc_reg;
 	struct mlx5_ifc_mrtc_reg_bits mrtc_reg;
+	struct mlx5_ifc_mtmp_reg_bits mtmp_reg;
 	u8         reserved_at_0[0x60e0];
 };
 

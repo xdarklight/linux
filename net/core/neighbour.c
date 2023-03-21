@@ -627,37 +627,6 @@ struct neighbour *neigh_lookup(struct neigh_table *tbl, const void *pkey,
 }
 EXPORT_SYMBOL(neigh_lookup);
 
-struct neighbour *neigh_lookup_nodev(struct neigh_table *tbl, struct net *net,
-				     const void *pkey)
-{
-	struct neighbour *n;
-	unsigned int key_len = tbl->key_len;
-	u32 hash_val;
-	struct neigh_hash_table *nht;
-
-	NEIGH_CACHE_STAT_INC(tbl, lookups);
-
-	rcu_read_lock_bh();
-	nht = rcu_dereference_bh(tbl->nht);
-	hash_val = tbl->hash(pkey, NULL, nht->hash_rnd) >> (32 - nht->hash_shift);
-
-	for (n = rcu_dereference_bh(nht->hash_buckets[hash_val]);
-	     n != NULL;
-	     n = rcu_dereference_bh(n->next)) {
-		if (!memcmp(n->primary_key, pkey, key_len) &&
-		    net_eq(dev_net(n->dev), net)) {
-			if (!refcount_inc_not_zero(&n->refcnt))
-				n = NULL;
-			NEIGH_CACHE_STAT_INC(tbl, hits);
-			break;
-		}
-	}
-
-	rcu_read_unlock_bh();
-	return n;
-}
-EXPORT_SYMBOL(neigh_lookup_nodev);
-
 static struct neighbour *
 ___neigh_create(struct neigh_table *tbl, const void *pkey,
 		struct net_device *dev, u32 flags,
@@ -1124,13 +1093,13 @@ static void neigh_timer_handler(struct timer_list *t)
 					  neigh->used +
 					  NEIGH_VAR(neigh->parms, DELAY_PROBE_TIME))) {
 			neigh_dbg(2, "neigh %p is delayed\n", neigh);
-			neigh->nud_state = NUD_DELAY;
+			WRITE_ONCE(neigh->nud_state, NUD_DELAY);
 			neigh->updated = jiffies;
 			neigh_suspect(neigh);
 			next = now + NEIGH_VAR(neigh->parms, DELAY_PROBE_TIME);
 		} else {
 			neigh_dbg(2, "neigh %p is suspected\n", neigh);
-			neigh->nud_state = NUD_STALE;
+			WRITE_ONCE(neigh->nud_state, NUD_STALE);
 			neigh->updated = jiffies;
 			neigh_suspect(neigh);
 			notify = 1;
@@ -1140,14 +1109,14 @@ static void neigh_timer_handler(struct timer_list *t)
 				   neigh->confirmed +
 				   NEIGH_VAR(neigh->parms, DELAY_PROBE_TIME))) {
 			neigh_dbg(2, "neigh %p is now reachable\n", neigh);
-			neigh->nud_state = NUD_REACHABLE;
+			WRITE_ONCE(neigh->nud_state, NUD_REACHABLE);
 			neigh->updated = jiffies;
 			neigh_connect(neigh);
 			notify = 1;
 			next = neigh->confirmed + neigh->parms->reachable_time;
 		} else {
 			neigh_dbg(2, "neigh %p is probed\n", neigh);
-			neigh->nud_state = NUD_PROBE;
+			WRITE_ONCE(neigh->nud_state, NUD_PROBE);
 			neigh->updated = jiffies;
 			atomic_set(&neigh->probes, 0);
 			notify = 1;
@@ -1161,7 +1130,7 @@ static void neigh_timer_handler(struct timer_list *t)
 
 	if ((neigh->nud_state & (NUD_INCOMPLETE | NUD_PROBE)) &&
 	    atomic_read(&neigh->probes) >= neigh_max_probes(neigh)) {
-		neigh->nud_state = NUD_FAILED;
+		WRITE_ONCE(neigh->nud_state, NUD_FAILED);
 		notify = 1;
 		neigh_invalidate(neigh);
 		goto out;
@@ -1210,7 +1179,7 @@ int __neigh_event_send(struct neighbour *neigh, struct sk_buff *skb,
 			atomic_set(&neigh->probes,
 				   NEIGH_VAR(neigh->parms, UCAST_PROBES));
 			neigh_del_timer(neigh);
-			neigh->nud_state = NUD_INCOMPLETE;
+			WRITE_ONCE(neigh->nud_state, NUD_INCOMPLETE);
 			neigh->updated = now;
 			if (!immediate_ok) {
 				next = now + 1;
@@ -1222,7 +1191,7 @@ int __neigh_event_send(struct neighbour *neigh, struct sk_buff *skb,
 			}
 			neigh_add_timer(neigh, next);
 		} else {
-			neigh->nud_state = NUD_FAILED;
+			WRITE_ONCE(neigh->nud_state, NUD_FAILED);
 			neigh->updated = jiffies;
 			write_unlock_bh(&neigh->lock);
 
@@ -1232,7 +1201,7 @@ int __neigh_event_send(struct neighbour *neigh, struct sk_buff *skb,
 	} else if (neigh->nud_state & NUD_STALE) {
 		neigh_dbg(2, "neigh %p is delayed\n", neigh);
 		neigh_del_timer(neigh);
-		neigh->nud_state = NUD_DELAY;
+		WRITE_ONCE(neigh->nud_state, NUD_DELAY);
 		neigh->updated = jiffies;
 		neigh_add_timer(neigh, jiffies +
 				NEIGH_VAR(neigh->parms, DELAY_PROBE_TIME));
@@ -1344,7 +1313,7 @@ static int __neigh_update(struct neighbour *neigh, const u8 *lladdr,
 	neigh_update_flags(neigh, flags, &notify, &gc_update, &managed_update);
 	if (flags & (NEIGH_UPDATE_F_USE | NEIGH_UPDATE_F_MANAGED)) {
 		new = old & ~NUD_PERMANENT;
-		neigh->nud_state = new;
+		WRITE_ONCE(neigh->nud_state, new);
 		err = 0;
 		goto out;
 	}
@@ -1353,7 +1322,7 @@ static int __neigh_update(struct neighbour *neigh, const u8 *lladdr,
 		neigh_del_timer(neigh);
 		if (old & NUD_CONNECTED)
 			neigh_suspect(neigh);
-		neigh->nud_state = new;
+		WRITE_ONCE(neigh->nud_state, new);
 		err = 0;
 		notify = old & NUD_VALID;
 		if ((old & (NUD_INCOMPLETE | NUD_PROBE)) &&
@@ -1432,7 +1401,7 @@ static int __neigh_update(struct neighbour *neigh, const u8 *lladdr,
 						((new & NUD_REACHABLE) ?
 						 neigh->parms->reachable_time :
 						 0)));
-		neigh->nud_state = new;
+		WRITE_ONCE(neigh->nud_state, new);
 		notify = 1;
 	}
 
@@ -1519,7 +1488,7 @@ void __neigh_set_probe_once(struct neighbour *neigh)
 	neigh->updated = jiffies;
 	if (!(neigh->nud_state & NUD_FAILED))
 		return;
-	neigh->nud_state = NUD_INCOMPLETE;
+	WRITE_ONCE(neigh->nud_state, NUD_INCOMPLETE);
 	atomic_set(&neigh->probes, neigh_max_probes(neigh));
 	neigh_add_timer(neigh,
 			jiffies + max(NEIGH_VAR(neigh->parms, RETRANS_TIME),
@@ -3229,7 +3198,7 @@ static struct neighbour *neigh_get_first(struct seq_file *seq)
 			}
 			if (!(state->flags & NEIGH_SEQ_SKIP_NOARP))
 				break;
-			if (n->nud_state & ~NUD_NOARP)
+			if (READ_ONCE(n->nud_state) & ~NUD_NOARP)
 				break;
 next:
 			n = rcu_dereference_bh(n->next);
@@ -3271,7 +3240,7 @@ static struct neighbour *neigh_get_next(struct seq_file *seq,
 			if (!(state->flags & NEIGH_SEQ_SKIP_NOARP))
 				break;
 
-			if (n->nud_state & ~NUD_NOARP)
+			if (READ_ONCE(n->nud_state) & ~NUD_NOARP)
 				break;
 next:
 			n = rcu_dereference_bh(n->next);

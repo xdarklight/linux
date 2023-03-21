@@ -52,6 +52,7 @@
 #include <linux/rbtree.h>
 #include <net/net_trackers.h>
 #include <net/net_debug.h>
+#include <net/dropreason.h>
 
 struct netpoll_info;
 struct device;
@@ -1308,6 +1309,17 @@ struct netdev_net_notifier {
  *	Used to add FDB entries to dump requests. Implementers should add
  *	entries to skb and update idx with the number of entries.
  *
+ * int (*ndo_mdb_add)(struct net_device *dev, struct nlattr *tb[],
+ *		      u16 nlmsg_flags, struct netlink_ext_ack *extack);
+ *	Adds an MDB entry to dev.
+ * int (*ndo_mdb_del)(struct net_device *dev, struct nlattr *tb[],
+ *		      struct netlink_ext_ack *extack);
+ *	Deletes the MDB entry from dev.
+ * int (*ndo_mdb_dump)(struct net_device *dev, struct sk_buff *skb,
+ *		       struct netlink_callback *cb);
+ *	Dumps MDB entries from dev. The first argument (marker) in the netlink
+ *	callback is used by core rtnetlink code.
+ *
  * int (*ndo_bridge_setlink)(struct net_device *dev, struct nlmsghdr *nlh,
  *			     u16 flags, struct netlink_ext_ack *extack)
  * int (*ndo_bridge_getlink)(struct sk_buff *skb, u32 pid, u32 seq,
@@ -1570,6 +1582,16 @@ struct net_device_ops {
 					       const unsigned char *addr,
 					       u16 vid, u32 portid, u32 seq,
 					       struct netlink_ext_ack *extack);
+	int			(*ndo_mdb_add)(struct net_device *dev,
+					       struct nlattr *tb[],
+					       u16 nlmsg_flags,
+					       struct netlink_ext_ack *extack);
+	int			(*ndo_mdb_del)(struct net_device *dev,
+					       struct nlattr *tb[],
+					       struct netlink_ext_ack *extack);
+	int			(*ndo_mdb_dump)(struct net_device *dev,
+						struct sk_buff *skb,
+						struct netlink_callback *cb);
 	int			(*ndo_bridge_setlink)(struct net_device *dev,
 						      struct nlmsghdr *nlh,
 						      u16 flags,
@@ -3806,13 +3828,8 @@ static inline unsigned int get_netdev_rx_queue_index(
 
 int netif_get_num_default_rss_queues(void);
 
-enum skb_free_reason {
-	SKB_REASON_CONSUMED,
-	SKB_REASON_DROPPED,
-};
-
-void __dev_kfree_skb_irq(struct sk_buff *skb, enum skb_free_reason reason);
-void __dev_kfree_skb_any(struct sk_buff *skb, enum skb_free_reason reason);
+void dev_kfree_skb_irq_reason(struct sk_buff *skb, enum skb_drop_reason reason);
+void dev_kfree_skb_any_reason(struct sk_buff *skb, enum skb_drop_reason reason);
 
 /*
  * It is not allowed to call kfree_skb() or consume_skb() from hardware
@@ -3835,22 +3852,22 @@ void __dev_kfree_skb_any(struct sk_buff *skb, enum skb_free_reason reason);
  */
 static inline void dev_kfree_skb_irq(struct sk_buff *skb)
 {
-	__dev_kfree_skb_irq(skb, SKB_REASON_DROPPED);
+	dev_kfree_skb_irq_reason(skb, SKB_DROP_REASON_NOT_SPECIFIED);
 }
 
 static inline void dev_consume_skb_irq(struct sk_buff *skb)
 {
-	__dev_kfree_skb_irq(skb, SKB_REASON_CONSUMED);
+	dev_kfree_skb_irq_reason(skb, SKB_CONSUMED);
 }
 
 static inline void dev_kfree_skb_any(struct sk_buff *skb)
 {
-	__dev_kfree_skb_any(skb, SKB_REASON_DROPPED);
+	dev_kfree_skb_any_reason(skb, SKB_DROP_REASON_NOT_SPECIFIED);
 }
 
 static inline void dev_consume_skb_any(struct sk_buff *skb)
 {
-	__dev_kfree_skb_any(skb, SKB_REASON_CONSUMED);
+	dev_kfree_skb_any_reason(skb, SKB_CONSUMED);
 }
 
 u32 bpf_prog_run_generic_xdp(struct sk_buff *skb, struct xdp_buff *xdp,
