@@ -4218,9 +4218,10 @@ amdgpu_dm_register_backlight_device(struct amdgpu_display_manager *dm)
 								       &amdgpu_dm_backlight_ops,
 								       &props);
 
-	if (IS_ERR(dm->backlight_dev[dm->num_of_edps]))
+	if (IS_ERR(dm->backlight_dev[dm->num_of_edps])) {
 		DRM_ERROR("DM: Backlight registration failed!\n");
-	else
+		dm->backlight_dev[dm->num_of_edps] = NULL;
+	} else
 		DRM_DEBUG_DRIVER("DM: Registered Backlight device: %s\n", bl_name);
 }
 
@@ -4268,21 +4269,23 @@ static int initialize_plane(struct amdgpu_display_manager *dm,
 static void register_backlight_device(struct amdgpu_display_manager *dm,
 				      struct dc_link *link)
 {
-	if ((link->connector_signal & (SIGNAL_TYPE_EDP | SIGNAL_TYPE_LVDS)) &&
-	    link->type != dc_connection_none) {
-		/*
-		 * Event if registration failed, we should continue with
-		 * DM initialization because not having a backlight control
-		 * is better then a black screen.
-		 */
-		if (!dm->backlight_dev[dm->num_of_edps])
-			amdgpu_dm_register_backlight_device(dm);
+	int bl_idx = dm->num_of_edps;
 
-		if (dm->backlight_dev[dm->num_of_edps]) {
-			dm->backlight_link[dm->num_of_edps] = link;
-			dm->num_of_edps++;
-		}
+	if (!(link->connector_signal & (SIGNAL_TYPE_EDP | SIGNAL_TYPE_LVDS)) ||
+	    link->type == dc_connection_none)
+		return;
+
+	if (dm->num_of_edps >= AMDGPU_DM_MAX_NUM_EDP) {
+		drm_warn(adev_to_drm(dm->adev), "Too much eDP connections, skipping backlight setup for additional eDPs\n");
+		return;
 	}
+
+	amdgpu_dm_register_backlight_device(dm);
+	if (!dm->backlight_dev[bl_idx])
+		return;
+
+	dm->backlight_link[bl_idx] = link;
+	dm->num_of_edps++;
 }
 
 static void amdgpu_set_panel_orientation(struct drm_connector *connector);
@@ -7281,7 +7284,6 @@ void amdgpu_dm_connector_init_helper(struct amdgpu_display_manager *dm,
 	if (!aconnector->mst_root)
 		drm_connector_attach_max_bpc_property(&aconnector->base, 8, 16);
 
-	/* This defaults to the max in the range, but we want 8bpc for non-edp. */
 	aconnector->base.state->max_bpc = 16;
 	aconnector->base.state->max_requested_bpc = aconnector->base.state->max_bpc;
 

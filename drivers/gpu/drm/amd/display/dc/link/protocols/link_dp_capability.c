@@ -1284,7 +1284,7 @@ bool dp_overwrite_extended_receiver_cap(struct dc_link *link)
 void dpcd_set_source_specific_data(struct dc_link *link)
 {
 	if (!link->dc->vendor_signature.is_valid) {
-		enum dc_status result_write_min_hblank = DC_NOT_SUPPORTED;
+		enum dc_status __maybe_unused result_write_min_hblank = DC_NOT_SUPPORTED;
 		struct dpcd_amd_signature amd_signature = {0};
 		struct dpcd_amd_device_id amd_device_id = {0};
 
@@ -2177,7 +2177,7 @@ bool dp_verify_link_cap_with_retries(
 	return success;
 }
 
-/**
+/*
  * Check if there is a native DP or passive DP-HDMI dongle connected
  */
 bool dp_is_sink_present(struct dc_link *link)
