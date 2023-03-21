@@ -31,8 +31,10 @@
 #include <linux/highmem.h>
 #include <linux/io.h>
 #include <linux/kmemleak.h>
+#include <linux/page-isolation.h>
 #include <trace/events/cma.h>
 
+#include "internal.h"
 #include "cma.h"
 
 struct cma cma_areas[MAX_CMA_AREAS];
@@ -91,6 +93,25 @@ static void cma_clear_bitmap(struct cma *cma, unsigned long pfn,
 	spin_lock_irqsave(&cma->lock, flags);
 	bitmap_clear(cma->bitmap, bitmap_no, bitmap_count);
 	spin_unlock_irqrestore(&cma->lock, flags);
+}
+
+/* Free whole pageblock and set its migration type to MIGRATE_CMA. */
+static void init_cma_reserved_pageblock(struct page *page)
+{
+	unsigned i = pageblock_nr_pages;
+	struct page *p = page;
+
+	do {
+		__ClearPageReserved(p);
+		set_page_count(p, 0);
+	} while (++p, --i);
+
+	set_pageblock_migratetype(page, MIGRATE_CMA);
+	set_page_refcounted(page);
+	__free_pages(page, pageblock_order);
+
+	adjust_managed_page_count(page, pageblock_nr_pages);
+	page_zone(page)->cma_pages += pageblock_nr_pages;
 }
 
 static void __init cma_activate_area(struct cma *cma)
