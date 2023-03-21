@@ -3194,7 +3194,7 @@ static void clk_summary_show_subtree(struct seq_file *s, struct clk_core *c,
 static int clk_summary_show(struct seq_file *s, void *data)
 {
 	struct clk_core *c;
-	struct hlist_head **lists = (struct hlist_head **)s->private;
+	struct hlist_head **lists = s->private;
 
 	seq_puts(s, "                                 enable  prepare  protect                                duty  hardware\n");
 	seq_puts(s, "   clock                          count    count    count        rate   accuracy phase  cycle    enable\n");
@@ -3253,7 +3253,7 @@ static int clk_dump_show(struct seq_file *s, void *data)
 {
 	struct clk_core *c;
 	bool first_node = true;
-	struct hlist_head **lists = (struct hlist_head **)s->private;
+	struct hlist_head **lists = s->private;
 
 	seq_putc(s, '{');
 	clk_prepare_lock();
@@ -4880,8 +4880,8 @@ static struct device_node *get_clk_provider_node(struct device *dev)
 	np = dev->of_node;
 	parent_np = dev->parent ? dev->parent->of_node : NULL;
 
-	if (!of_find_property(np, "#clock-cells", NULL))
-		if (of_find_property(parent_np, "#clock-cells", NULL))
+	if (!of_property_present(np, "#clock-cells"))
+		if (of_property_present(parent_np, "#clock-cells"))
 			np = parent_np;
 
 	return np;
