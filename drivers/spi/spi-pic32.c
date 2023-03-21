@@ -591,7 +591,7 @@ static int pic32_spi_setup(struct spi_device *spi)
 	 * unreliable/erroneous SPI transactions.
 	 * To avoid that we will always handle /CS by toggling GPIO.
 	 */
-	if (!spi->cs_gpiod)
+	if (!spi_get_csgpiod(spi, 0))
 		return -EINVAL;
 
 	return 0;
@@ -600,7 +600,7 @@ static int pic32_spi_setup(struct spi_device *spi)
 static void pic32_spi_cleanup(struct spi_device *spi)
 {
 	/* de-activate cs-gpio, gpiolib will handle inversion */
-	gpiod_direction_output(spi->cs_gpiod, 0);
+	gpiod_direction_output(spi_get_csgpiod(spi, 0), 0);
 }
 
 static int pic32_spi_dma_prep(struct pic32_spi *pic32s, struct device *dev)
@@ -844,7 +844,7 @@ err_master:
 	return ret;
 }
 
-static int pic32_spi_remove(struct platform_device *pdev)
+static void pic32_spi_remove(struct platform_device *pdev)
 {
 	struct pic32_spi *pic32s;
 
@@ -852,8 +852,6 @@ static int pic32_spi_remove(struct platform_device *pdev)
 	pic32_spi_disable(pic32s);
 	clk_disable_unprepare(pic32s->clk);
 	pic32_spi_dma_unprep(pic32s);
-
-	return 0;
 }
 
 static const struct of_device_id pic32_spi_of_match[] = {
@@ -868,7 +866,7 @@ static struct platform_driver pic32_spi_driver = {
 		.of_match_table = of_match_ptr(pic32_spi_of_match),
 	},
 	.probe = pic32_spi_probe,
-	.remove = pic32_spi_remove,
+	.remove_new = pic32_spi_remove,
 };
 
 module_platform_driver(pic32_spi_driver);

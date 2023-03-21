@@ -213,7 +213,7 @@ static void xilinx_spi_chipselect(struct spi_device *spi, int is_on)
 	 */
 
 	cs = xspi->cs_inactive;
-	cs ^= BIT(spi->chip_select);
+	cs ^= BIT(spi_get_chipselect(spi, 0));
 
 	/* Activate the chip select */
 	xspi->write_fn(cs, xspi->regs + XSPI_SSR_OFFSET);
@@ -228,9 +228,9 @@ static int xilinx_spi_setup_transfer(struct spi_device *spi,
 	struct xilinx_spi *xspi = spi_master_get_devdata(spi->master);
 
 	if (spi->mode & SPI_CS_HIGH)
-		xspi->cs_inactive &= ~BIT(spi->chip_select);
+		xspi->cs_inactive &= ~BIT(spi_get_chipselect(spi, 0));
 	else
-		xspi->cs_inactive |= BIT(spi->chip_select);
+		xspi->cs_inactive |= BIT(spi_get_chipselect(spi, 0));
 
 	return 0;
 }
@@ -504,7 +504,7 @@ static int xilinx_spi_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int xilinx_spi_remove(struct platform_device *pdev)
+static void xilinx_spi_remove(struct platform_device *pdev)
 {
 	struct spi_master *master = platform_get_drvdata(pdev);
 	struct xilinx_spi *xspi = spi_master_get_devdata(master);
@@ -518,8 +518,6 @@ static int xilinx_spi_remove(struct platform_device *pdev)
 	xspi->write_fn(0, regs_base + XIPIF_V123B_DGIER_OFFSET);
 
 	spi_master_put(xspi->bitbang.master);
-
-	return 0;
 }
 
 /* work with hotplug and coldplug */
@@ -527,7 +525,7 @@ MODULE_ALIAS("platform:" XILINX_SPI_NAME);
 
 static struct platform_driver xilinx_spi_driver = {
 	.probe = xilinx_spi_probe,
-	.remove = xilinx_spi_remove,
+	.remove_new = xilinx_spi_remove,
 	.driver = {
 		.name = XILINX_SPI_NAME,
 		.of_match_table = xilinx_spi_of_match,
