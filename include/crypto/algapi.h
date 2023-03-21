@@ -34,6 +34,19 @@
 
 #define CRYPTO_DMA_PADDING ((CRYPTO_DMA_ALIGN - 1) & ~(CRYPTO_MINALIGN - 1))
 
+/*
+ * Autoloaded crypto modules should only use a prefixed name to avoid allowing
+ * arbitrary modules to be loaded. Loading from userspace may still need the
+ * unprefixed names, so retains those aliases as well.
+ * This uses __MODULE_INFO directly instead of MODULE_ALIAS because pre-4.3
+ * gcc (e.g. avr32 toolchain) uses __LINE__ for uniqueness, and this macro
+ * expands twice on the same line. Instead, use a separate base name for the
+ * alias.
+ */
+#define MODULE_ALIAS_CRYPTO(name)	\
+		__MODULE_INFO(alias, alias_userspace, name);	\
+		__MODULE_INFO(alias, alias_crypto, "crypto-" name)
+
 struct crypto_aead;
 struct crypto_instance;
 struct module;
@@ -50,6 +63,9 @@ struct crypto_type {
 	void (*show)(struct seq_file *m, struct crypto_alg *alg);
 	int (*report)(struct sk_buff *skb, struct crypto_alg *alg);
 	void (*free)(struct crypto_instance *inst);
+#ifdef CONFIG_CRYPTO_STATS
+	int (*report_stat)(struct sk_buff *skb, struct crypto_alg *alg);
+#endif
 
 	unsigned int type;
 	unsigned int maskclear;
