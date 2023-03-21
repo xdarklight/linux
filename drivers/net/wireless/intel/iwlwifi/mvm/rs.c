@@ -512,10 +512,10 @@ static char *rs_pretty_rate(const struct rs_rate *rate)
 		 (rate->index <= IWL_RATE_MCS_9_INDEX))
 		rate_str = ht_vht_rates[rate->index];
 	else
-		rate_str = "BAD_RATE";
+		rate_str = NULL;
 
 	sprintf(buf, "(%s|%s|%s)", rs_pretty_lq_type(rate->type),
-		iwl_rs_pretty_ant(rate->ant), rate_str);
+		iwl_rs_pretty_ant(rate->ant), rate_str ?: "BAD_RATE");
 	return buf;
 }
 
@@ -2682,7 +2682,6 @@ static void rs_drv_get_rate(void *mvm_r, struct ieee80211_sta *sta,
 		/* if vif isn't initialized mvm doesn't know about
 		 * this station, so don't do anything with the it
 		 */
-		sta = NULL;
 		mvm_sta = NULL;
 	}
 
