@@ -44,7 +44,7 @@ config RISCV
 	select ARCH_USE_QUEUED_RWLOCKS
 	select ARCH_WANT_DEFAULT_TOPDOWN_MMAP_LAYOUT if MMU
 	select ARCH_WANT_FRAME_POINTERS
-	select ARCH_WANT_GENERAL_HUGETLB
+	select ARCH_WANT_GENERAL_HUGETLB if !RISCV_ISA_SVNAPOT
 	select ARCH_WANT_HUGETLB_PAGE_OPTIMIZE_VMEMMAP
 	select ARCH_WANT_HUGE_PMD_SHARE if 64BIT
 	select ARCH_WANT_LD_ORPHAN_WARN if !XIP_KERNEL
@@ -245,7 +245,7 @@ config AS_HAS_INSN
 	def_bool $(as-instr,.insn r 51$(comma) 0$(comma) 0$(comma) t0$(comma) t0$(comma) zero)
 
 source "arch/riscv/Kconfig.socs"
-source "arch/riscv/Kconfig.erratas"
+source "arch/riscv/Kconfig.errata"
 
 menu "Platform type"
 
@@ -378,9 +378,9 @@ config RISCV_ALTERNATIVE
 	depends on !XIP_KERNEL
 	help
 	  This Kconfig allows the kernel to automatically patch the
-	  errata required by the execution platform at run time. The
-	  code patching is performed once in the boot stages. It means
-	  that the overhead from this mechanism is just taken once.
+	  erratum or cpufeature required by the execution platform at run
+	  time. The code patching overhead is minimal, as it's only done
+	  once at boot and once on each module load.
 
 config RISCV_ALTERNATIVE_EARLY
 	bool
@@ -395,6 +395,25 @@ config RISCV_ISA_C
 	  Adds "C" to the ISA subsets that the toolchain is allowed to emit
 	  when building Linux, which results in compressed instructions in the
 	  Linux binary.
+
+	  If you don't know what to do here, say Y.
+
+config RISCV_ISA_SVNAPOT
+	bool "SVNAPOT extension support"
+	depends on 64BIT && MMU
+	default y
+	select RISCV_ALTERNATIVE
+	help
+	  Allow kernel to detect the SVNAPOT ISA-extension dynamically at boot
+	  time and enable its usage.
+
+	  The SVNAPOT extension is used to mark contiguous PTEs as a range
+	  of contiguous virtual-to-physical translations for a naturally
+	  aligned power-of-2 (NAPOT) granularity larger than the base 4KB page
+	  size. When HUGETLBFS is also selected this option unconditionally
+	  allocates some memory for each NAPOT page size supported by the kernel.
+	  When optimizing for low memory consumption and for platforms without
+	  the SVNAPOT extension, it may be better to say N here.
 
 	  If you don't know what to do here, say Y.
 
@@ -454,6 +473,19 @@ config RISCV_ISA_ZICBOM
 
 	   The Zicbom extension can be used to handle for example
 	   non-coherent DMA support on devices that need it.
+
+	   If you don't know what to do here, say Y.
+
+config RISCV_ISA_ZICBOZ
+	bool "Zicboz extension support for faster zeroing of memory"
+	depends on !XIP_KERNEL && MMU
+	select RISCV_ALTERNATIVE
+	default y
+	help
+	   Enable the use of the ZICBOZ extension (cbo.zero instruction)
+	   when available.
+
+	   The Zicboz extension is used for faster zeroing of memory.
 
 	   If you don't know what to do here, say Y.
 
