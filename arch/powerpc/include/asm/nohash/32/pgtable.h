@@ -171,7 +171,7 @@ void unmap_kernel_page(unsigned long va);
 	do { pte_update(mm, addr, ptep, ~0, 0, 0); } while (0)
 
 #ifndef pte_mkwrite
-static inline pte_t pte_mkwrite(pte_t pte)
+static inline pte_t pte_mkwrite(pte_t pte, struct vm_area_struct *vma)
 {
 	return __pte(pte_val(pte) | _PAGE_RW);
 }

@@ -351,6 +351,12 @@ static inline void set_pte(pte_t *ptep, pte_t pte)
 
 #define PTE_BIT_FUNC(h,fn,op) \
 static inline pte_t pte_##fn(pte_t pte) { pte.pte_##h op; return pte; }
+#define PTE_BIT_FUNC_VMA(h,fn,op) \
+static inline pte_t pte_##fn(pte_t pte, struct vm_area_struct *vma) \
+{ \
+	pte.pte_##h op; \
+	return pte; \
+}
 
 #ifdef CONFIG_X2TLB
 /*
@@ -359,11 +365,11 @@ static inline pte_t pte_##fn(pte_t pte) { pte.pte_##h op; return pte; }
  * kernel permissions), we attempt to couple them a bit more sanely here.
  */
 PTE_BIT_FUNC(high, wrprotect, &= ~(_PAGE_EXT_USER_WRITE | _PAGE_EXT_KERN_WRITE));
-PTE_BIT_FUNC(high, mkwrite, |= _PAGE_EXT_USER_WRITE | _PAGE_EXT_KERN_WRITE);
+PTE_BIT_FUNC_VMA(high, mkwrite, |= _PAGE_EXT_USER_WRITE | _PAGE_EXT_KERN_WRITE);
 PTE_BIT_FUNC(high, mkhuge, |= _PAGE_SZHUGE);
 #else
 PTE_BIT_FUNC(low, wrprotect, &= ~_PAGE_RW);
-PTE_BIT_FUNC(low, mkwrite, |= _PAGE_RW);
+PTE_BIT_FUNC_VMA(low, mkwrite, |= _PAGE_RW);
 PTE_BIT_FUNC(low, mkhuge, |= _PAGE_SZHUGE);
 #endif
 
