@@ -5940,11 +5940,6 @@ F:	drivers/devfreq/event/
 F:	include/dt-bindings/pmu/exynos_ppmu.h
 F:	include/linux/devfreq-event.h
 
-DEVICE NUMBER REGISTRY
-M:	Torben Mathiasen <device@lanana.org>
-S:	Maintained
-W:	http://lanana.org/docs/device-list/index.html
-
 DEVICE RESOURCE MANAGEMENT HELPERS
 M:	Hans de Goede <hdegoede@redhat.com>
 R:	Matti Vaittinen <mazziesaccount@gmail.com>
@@ -17170,6 +17165,12 @@ F:	fs/qnx4/
 F:	include/uapi/linux/qnx4_fs.h
 F:	include/uapi/linux/qnxtypes.h
 
+QNX6 FILESYSTEM
+S:	Orphan
+F:	Documentation/filesystems/qnx6.rst
+F:	fs/qnx6/
+F:	include/linux/qnx6_fs.h
+
 QORIQ DPAA2 FSL-MC BUS DRIVER
 M:	Stuart Yoder <stuyoder@gmail.com>
 M:	Laurentiu Tudor <laurentiu.tudor@nxp.com>
@@ -21236,6 +21237,14 @@ L:	linux-trace-devel@vger.kernel.org
 S:	Maintained
 F:	Documentation/tools/rtla/
 F:	tools/tracing/rtla/
+
+TECHNICAL ADVISORY BOARD PROCESS DOCS
+M:	"Theodore Ts'o" <tytso@mit.edu>
+M:	Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+L:	tech-board-discuss@lists.linux-foundation.org
+S:	Maintained
+F:	Documentation/process/researcher-guidelines.rst
+F:	Documentation/process/contribution-maturity-model.rst
 
 TRADITIONAL CHINESE DOCUMENTATION
 M:	Hu Haowen <src.res@email.cn>
