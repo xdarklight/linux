@@ -96,33 +96,52 @@ static u32 rtw_sdio_readl(struct rtw_dev *rtwdev, u32 addr, int *err_ret)
 	return le32_to_cpu(*(__le32 *)buf);
 }
 
+static int rtw_sdio_indirect_read_select_reg(struct rtw_dev *rtwdev, u32 addr,
+					     bool multi_byte)
+{
+	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+	unsigned int retry;
+	u32 reg_cfg;
+	int ret;
+	u8 tmp;
+
+	if (rtw_chip_wcpu_11n(rtwdev))
+		return 0;
+
+	reg_cfg = rtw_sdio_to_bus_offset(rtwdev, REG_SDIO_INDIRECT_REG_CFG);
+
+	addr |= BIT(19);
+	if (multi_byte)
+		addr |= BIT(17);
+
+	rtw_sdio_writel(rtwdev, addr, reg_cfg, &ret);
+	if (ret)
+		return ret;
+
+	for (retry = 0; retry < RTW_SDIO_INDIRECT_RW_RETRIES; retry++) {
+		tmp = sdio_readb(rtwsdio->sdio_func, reg_cfg + 2, &ret);
+		if (!ret && (tmp & BIT(4)))
+			return 0;
+	}
+
+	return -ETIMEDOUT;
+}
+
+static u32 rtw_sdio_indirect_read_addr(struct rtw_dev *rtwdev, u32 addr)
+{
+	if (rtw_chip_wcpu_11n(rtwdev))
+		return rtw_sdio_to_bus_offset(rtwdev, addr | WLAN_IOREG_OFFSET);
+
+	return rtw_sdio_to_bus_offset(rtwdev, REG_SDIO_INDIRECT_REG_DATA);
+}
+
 static u8 rtw_sdio_read_indirect8(struct rtw_dev *rtwdev, u32 addr,
 				  int *err_ret)
 {
 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
-	u32 reg_cfg, reg_data;
-	int retry;
-	u8 tmp;
+	u32 reg_data = rtw_sdio_indirect_read_addr(rtwdev, addr);
 
-	if (rtw_chip_wcpu_11n(rtwdev)) {
-		addr = rtw_sdio_to_bus_offset(rtwdev,
-					      addr | WLAN_IOREG_OFFSET);
-		return sdio_readb(rtwsdio->sdio_func, addr, err_ret);
-	}
-
-	reg_cfg = rtw_sdio_to_bus_offset(rtwdev, REG_SDIO_INDIRECT_REG_CFG);
-	reg_data = rtw_sdio_to_bus_offset(rtwdev, REG_SDIO_INDIRECT_REG_DATA);
-
-	rtw_sdio_writel(rtwdev, BIT(19) | addr, reg_cfg, err_ret);
-	if (*err_ret)
-		return 0;
-
-	for (retry = 0; retry < RTW_SDIO_INDIRECT_RW_RETRIES; retry++) {
-		tmp = sdio_readb(rtwsdio->sdio_func, reg_cfg + 2, err_ret);
-		if (!*err_ret && tmp & BIT(4))
-			break;
-	}
-
+	*err_ret = rtw_sdio_indirect_read_select_reg(rtwdev, addr, false);
 	if (*err_ret)
 		return 0;
 
@@ -146,30 +165,9 @@ static int rtw_sdio_read_indirect_bytes(struct rtw_dev *rtwdev, u32 addr,
 static u32 rtw_sdio_read_indirect32(struct rtw_dev *rtwdev, u32 addr,
 				    int *err_ret)
 {
-	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
-	u32 reg_cfg, reg_data;
-	int retry;
-	u8 tmp;
+	u32 reg_data = rtw_sdio_indirect_read_addr(rtwdev, addr);
 
-	if (rtw_chip_wcpu_11n(rtwdev)) {
-		addr = rtw_sdio_to_bus_offset(rtwdev,
-					      addr | WLAN_IOREG_OFFSET);
-		return rtw_sdio_readl(rtwdev, addr, err_ret);
-	}
-
-	reg_cfg = rtw_sdio_to_bus_offset(rtwdev, REG_SDIO_INDIRECT_REG_CFG);
-	reg_data = rtw_sdio_to_bus_offset(rtwdev, REG_SDIO_INDIRECT_REG_DATA);
-
-	rtw_sdio_writel(rtwdev, BIT(19) | BIT(17) | addr, reg_cfg, err_ret);
-	if (*err_ret)
-		return 0;
-
-	for (retry = 0; retry < RTW_SDIO_INDIRECT_RW_RETRIES; retry++) {
-		tmp = sdio_readb(rtwsdio->sdio_func, reg_cfg + 2, err_ret);
-		if (!*err_ret && (tmp & BIT(4)))
-			break;
-	}
-
+	*err_ret = rtw_sdio_indirect_read_select_reg(rtwdev, addr, true);
 	if (*err_ret)
 		return 0;
 
