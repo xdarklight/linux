@@ -11,7 +11,8 @@ Documentation conventions
 =========================
 
 For brevity, this document uses the type notion "u64", "u32", etc.
-to mean an unsigned integer whose width is the specified number of bits.
+to mean an unsigned integer whose width is the specified number of bits,
+and "s32", etc. to mean a signed integer of the specified number of bits.
 
 Registers and calling convention
 ================================
@@ -253,7 +254,7 @@ BPF_JSET  0x40   PC += off if dst & src
 BPF_JNE   0x50   PC += off if dst != src
 BPF_JSGT  0x60   PC += off if dst > src     signed
 BPF_JSGE  0x70   PC += off if dst >= src    signed
-BPF_CALL  0x80   function call
+BPF_CALL  0x80   function call              see `Helper functions`_
 BPF_EXIT  0x90   function / program return  BPF_JMP only
 BPF_JLT   0xa0   PC += off if dst < src     unsigned
 BPF_JLE   0xb0   PC += off if dst <= src    unsigned
@@ -264,6 +265,21 @@ BPF_JSLE  0xd0   PC += off if dst <= src    signed
 The eBPF program needs to store the return value into register R0 before doing a
 BPF_EXIT.
 
+Example:
+
+``BPF_JSGE | BPF_X | BPF_JMP32`` (0x7e) means::
+
+  if (s32)dst s>= (s32)src goto +offset
+
+where 's>=' indicates a signed '>=' comparison.
+
+Helper functions
+~~~~~~~~~~~~~~~~
+
+Helper functions are a concept whereby BPF programs can call into a
+set of function calls exposed by the runtime.  Each helper
+function is identified by an integer used in a ``BPF_CALL`` instruction.
+The available helper functions may differ for each program type.
 
 Load and store instructions
 ===========================

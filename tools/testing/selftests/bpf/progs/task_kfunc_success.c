@@ -17,6 +17,10 @@ int err, pid;
  *         TP_PROTO(struct task_struct *p, u64 clone_flags)
  */
 
+struct task_struct *bpf_task_acquire(struct task_struct *p) __ksym __weak;
+void invalid_kfunc(void) __ksym __weak;
+void bpf_testmod_test_mod_kfunc(int i) __ksym __weak;
+
 static bool is_test_kfunc_task(void)
 {
 	int cur_pid = bpf_get_current_pid_tgid() >> 32;
@@ -26,7 +30,21 @@ static bool is_test_kfunc_task(void)
 
 static int test_acquire_release(struct task_struct *task)
 {
-	struct task_struct *acquired;
+	struct task_struct *acquired = NULL;
+
+	if (!bpf_ksym_exists(bpf_task_acquire)) {
+		err = 3;
+		return 0;
+	}
+	if (!bpf_ksym_exists(bpf_testmod_test_mod_kfunc)) {
+		err = 4;
+		return 0;
+	}
+	if (bpf_ksym_exists(invalid_kfunc)) {
+		/* the verifier's dead code elimination should remove this */
+		err = 5;
+		asm volatile ("goto -1"); /* for (;;); */
+	}
 
 	acquired = bpf_task_acquire(task);
 	bpf_task_release(acquired);
@@ -171,8 +189,6 @@ static void lookup_compare_pid(const struct task_struct *p)
 SEC("tp_btf/task_newtask")
 int BPF_PROG(test_task_from_pid_arg, struct task_struct *task, u64 clone_flags)
 {
-	struct task_struct *acquired;
-
 	if (!is_test_kfunc_task())
 		return 0;
 
@@ -183,8 +199,6 @@ int BPF_PROG(test_task_from_pid_arg, struct task_struct *task, u64 clone_flags)
 SEC("tp_btf/task_newtask")
 int BPF_PROG(test_task_from_pid_current, struct task_struct *task, u64 clone_flags)
 {
-	struct task_struct *current, *acquired;
-
 	if (!is_test_kfunc_task())
 		return 0;
 
@@ -208,10 +222,12 @@ static int is_pid_lookup_valid(s32 pid)
 SEC("tp_btf/task_newtask")
 int BPF_PROG(test_task_from_pid_invalid, struct task_struct *task, u64 clone_flags)
 {
-	struct task_struct *acquired;
-
 	if (!is_test_kfunc_task())
 		return 0;
+
+	bpf_strncmp(task->comm, 12, "foo");
+	bpf_strncmp(task->comm, 16, "foo");
+	bpf_strncmp(&task->comm[8], 4, "foo");
 
 	if (is_pid_lookup_valid(-1)) {
 		err = 1;

@@ -7533,6 +7533,12 @@ static int bpf_object__resolve_ksym_func_btf_id(struct bpf_object *obj,
 	ext->is_set = true;
 	ext->ksym.kernel_btf_id = kfunc_id;
 	ext->ksym.btf_fd_idx = mod_btf ? mod_btf->fd_array_idx : 0;
+	/* Also set kernel_btf_obj_fd to make sure that bpf_object__relocate_data()
+	 * populates FD into ld_imm64 insn when it's used to point to kfunc.
+	 * {kernel_btf_id, btf_fd_idx} -> fixup bpf_call.
+	 * {kernel_btf_id, kernel_btf_obj_fd} -> fixup ld_imm64.
+	 */
+	ext->ksym.kernel_btf_obj_fd = mod_btf ? mod_btf->fd : 0;
 	pr_debug("extern (func ksym) '%s': resolved to kernel [%d]\n",
 		 ext->name, kfunc_id);
 
@@ -9912,16 +9918,20 @@ static int append_to_file(const char *file, const char *fmt, ...)
 {
 	int fd, n, err = 0;
 	va_list ap;
+	char buf[1024];
+
+	va_start(ap, fmt);
+	n = vsnprintf(buf, sizeof(buf), fmt, ap);
+	va_end(ap);
+
+	if (n < 0 || n >= sizeof(buf))
+		return -EINVAL;
 
 	fd = open(file, O_WRONLY | O_APPEND | O_CLOEXEC, 0);
 	if (fd < 0)
 		return -errno;
 
-	va_start(ap, fmt);
-	n = vdprintf(fd, fmt, ap);
-	va_end(ap);
-
-	if (n < 0)
+	if (write(fd, buf, n) < 0)
 		err = -errno;
 
 	close(fd);

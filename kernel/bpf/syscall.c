@@ -520,14 +520,14 @@ static int btf_field_cmp(const void *a, const void *b)
 }
 
 struct btf_field *btf_record_find(const struct btf_record *rec, u32 offset,
-				  enum btf_field_type type)
+				  u32 field_mask)
 {
 	struct btf_field *field;
 
-	if (IS_ERR_OR_NULL(rec) || !(rec->field_mask & type))
+	if (IS_ERR_OR_NULL(rec) || !(rec->field_mask & field_mask))
 		return NULL;
 	field = bsearch(&offset, rec->fields, rec->cnt, sizeof(rec->fields[0]), btf_field_cmp);
-	if (!field || !(field->type & type))
+	if (!field || !(field->type & field_mask))
 		return NULL;
 	return field;
 }
@@ -650,6 +650,8 @@ void bpf_obj_free_timer(const struct btf_record *rec, void *obj)
 	bpf_timer_cancel_and_free(obj + rec->timer_off);
 }
 
+extern void __bpf_obj_drop_impl(void *p, const struct btf_record *rec);
+
 void bpf_obj_free_fields(const struct btf_record *rec, void *obj)
 {
 	const struct btf_field *fields;
@@ -659,8 +661,10 @@ void bpf_obj_free_fields(const struct btf_record *rec, void *obj)
 		return;
 	fields = rec->fields;
 	for (i = 0; i < rec->cnt; i++) {
+		struct btf_struct_meta *pointee_struct_meta;
 		const struct btf_field *field = &fields[i];
 		void *field_ptr = obj + field->offset;
+		void *xchgd_field;
 
 		switch (fields[i].type) {
 		case BPF_SPIN_LOCK:
@@ -672,7 +676,19 @@ void bpf_obj_free_fields(const struct btf_record *rec, void *obj)
 			WRITE_ONCE(*(u64 *)field_ptr, 0);
 			break;
 		case BPF_KPTR_REF:
-			field->kptr.dtor((void *)xchg((unsigned long *)field_ptr, 0));
+			xchgd_field = (void *)xchg((unsigned long *)field_ptr, 0);
+			if (!btf_is_kernel(field->kptr.btf)) {
+				pointee_struct_meta = btf_find_struct_meta(field->kptr.btf,
+									   field->kptr.btf_id);
+				WARN_ON_ONCE(!pointee_struct_meta);
+				migrate_disable();
+				__bpf_obj_drop_impl(xchgd_field, pointee_struct_meta ?
+								 pointee_struct_meta->record :
+								 NULL);
+				migrate_enable();
+			} else {
+				field->kptr.dtor(xchgd_field);
+			}
 			break;
 		case BPF_LIST_HEAD:
 			if (WARN_ON_ONCE(rec->spin_lock_off < 0))
@@ -2051,6 +2067,7 @@ static void __bpf_prog_put_noref(struct bpf_prog *prog, bool deferred)
 {
 	bpf_prog_kallsyms_del_all(prog);
 	btf_put(prog->aux->btf);
+	module_put(prog->aux->mod);
 	kvfree(prog->aux->jited_linfo);
 	kvfree(prog->aux->linfo);
 	kfree(prog->aux->kfunc_tab);
@@ -3096,6 +3113,11 @@ static int bpf_tracing_prog_attach(struct bpf_prog *prog,
 					      &tgt_info);
 		if (err)
 			goto out_unlock;
+
+		if (tgt_info.tgt_mod) {
+			module_put(prog->aux->mod);
+			prog->aux->mod = tgt_info.tgt_mod;
+		}
 
 		tr = bpf_trampoline_get(key, &tgt_info);
 		if (!tr) {

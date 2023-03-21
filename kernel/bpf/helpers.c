@@ -571,7 +571,7 @@ static const struct bpf_func_proto bpf_strncmp_proto = {
 	.func		= bpf_strncmp,
 	.gpl_only	= false,
 	.ret_type	= RET_INTEGER,
-	.arg1_type	= ARG_PTR_TO_MEM,
+	.arg1_type	= ARG_PTR_TO_MEM | MEM_RDONLY,
 	.arg2_type	= ARG_CONST_SIZE,
 	.arg3_type	= ARG_PTR_TO_CONST_STR,
 };
@@ -1896,14 +1896,19 @@ __bpf_kfunc void *bpf_obj_new_impl(u64 local_type_id__k, void *meta__ign)
 	return p;
 }
 
+void __bpf_obj_drop_impl(void *p, const struct btf_record *rec)
+{
+	if (rec)
+		bpf_obj_free_fields(rec, p);
+	bpf_mem_free(&bpf_global_ma, p);
+}
+
 __bpf_kfunc void bpf_obj_drop_impl(void *p__alloc, void *meta__ign)
 {
 	struct btf_struct_meta *meta = meta__ign;
 	void *p = p__alloc;
 
-	if (meta)
-		bpf_obj_free_fields(meta->record, p);
-	bpf_mem_free(&bpf_global_ma, p);
+	__bpf_obj_drop_impl(p, meta ? meta->record : NULL);
 }
 
 static void __bpf_list_add(struct bpf_list_node *node, struct bpf_list_head *head, bool tail)
@@ -2411,6 +2416,9 @@ BTF_ID_FLAGS(func, bpf_rcu_read_lock)
 BTF_ID_FLAGS(func, bpf_rcu_read_unlock)
 BTF_ID_FLAGS(func, bpf_dynptr_slice, KF_RET_NULL)
 BTF_ID_FLAGS(func, bpf_dynptr_slice_rdwr, KF_RET_NULL)
+BTF_ID_FLAGS(func, bpf_iter_num_new, KF_ITER_NEW)
+BTF_ID_FLAGS(func, bpf_iter_num_next, KF_ITER_NEXT | KF_RET_NULL)
+BTF_ID_FLAGS(func, bpf_iter_num_destroy, KF_ITER_DESTROY)
 BTF_SET8_END(common_btf_ids)
 
 static const struct btf_kfunc_id_set common_kfunc_set = {
