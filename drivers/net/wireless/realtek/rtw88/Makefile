@@ -45,13 +45,16 @@ obj-$(CONFIG_RTW88_8822CU)	+= rtw88_8822cu.o
 rtw88_8822cu-objs		:= rtw8822cu.o
 
 obj-$(CONFIG_RTW88_8723D)	+= rtw88_8723d.o
-rtw88_8723d-objs		:= rtw8723d.o rtw8723d_table.o
+rtw88_8723d-objs		:= rtw8723d.o rtw8723b_table.o rtw8723d_table.o
 
 obj-$(CONFIG_RTW88_8723DE)	+= rtw88_8723de.o
 rtw88_8723de-objs		:= rtw8723de.o
 
 obj-$(CONFIG_RTW88_8723DU)	+= rtw88_8723du.o
 rtw88_8723du-objs		:= rtw8723du.o
+
+obj-$(CONFIG_RTW88_8723BS)	+= rtw88_8723bs.o
+rtw88_8723bs-objs		:= rtw8723bs.o
 
 obj-$(CONFIG_RTW88_8821C)	+= rtw88_8821c.o
 rtw88_8821c-objs		:= rtw8821c.o rtw8821c_table.o

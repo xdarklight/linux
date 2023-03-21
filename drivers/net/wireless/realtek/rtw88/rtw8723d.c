@@ -10,6 +10,7 @@
 #include "rx.h"
 #include "phy.h"
 #include "rtw8723d.h"
+#include "rtw8723b_table.h"
 #include "rtw8723d_table.h"
 #include "mac.h"
 #include "reg.h"
@@ -2484,6 +2485,54 @@ static const struct rtw_pwr_seq_cmd trans_act_to_cardemu_8723d[] = {
 	 RTW_PWR_CMD_END, 0, 0},
 };
 
+static const struct rtw_pwr_seq_cmd trans_act_to_cardemu_8723b[] = {
+	{0x001F,
+	 RTW_PWR_CUT_ALL_MSK,
+	 RTW_PWR_INTF_ALL_MSK,
+	 RTW_PWR_ADDR_MAC,
+	 RTW_PWR_CMD_WRITE, 0xff, 0},
+	{0x0049,
+	 RTW_PWR_CUT_ALL_MSK,
+	 RTW_PWR_INTF_ALL_MSK,
+	 RTW_PWR_ADDR_MAC,
+	 RTW_PWR_CMD_WRITE, BIT(1), 0},
+	{0x0006,
+	 RTW_PWR_CUT_ALL_MSK,
+	 RTW_PWR_INTF_ALL_MSK,
+	 RTW_PWR_ADDR_MAC,
+	 RTW_PWR_CMD_WRITE, BIT(0), BIT(0)},
+	{0x0005,
+	 RTW_PWR_CUT_ALL_MSK,
+	 RTW_PWR_INTF_ALL_MSK,
+	 RTW_PWR_ADDR_MAC,
+	 RTW_PWR_CMD_WRITE, BIT(1), BIT(1)},
+	{0x0005,
+	 RTW_PWR_CUT_ALL_MSK,
+	 RTW_PWR_INTF_ALL_MSK,
+	 RTW_PWR_ADDR_MAC,
+	 RTW_PWR_CMD_POLLING, BIT(1), 0},
+	{0x0010,
+	 RTW_PWR_CUT_ALL_MSK,
+	 RTW_PWR_INTF_ALL_MSK,
+	 RTW_PWR_ADDR_MAC,
+	 RTW_PWR_CMD_WRITE, BIT(6), 0},
+	{0x0000,
+	 RTW_PWR_CUT_ALL_MSK,
+	 RTW_PWR_INTF_USB_MSK | RTW_PWR_INTF_SDIO_MSK,
+	 RTW_PWR_ADDR_MAC,
+	 RTW_PWR_CMD_WRITE, BIT(5), BIT(5)},
+	{0x0020,
+	 RTW_PWR_CUT_ALL_MSK,
+	 RTW_PWR_INTF_USB_MSK | RTW_PWR_INTF_SDIO_MSK,
+	 RTW_PWR_ADDR_MAC,
+	 RTW_PWR_CMD_WRITE, BIT(0), 0},
+	{0xFFFF,
+	 RTW_PWR_CUT_ALL_MSK,
+	 RTW_PWR_INTF_ALL_MSK,
+	 0,
+	 RTW_PWR_CMD_END, 0, 0},
+};
+
 static const struct rtw_pwr_seq_cmd trans_cardemu_to_carddis_8723d[] = {
 	{0x0007,
 	 RTW_PWR_CUT_ALL_MSK,
@@ -2561,6 +2610,13 @@ static const struct rtw_pwr_seq_cmd *card_disable_flow_8723d[] = {
 	trans_act_to_cardemu_8723d,
 	trans_cardemu_to_carddis_8723d,
 	trans_act_to_post_carddis_8723d,
+	NULL
+};
+
+static const struct rtw_pwr_seq_cmd *card_disable_flow_8723b[] = {
+	trans_act_to_lps_8723d,
+	trans_act_to_cardemu_8723b,
+	trans_cardemu_to_carddis_8723d,
 	NULL
 };
 
@@ -2820,6 +2876,89 @@ const struct rtw_chip_info rtw8723d_hw_spec = {
 	.coex_info_hw_regs = coex_info_hw_regs_8723d,
 };
 EXPORT_SYMBOL(rtw8723d_hw_spec);
+
+const struct rtw_chip_info rtw8723b_hw_spec = {
+	.ops = &rtw8723d_ops,
+	.id = RTW_CHIP_TYPE_8723B,
+	.fw_name = "rtw88/rtw8723b_fw.bin",
+	.wlan_cpu = RTW_WCPU_11N,
+	.tx_pkt_desc_sz = 40,
+	.tx_buf_desc_sz = 16,
+	.rx_pkt_desc_sz = 24,
+	.rx_buf_desc_sz = 8,
+	.phy_efuse_size = 512,
+	.log_efuse_size = 512,
+	.ptct_efuse_size = 96 + 1,
+	.txff_size = 32768,
+	.rxff_size = 16384,
+	.txgi_factor = 1,
+	.is_pwr_by_rate_dec = true,
+	.max_power_index = 0x3f,
+	.csi_buf_pg_num = 0,
+	.band = RTW_BAND_2G,
+	.page_size = TX_PAGE_SIZE,
+	.dig_min = 0x20,
+	.ht_supported = true,
+	.vht_supported = false,
+	.lps_deep_mode_supported = 0,
+	.sys_func_en = 0xFD,
+	.pwr_on_seq = card_enable_flow_8723d,
+	.pwr_off_seq = card_disable_flow_8723b,
+	.page_table = page_table_8723d,
+	.rqpn_table = rqpn_table_8723d,
+	.prioq_addrs = &prioq_addrs_8723d,
+	.intf_table = &phy_para_table_8723d,
+	.dig = rtw8723d_dig,
+	.dig_cck = rtw8723d_dig_cck,
+	.rf_sipi_addr = {0x840, 0x844},
+	.rf_sipi_read_addr = rtw8723d_rf_sipi_addr,
+	.fix_rf_phy_num = 2,
+	.ltecoex_addr = &rtw8723d_ltecoex_addr,
+	.mac_tbl = &rtw8723b_mac_tbl,
+	.agc_tbl = &rtw8723b_agc_tbl,
+	.bb_tbl = &rtw8723b_bb_tbl,
+	.rf_tbl = {&rtw8723b_rf_a_tbl},
+	.rfe_defs = rtw8723d_rfe_defs,
+	.rfe_defs_size = ARRAY_SIZE(rtw8723d_rfe_defs),
+	.rx_ldpc = false,
+	.pwr_track_tbl = &rtw8723d_rtw_pwr_track_tbl,
+	.iqk_threshold = 8,
+	.ampdu_density = IEEE80211_HT_MPDU_DENSITY_16,
+	.max_scan_ie_len = IEEE80211_MAX_DATA_LEN,
+
+	.coex_para_ver = 0x2007022f,
+	.bt_desired_ver = 0x2f,
+	.scbd_support = true,
+	.new_scbd10_def = true,
+	.ble_hid_profile_support = false,
+	.wl_mimo_ps_support = false,
+	.pstdma_type = COEX_PSTDMA_FORCE_LPSOFF,
+	.bt_rssi_type = COEX_BTRSSI_RATIO,
+	.ant_isolation = 15,
+	.rssi_tolerance = 2,
+	.wl_rssi_step = wl_rssi_step_8723d,
+	.bt_rssi_step = bt_rssi_step_8723d,
+	.table_sant_num = ARRAY_SIZE(table_sant_8723d),
+	.table_sant = table_sant_8723d,
+	.table_nsant_num = ARRAY_SIZE(table_nsant_8723d),
+	.table_nsant = table_nsant_8723d,
+	.tdma_sant_num = ARRAY_SIZE(tdma_sant_8723d),
+	.tdma_sant = tdma_sant_8723d,
+	.tdma_nsant_num = ARRAY_SIZE(tdma_nsant_8723d),
+	.tdma_nsant = tdma_nsant_8723d,
+	.wl_rf_para_num = ARRAY_SIZE(rf_para_tx_8723d),
+	.wl_rf_para_tx = rf_para_tx_8723d,
+	.wl_rf_para_rx = rf_para_rx_8723d,
+	.bt_afh_span_bw20 = 0x20,
+	.bt_afh_span_bw40 = 0x30,
+	.afh_5g_num = ARRAY_SIZE(afh_5g_8723d),
+	.afh_5g = afh_5g_8723d,
+	.btg_reg = &btg_reg_8723d,
+
+	.coex_info_hw_regs_num = ARRAY_SIZE(coex_info_hw_regs_8723d),
+	.coex_info_hw_regs = coex_info_hw_regs_8723d,
+};
+EXPORT_SYMBOL(rtw8723b_hw_spec);
 
 MODULE_FIRMWARE("rtw88/rtw8723d_fw.bin");
 
