@@ -128,7 +128,7 @@ static bool acpi_gpio_deferred_req_irqs_done;
 
 static int acpi_gpiochip_find(struct gpio_chip *gc, void *data)
 {
-	return gc->parent && device_match_acpi_handle(gc->parent, data);
+	return ACPI_HANDLE_FWNODE(gc->fwnode) == data;
 }
 
 /**
@@ -648,7 +648,7 @@ static bool acpi_get_driver_gpio_data(struct acpi_device *adev,
 {
 	const struct acpi_gpio_mapping *gm;
 
-	if (!adev->driver_gpios)
+	if (!adev || !adev->driver_gpios)
 		return false;
 
 	for (gm = adev->driver_gpios; gm->name; gm++)
@@ -842,13 +842,10 @@ static int acpi_gpio_property_lookup(struct fwnode_handle *fwnode,
 	ret = __acpi_node_get_property_reference(fwnode, propname, index, 3,
 						 &args);
 	if (ret) {
-		struct acpi_device *adev = to_acpi_device_node(fwnode);
+		struct acpi_device *adev;
 
-		if (!adev)
-			return ret;
-
-		if (!acpi_get_driver_gpio_data(adev, propname, index, &args,
-					       &quirks))
+		adev = to_acpi_device_node(fwnode);
+		if (!acpi_get_driver_gpio_data(adev, propname, index, &args, &quirks))
 			return ret;
 	}
 	/*
