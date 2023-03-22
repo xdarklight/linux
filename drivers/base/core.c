@@ -36,19 +36,6 @@
 #include "physical_location.h"
 #include "power/power.h"
 
-#ifdef CONFIG_SYSFS_DEPRECATED
-#ifdef CONFIG_SYSFS_DEPRECATED_V2
-long sysfs_deprecated = 1;
-#else
-long sysfs_deprecated = 0;
-#endif
-static int __init sysfs_deprecated_setup(char *arg)
-{
-	return kstrtol(arg, 10, &sysfs_deprecated);
-}
-early_param("sysfs.deprecated", sysfs_deprecated_setup);
-#endif
-
 /* Device links support. */
 static LIST_HEAD(deferred_sync);
 static unsigned int defer_sync_state_count = 1;
@@ -550,7 +537,6 @@ static void devlink_dev_release(struct device *dev)
 
 static struct class devlink_class = {
 	.name = "devlink",
-	.owner = THIS_MODULE,
 	.dev_groups = devlink_groups,
 	.dev_release = devlink_dev_release,
 };
@@ -1173,10 +1159,7 @@ static void device_links_flush_sync_list(struct list_head *list,
 		if (dev != dont_lock_dev)
 			device_lock(dev);
 
-		if (dev->bus->sync_state)
-			dev->bus->sync_state(dev);
-		else if (dev->driver && dev->driver->sync_state)
-			dev->driver->sync_state(dev);
+		dev_sync_state(dev);
 
 		if (dev != dont_lock_dev)
 			device_unlock(dev);
@@ -1685,6 +1668,26 @@ static int __init fw_devlink_strict_setup(char *arg)
 }
 early_param("fw_devlink.strict", fw_devlink_strict_setup);
 
+#define FW_DEVLINK_SYNC_STATE_STRICT	0
+#define FW_DEVLINK_SYNC_STATE_TIMEOUT	1
+
+static int fw_devlink_sync_state;
+static int __init fw_devlink_sync_state_setup(char *arg)
+{
+	if (!arg)
+		return -EINVAL;
+
+	if (strcmp(arg, "strict") == 0) {
+		fw_devlink_sync_state = FW_DEVLINK_SYNC_STATE_STRICT;
+		return 0;
+	} else if (strcmp(arg, "timeout") == 0) {
+		fw_devlink_sync_state = FW_DEVLINK_SYNC_STATE_TIMEOUT;
+		return 0;
+	}
+	return -EINVAL;
+}
+early_param("fw_devlink.sync_state", fw_devlink_sync_state_setup);
+
 static inline u32 fw_devlink_get_flags(u8 fwlink_flags)
 {
 	if (fwlink_flags & FWLINK_FLAG_CYCLE)
@@ -1753,6 +1756,44 @@ void fw_devlink_drivers_done(void)
 	class_for_each_device(&devlink_class, NULL, NULL,
 			      fw_devlink_no_driver);
 	device_links_write_unlock();
+}
+
+static int fw_devlink_dev_sync_state(struct device *dev, void *data)
+{
+	struct device_link *link = to_devlink(dev);
+	struct device *sup = link->supplier;
+
+	if (!(link->flags & DL_FLAG_MANAGED) ||
+	    link->status == DL_STATE_ACTIVE || sup->state_synced ||
+	    !dev_has_sync_state(sup))
+		return 0;
+
+	if (fw_devlink_sync_state == FW_DEVLINK_SYNC_STATE_STRICT) {
+		dev_warn(sup, "sync_state() pending due to %s\n",
+			 dev_name(link->consumer));
+		return 0;
+	}
+
+	if (!list_empty(&sup->links.defer_sync))
+		return 0;
+
+	dev_warn(sup, "Timed out. Forcing sync_state()\n");
+	sup->state_synced = true;
+	get_device(sup);
+	list_add_tail(&sup->links.defer_sync, data);
+
+	return 0;
+}
+
+void fw_devlink_probing_done(void)
+{
+	LIST_HEAD(sync_list);
+
+	device_links_write_lock();
+	class_for_each_device(&devlink_class, NULL, &sync_list,
+			      fw_devlink_dev_sync_state);
+	device_links_write_unlock();
+	device_links_flush_sync_list(&sync_list, NULL);
 }
 
 /**
@@ -2779,7 +2820,7 @@ EXPORT_SYMBOL_GPL(devm_device_add_groups);
 
 static int device_add_attrs(struct device *dev)
 {
-	struct class *class = dev->class;
+	const struct class *class = dev->class;
 	const struct device_type *type = dev->type;
 	int error;
 
@@ -2846,7 +2887,7 @@ static int device_add_attrs(struct device *dev)
 
 static void device_remove_attrs(struct device *dev)
 {
-	struct class *class = dev->class;
+	const struct class *class = dev->class;
 	const struct device_type *type = dev->type;
 
 	if (dev->physical_location) {
@@ -3079,7 +3120,7 @@ struct kobject *virtual_device_parent(struct device *dev)
 
 struct class_dir {
 	struct kobject kobj;
-	struct class *class;
+	const struct class *class;
 };
 
 #define to_class_dir(obj) container_of(obj, struct class_dir, kobj)
@@ -3104,7 +3145,7 @@ static const struct kobj_type class_dir_ktype = {
 };
 
 static struct kobject *
-class_dir_create_and_add(struct class *class, struct kobject *parent_kobj)
+class_dir_create_and_add(const struct class *class, struct kobject *parent_kobj)
 {
 	struct class_dir *dir;
 	int retval;
@@ -3136,15 +3177,6 @@ static struct kobject *get_device_parent(struct device *dev,
 	if (dev->class) {
 		struct kobject *parent_kobj;
 		struct kobject *k;
-
-#ifdef CONFIG_BLOCK
-		/* block disks show up in /sys/block */
-		if (sysfs_deprecated && dev->class == &block_class) {
-			if (parent && parent->class == &block_class)
-				return &parent->kobj;
-			return &block_class.p->subsys.kobj;
-		}
-#endif
 
 		/*
 		 * If we have no parent, we live in "virtual".
@@ -3324,12 +3356,6 @@ static int device_add_class_symlinks(struct device *dev)
 			goto out_subsys;
 	}
 
-#ifdef CONFIG_BLOCK
-	/* /sys/block has directories and does not need symlinks */
-	if (sysfs_deprecated && dev->class == &block_class)
-		return 0;
-#endif
-
 	/* link in the class directory pointing to the device */
 	error = sysfs_create_link(&dev->class->p->subsys.kobj,
 				  &dev->kobj, dev_name(dev));
@@ -3359,10 +3385,6 @@ static void device_remove_class_symlinks(struct device *dev)
 	if (dev->parent && device_is_not_partition(dev))
 		sysfs_remove_link(&dev->kobj, "device");
 	sysfs_remove_link(&dev->kobj, "subsystem");
-#ifdef CONFIG_BLOCK
-	if (sysfs_deprecated && dev->class == &block_class)
-		return;
-#endif
 	sysfs_delete_link(&dev->class->p->subsys.kobj, &dev->kobj, dev_name(dev));
 }
 
@@ -4231,7 +4253,7 @@ static void device_create_release(struct device *dev)
 }
 
 static __printf(6, 0) struct device *
-device_create_groups_vargs(struct class *class, struct device *parent,
+device_create_groups_vargs(const struct class *class, struct device *parent,
 			   dev_t devt, void *drvdata,
 			   const struct attribute_group **groups,
 			   const char *fmt, va_list args)
@@ -4295,7 +4317,7 @@ error:
  * Note: the struct class passed to this function must have previously
  * been created with a call to class_create().
  */
-struct device *device_create(struct class *class, struct device *parent,
+struct device *device_create(const struct class *class, struct device *parent,
 			     dev_t devt, void *drvdata, const char *fmt, ...)
 {
 	va_list vargs;
@@ -4336,7 +4358,7 @@ EXPORT_SYMBOL_GPL(device_create);
  * Note: the struct class passed to this function must have previously
  * been created with a call to class_create().
  */
-struct device *device_create_with_groups(struct class *class,
+struct device *device_create_with_groups(const struct class *class,
 					 struct device *parent, dev_t devt,
 					 void *drvdata,
 					 const struct attribute_group **groups,
@@ -4361,7 +4383,7 @@ EXPORT_SYMBOL_GPL(device_create_with_groups);
  * This call unregisters and cleans up a device that was created with a
  * call to device_create().
  */
-void device_destroy(struct class *class, dev_t devt)
+void device_destroy(const struct class *class, dev_t devt)
 {
 	struct device *dev;
 
@@ -4558,7 +4580,7 @@ static int device_attrs_change_owner(struct device *dev, kuid_t kuid,
 				     kgid_t kgid)
 {
 	struct kobject *kobj = &dev->kobj;
-	struct class *class = dev->class;
+	const struct class *class = dev->class;
 	const struct device_type *type = dev->type;
 	int error;
 
@@ -4651,11 +4673,6 @@ int device_change_owner(struct device *dev, kuid_t kuid, kgid_t kgid)
 	error = dpm_sysfs_change_owner(dev, kuid, kgid);
 	if (error)
 		goto out;
-
-#ifdef CONFIG_BLOCK
-	if (sysfs_deprecated && dev->class == &block_class)
-		goto out;
-#endif
 
 	/*
 	 * Change the owner of the symlink located in the class directory of
