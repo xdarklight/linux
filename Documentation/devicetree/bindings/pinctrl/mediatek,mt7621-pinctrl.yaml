@@ -1,23 +1,23 @@
 # SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
 %YAML 1.2
 ---
-$id: http://devicetree.org/schemas/pinctrl/ralink,rt3883-pinctrl.yaml#
+$id: http://devicetree.org/schemas/pinctrl/mediatek,mt7621-pinctrl.yaml#
 $schema: http://devicetree.org/meta-schemas/core.yaml#
 
-title: Ralink RT3883 Pin Controller
+title: MediaTek MT7621 Pin Controller
 
 maintainers:
   - Arınç ÜNAL <arinc.unal@arinc9.com>
   - Sergio Paracuellos <sergio.paracuellos@gmail.com>
 
 description: |
-  Ralink RT3883 pin controller for RT3883 SoC.
+  MediaTek MT7621 pin controller for MT7621 SoC.
   The pin controller can only set the muxing of pin groups. Muxing individual
   pins is not supported. There is no pinconf support.
 
 properties:
   compatible:
-    const: ralink,rt3883-pinctrl
+    const: ralink,mt7621-pinctrl
 
 patternProperties:
   '-pins$':
@@ -35,9 +35,9 @@ patternProperties:
           function:
             description:
               A string containing the name of the function to mux to the group.
-            enum: [ge1, ge2, gpio, gpio i2s, gpio uartf, i2c, i2s uartf, jtag,
-                   lna a, lna g, mdio, pci-dev, pci-fnc, pci-host1, pci-host2,
-                   pcm gpio, pcm i2s, pcm uartf, spi, uartf, uartlite]
+            enum: [gpio, i2c, i2s, jtag, mdio, nand1, nand2, pcie refclk,
+                   pcie rst, pcm, rgmii1, rgmii2, sdhci, spdif2, spdif3, spi,
+                   uart1, uart2, uart3, wdt refclk, wdt rst]
 
           groups:
             description:
@@ -52,48 +52,12 @@ patternProperties:
           - if:
               properties:
                 function:
-                  const: ge1
-            then:
-              properties:
-                groups:
-                  enum: [ge1]
-
-          - if:
-              properties:
-                function:
-                  const: ge2
-            then:
-              properties:
-                groups:
-                  enum: [ge2]
-
-          - if:
-              properties:
-                function:
                   const: gpio
             then:
               properties:
                 groups:
-                  enum: [ge1, ge2, i2c, jtag, lna a, lna g, mdio, pci, spi,
-                         uartf, uartlite]
-
-          - if:
-              properties:
-                function:
-                  const: gpio i2s
-            then:
-              properties:
-                groups:
-                  enum: [uartf]
-
-          - if:
-              properties:
-                function:
-                  const: gpio uartf
-            then:
-              properties:
-                groups:
-                  enum: [uartf]
+                  enum: [i2c, jtag, mdio, pcie, rgmii1, rgmii2, sdhci, spi,
+                         uart1, uart2, uart3, wdt]
 
           - if:
               properties:
@@ -107,11 +71,11 @@ patternProperties:
           - if:
               properties:
                 function:
-                  const: i2s uartf
+                  const: i2s
             then:
               properties:
                 groups:
-                  enum: [uartf]
+                  enum: [uart3]
 
           - if:
               properties:
@@ -125,24 +89,6 @@ patternProperties:
           - if:
               properties:
                 function:
-                  const: lna a
-            then:
-              properties:
-                groups:
-                  enum: [lna a]
-
-          - if:
-              properties:
-                function:
-                  const: lna g
-            then:
-              properties:
-                groups:
-                  enum: [lna g]
-
-          - if:
-              properties:
-                function:
                   const: mdio
             then:
               properties:
@@ -152,65 +98,92 @@ patternProperties:
           - if:
               properties:
                 function:
-                  const: pci-dev
+                  const: nand1
             then:
               properties:
                 groups:
-                  enum: [pci]
+                  enum: [spi]
 
           - if:
               properties:
                 function:
-                  const: pci-fnc
+                  const: nand2
             then:
               properties:
                 groups:
-                  enum: [pci]
+                  enum: [sdhci]
 
           - if:
               properties:
                 function:
-                  const: pci-host1
+                  const: pcie refclk
             then:
               properties:
                 groups:
-                  enum: [pci]
+                  enum: [pcie]
 
           - if:
               properties:
                 function:
-                  const: pci-host2
+                  const: pcie rst
             then:
               properties:
                 groups:
-                  enum: [pci]
+                  enum: [pcie]
 
           - if:
               properties:
                 function:
-                  const: pcm gpio
+                  const: pcm
             then:
               properties:
                 groups:
-                  enum: [uartf]
+                  enum: [uart2]
 
           - if:
               properties:
                 function:
-                  const: pcm i2s
+                  const: rgmii1
             then:
               properties:
                 groups:
-                  enum: [uartf]
+                  enum: [rgmii1]
 
           - if:
               properties:
                 function:
-                  const: pcm uartf
+                  const: rgmii2
             then:
               properties:
                 groups:
-                  enum: [uartf]
+                  enum: [rgmii2]
+
+          - if:
+              properties:
+                function:
+                  const: sdhci
+            then:
+              properties:
+                groups:
+                  enum: [sdhci]
+
+          - if:
+              properties:
+                function:
+                  const: spdif2
+            then:
+              properties:
+                groups:
+                  enum: [uart2]
+
+          - if:
+              properties:
+                function:
+                  const: spdif3
+            then:
+              properties:
+                groups:
+                  enum: [uart3]
 
           - if:
               properties:
@@ -224,20 +197,47 @@ patternProperties:
           - if:
               properties:
                 function:
-                  const: uartf
+                  const: uart1
             then:
               properties:
                 groups:
-                  enum: [uartf]
+                  enum: [uart1]
 
           - if:
               properties:
                 function:
-                  const: uartlite
+                  const: uart2
             then:
               properties:
                 groups:
-                  enum: [uartlite]
+                  enum: [uart2]
+
+          - if:
+              properties:
+                function:
+                  const: uart3
+            then:
+              properties:
+                groups:
+                  enum: [uart3]
+
+          - if:
+              properties:
+                function:
+                  const: wdt refclk
+            then:
+              properties:
+                groups:
+                  enum: [wdt]
+
+          - if:
+              properties:
+                function:
+                  const: wdt rst
+            then:
+              properties:
+                groups:
+                  enum: [wdt]
 
 allOf:
   - $ref: pinctrl.yaml#
@@ -250,7 +250,7 @@ additionalProperties: false
 examples:
   - |
     pinctrl {
-      compatible = "ralink,rt3883-pinctrl";
+      compatible = "ralink,mt7621-pinctrl";
 
       i2c_pins: i2c0-pins {
         pinmux {
