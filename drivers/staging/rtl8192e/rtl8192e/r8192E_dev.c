@@ -353,8 +353,7 @@ static void _rtl92e_read_eeprom_info(struct net_device *dev)
 
 			if (tempval&0x80)
 				priv->rf_type = RF_1T2R;
-			else
-				priv->rf_type = RF_2T4R;
+
 		} else {
 			priv->eeprom_legacy_ht_tx_pwr_diff = 0x04;
 		}
@@ -806,7 +805,7 @@ void rtl92e_link_change(struct net_device *dev)
 
 	if (ieee->state == RTLLIB_LINKED) {
 		_rtl92e_net_update(dev);
-		priv->ops->update_ratr_table(dev);
+		rtl92e_update_ratr_table(dev);
 		if ((ieee->pairwise_key_type == KEY_TYPE_WEP40) ||
 		    (ieee->pairwise_key_type == KEY_TYPE_WEP104))
 			rtl92e_enable_hw_security_config(dev);
@@ -1515,9 +1514,7 @@ static void _rtl92e_process_phyinfo(struct r8192_priv *priv, u8 *buffer,
 		return;
 
 	if (!prev_st->bIsCCK && prev_st->bPacketToSelf) {
-		for (rfpath = RF90_PATH_A; rfpath < RF90_PATH_C; rfpath++) {
-			if (!rtl92e_is_legal_rf_path(priv->rtllib->dev, rfpath))
-				continue;
+		for (rfpath = RF90_PATH_A; rfpath < priv->num_total_rf_path; rfpath++) {
 			if (priv->stats.rx_rssi_percentage[rfpath] == 0) {
 				priv->stats.rx_rssi_percentage[rfpath] =
 					 prev_st->RxMIMOSignalStrength[rfpath];
@@ -1969,15 +1966,6 @@ void rtl92e_disable_irq(struct net_device *dev)
 
 	priv->irq_enabled = 0;
 }
-
-void rtl92e_clear_irq(struct net_device *dev)
-{
-	u32 tmp;
-
-	tmp = rtl92e_readl(dev, ISR);
-	rtl92e_writel(dev, ISR, tmp);
-}
-
 
 void rtl92e_enable_rx(struct net_device *dev)
 {
