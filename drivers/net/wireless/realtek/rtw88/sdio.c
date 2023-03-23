@@ -1099,7 +1099,9 @@ static void rtw_sdio_tx_handler(struct work_struct *work)
 static void rtw_sdio_free_irq(struct rtw_dev *rtwdev,
 			      struct sdio_func *sdio_func)
 {
+	sdio_claim_host(sdio_func);
 	sdio_release_irq(sdio_func);
+	sdio_release_host(sdio_func);
 }
 
 static int rtw_sdio_init_tx(struct rtw_dev *rtwdev)
@@ -1232,8 +1234,8 @@ void rtw_sdio_remove(struct sdio_func *sdio_func)
 
 	rtw_unregister_hw(rtwdev, hw);
 	rtw_sdio_disable_interrupt(rtwdev);
-	rtw_sdio_declaim(rtwdev, sdio_func);
 	rtw_sdio_free_irq(rtwdev, sdio_func);
+	rtw_sdio_declaim(rtwdev, sdio_func);
 	rtw_sdio_deinit_tx(rtwdev);
 	rtw_core_deinit(rtwdev);
 	ieee80211_free_hw(hw);
