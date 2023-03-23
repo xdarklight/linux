@@ -117,10 +117,13 @@ static u8 rtw_sdio_read_indirect8(struct rtw_dev *rtwdev, u32 addr,
 	if (*err_ret)
 		return 0;
 
+	*err_ret = -ETIMEDOUT;
 	for (retry = 0; retry < RTW_SDIO_INDIRECT_RW_RETRIES; retry++) {
 		tmp = sdio_readb(rtwsdio->sdio_func, reg_cfg + 2, err_ret);
-		if (!*err_ret && tmp & BIT(4))
+		if (!*err_ret && (tmp & BIT(4))) {
+			*err_ret = 0;
 			break;
+		}
 	}
 
 	if (*err_ret)
@@ -164,10 +167,13 @@ static u32 rtw_sdio_read_indirect32(struct rtw_dev *rtwdev, u32 addr,
 	if (*err_ret)
 		return 0;
 
+	*err_ret = -ETIMEDOUT;
 	for (retry = 0; retry < RTW_SDIO_INDIRECT_RW_RETRIES; retry++) {
 		tmp = sdio_readb(rtwsdio->sdio_func, reg_cfg + 2, err_ret);
-		if (!*err_ret && (tmp & BIT(4)))
+		if (!*err_ret && (tmp & BIT(4))) {
+			*err_ret = 0;
 			break;
+		}
 	}
 
 	if (*err_ret)
