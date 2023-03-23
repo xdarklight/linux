@@ -225,11 +225,11 @@ static u16 rtw_sdio_read16(struct rtw_dev *rtwdev, u32 addr)
 		if (!ret)
 			buf[1] = sdio_readb(rtwsdio->sdio_func, addr + 1, &ret);
 		val = le16_to_cpu(*(__le16 *)buf);
-	} else if (addr & 1) {
+	} else if (IS_ALIGNED(addr, 2)) {
+		val = rtw_sdio_read_indirect32(rtwdev, addr, &ret);
+	} else {
 		ret = rtw_sdio_read_indirect_bytes(rtwdev, addr, buf, 2);
 		val = le16_to_cpu(*(__le16 *)buf);
-	} else {
-		val = rtw_sdio_read_indirect32(rtwdev, addr, &ret);
 	}
 
 	if (bus_claim)
@@ -258,11 +258,11 @@ static u32 rtw_sdio_read32(struct rtw_dev *rtwdev, u32 addr)
 	if (direct) {
 		addr = rtw_sdio_to_bus_offset(rtwdev, addr);
 		val = rtw_sdio_readl(rtwdev, addr, &ret);
-	} else if (addr & 3) {
+	} else if (IS_ALIGNED(addr, 4)) {
+		val = rtw_sdio_read_indirect32(rtwdev, addr, &ret);
+	} else {
 		ret = rtw_sdio_read_indirect_bytes(rtwdev, addr, buf, 4);
 		val = le32_to_cpu(*(__le32 *)buf);
-	} else {
-		val = rtw_sdio_read_indirect32(rtwdev, addr, &ret);
 	}
 
 	if (bus_claim)
