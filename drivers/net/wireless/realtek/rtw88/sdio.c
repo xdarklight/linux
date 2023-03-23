@@ -1195,20 +1195,20 @@ int rtw_sdio_probe(struct sdio_func *sdio_func,
 		goto err_destroy_txwq;
 	}
 
+	ret = rtw_sdio_request_irq(rtwdev, sdio_func);
+	if (ret)
+		goto err_destroy_txwq;
+
 	ret = rtw_register_hw(rtwdev, hw);
 	if (ret) {
 		rtw_err(rtwdev, "failed to register hw");
-		goto err_destroy_txwq;
+		goto err_free_irq;
 	}
-
-	ret = rtw_sdio_request_irq(rtwdev, sdio_func);
-	if (ret)
-		goto err_unregister_hw;
 
 	return 0;
 
-err_unregister_hw:
-	rtw_unregister_hw(rtwdev, hw);
+err_free_irq:
+	rtw_sdio_free_irq(rtwdev, sdio_func);
 err_destroy_txwq:
 	rtw_sdio_deinit_tx(rtwdev);
 err_sdio_declaim:
