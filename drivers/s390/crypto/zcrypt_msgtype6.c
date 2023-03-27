@@ -926,8 +926,7 @@ static void zcrypt_msgtype6_receive(struct ap_queue *aq,
 		.type = TYPE82_RSP_CODE,
 		.reply_code = REP82_ERROR_MACHINE_FAILURE,
 	};
-	struct response_type *resp_type =
-		(struct response_type *)msg->private;
+	struct response_type *resp_type = msg->private;
 	struct type86x_reply *t86r;
 	int len;
 
@@ -939,28 +938,37 @@ static void zcrypt_msgtype6_receive(struct ap_queue *aq,
 	    t86r->cprbx.cprb_ver_id == 0x02) {
 		switch (resp_type->type) {
 		case CEXXC_RESPONSE_TYPE_ICA:
-			len = sizeof(struct type86x_reply) + t86r->length - 2;
-			if (len > reply->bufsize || len > msg->bufsize) {
+			len = sizeof(struct type86x_reply) + t86r->length;
+			if (len > reply->bufsize || len > msg->bufsize ||
+			    len != reply->len) {
+				ZCRYPT_DBF_DBG("%s len mismatch => EMSGSIZE\n", __func__);
 				msg->rc = -EMSGSIZE;
-			} else {
-				memcpy(msg->msg, reply->msg, len);
-				msg->len = len;
+				goto out;
 			}
+			memcpy(msg->msg, reply->msg, len);
+			msg->len = len;
 			break;
 		case CEXXC_RESPONSE_TYPE_XCRB:
-			len = t86r->fmt2.offset2 + t86r->fmt2.count2;
-			if (len > reply->bufsize || len > msg->bufsize) {
+			if (t86r->fmt2.count2)
+				len = t86r->fmt2.offset2 + t86r->fmt2.count2;
+			else
+				len = t86r->fmt2.offset1 + t86r->fmt2.count1;
+			if (len > reply->bufsize || len > msg->bufsize ||
+			    len != reply->len) {
+				ZCRYPT_DBF_DBG("%s len mismatch => EMSGSIZE\n", __func__);
 				msg->rc = -EMSGSIZE;
-			} else {
-				memcpy(msg->msg, reply->msg, len);
-				msg->len = len;
+				goto out;
 			}
+			memcpy(msg->msg, reply->msg, len);
+			msg->len = len;
 			break;
 		default:
 			memcpy(msg->msg, &error_reply, sizeof(error_reply));
+			msg->len = sizeof(error_reply);
 		}
 	} else {
 		memcpy(msg->msg, reply->msg, sizeof(error_reply));
+		msg->len = sizeof(error_reply);
 	}
 out:
 	complete(&resp_type->work);
@@ -982,8 +990,7 @@ static void zcrypt_msgtype6_receive_ep11(struct ap_queue *aq,
 		.type = TYPE82_RSP_CODE,
 		.reply_code = REP82_ERROR_MACHINE_FAILURE,
 	};
-	struct response_type *resp_type =
-		(struct response_type *)msg->private;
+	struct response_type *resp_type = msg->private;
 	struct type86_ep11_reply *t86r;
 	int len;
 
@@ -996,18 +1003,22 @@ static void zcrypt_msgtype6_receive_ep11(struct ap_queue *aq,
 		switch (resp_type->type) {
 		case CEXXC_RESPONSE_TYPE_EP11:
 			len = t86r->fmt2.offset1 + t86r->fmt2.count1;
-			if (len > reply->bufsize || len > msg->bufsize) {
+			if (len > reply->bufsize || len > msg->bufsize ||
+			    len != reply->len) {
+				ZCRYPT_DBF_DBG("%s len mismatch => EMSGSIZE\n", __func__);
 				msg->rc = -EMSGSIZE;
-			} else {
-				memcpy(msg->msg, reply->msg, len);
-				msg->len = len;
+				goto out;
 			}
+			memcpy(msg->msg, reply->msg, len);
+			msg->len = len;
 			break;
 		default:
 			memcpy(msg->msg, &error_reply, sizeof(error_reply));
+			msg->len = sizeof(error_reply);
 		}
 	} else {
 		memcpy(msg->msg, reply->msg, sizeof(error_reply));
+		msg->len = sizeof(error_reply);
 	}
 out:
 	complete(&resp_type->work);
@@ -1036,7 +1047,7 @@ static long zcrypt_msgtype6_modexpo(struct zcrypt_queue *zq,
 		return -ENOMEM;
 	ap_msg->bufsize = PAGE_SIZE;
 	ap_msg->receive = zcrypt_msgtype6_receive;
-	ap_msg->psmid = (((unsigned long long)current->pid) << 32) +
+	ap_msg->psmid = (((unsigned long)current->pid) << 32) +
 		atomic_inc_return(&zcrypt_step);
 	ap_msg->private = &resp_type;
 	rc = icamex_msg_to_type6mex_msgx(zq, ap_msg, mex);
@@ -1086,7 +1097,7 @@ static long zcrypt_msgtype6_modexpo_crt(struct zcrypt_queue *zq,
 		return -ENOMEM;
 	ap_msg->bufsize = PAGE_SIZE;
 	ap_msg->receive = zcrypt_msgtype6_receive;
-	ap_msg->psmid = (((unsigned long long)current->pid) << 32) +
+	ap_msg->psmid = (((unsigned long)current->pid) << 32) +
 		atomic_inc_return(&zcrypt_step);
 	ap_msg->private = &resp_type;
 	rc = icacrt_msg_to_type6crt_msgx(zq, ap_msg, crt);
@@ -1137,7 +1148,7 @@ int prep_cca_ap_msg(bool userspace, struct ica_xcRB *xcrb,
 	if (!ap_msg->msg)
 		return -ENOMEM;
 	ap_msg->receive = zcrypt_msgtype6_receive;
-	ap_msg->psmid = (((unsigned long long)current->pid) << 32) +
+	ap_msg->psmid = (((unsigned long)current->pid) << 32) +
 				atomic_inc_return(&zcrypt_step);
 	ap_msg->private = kmemdup(&resp_type, sizeof(resp_type), GFP_KERNEL);
 	if (!ap_msg->private)
@@ -1157,7 +1168,7 @@ static long zcrypt_msgtype6_send_cprb(bool userspace, struct zcrypt_queue *zq,
 				      struct ap_message *ap_msg)
 {
 	int rc;
-	struct response_type *rtype = (struct response_type *)(ap_msg->private);
+	struct response_type *rtype = ap_msg->private;
 	struct {
 		struct type6_hdr hdr;
 		struct CPRBX cprbx;
@@ -1218,7 +1229,7 @@ int prep_ep11_ap_msg(bool userspace, struct ep11_urb *xcrb,
 	if (!ap_msg->msg)
 		return -ENOMEM;
 	ap_msg->receive = zcrypt_msgtype6_receive_ep11;
-	ap_msg->psmid = (((unsigned long long)current->pid) << 32) +
+	ap_msg->psmid = (((unsigned long)current->pid) << 32) +
 				atomic_inc_return(&zcrypt_step);
 	ap_msg->private = kmemdup(&resp_type, sizeof(resp_type), GFP_KERNEL);
 	if (!ap_msg->private)
@@ -1240,7 +1251,7 @@ static long zcrypt_msgtype6_send_ep11_cprb(bool userspace, struct zcrypt_queue *
 {
 	int rc;
 	unsigned int lfmt;
-	struct response_type *rtype = (struct response_type *)(ap_msg->private);
+	struct response_type *rtype = ap_msg->private;
 	struct {
 		struct type6_hdr hdr;
 		struct ep11_cprb cprbx;
@@ -1328,7 +1339,7 @@ int prep_rng_ap_msg(struct ap_message *ap_msg, int *func_code,
 	if (!ap_msg->msg)
 		return -ENOMEM;
 	ap_msg->receive = zcrypt_msgtype6_receive;
-	ap_msg->psmid = (((unsigned long long)current->pid) << 32) +
+	ap_msg->psmid = (((unsigned long)current->pid) << 32) +
 				atomic_inc_return(&zcrypt_step);
 	ap_msg->private = kmemdup(&resp_type, sizeof(resp_type), GFP_KERNEL);
 	if (!ap_msg->private)
@@ -1359,7 +1370,7 @@ static long zcrypt_msgtype6_rng(struct zcrypt_queue *zq,
 		short int verb_length;
 		short int key_length;
 	} __packed * msg = ap_msg->msg;
-	struct response_type *rtype = (struct response_type *)(ap_msg->private);
+	struct response_type *rtype = ap_msg->private;
 	int rc;
 
 	msg->cprbx.domain = AP_QID_QUEUE(zq->queue->qid);
