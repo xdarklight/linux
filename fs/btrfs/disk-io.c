@@ -4108,10 +4108,9 @@ static bool wait_dev_flush(struct btrfs_device *device)
 {
 	struct bio *bio = &device->flush_bio;
 
-	if (!test_bit(BTRFS_DEV_STATE_FLUSH_SENT, &device->dev_state))
+	if (!test_and_clear_bit(BTRFS_DEV_STATE_FLUSH_SENT, &device->dev_state))
 		return false;
 
-	clear_bit(BTRFS_DEV_STATE_FLUSH_SENT, &device->dev_state);
 	wait_for_completion_io(&device->flush_wait);
 
 	if (bio->bi_status) {
