@@ -155,6 +155,21 @@ static bool btrfs_supported_super_csum(u16 csum_type)
 }
 
 /*
+ * Check if the CSUM implementation is a fast accelerated one.
+ * As-is this is a bit of a hack and should be replaced once the
+ * csum implementations provide that information themselves.
+ */
+static bool btrfs_csum_is_fast(u16 csum_type)
+{
+	switch (csum_type) {
+	case BTRFS_CSUM_TYPE_CRC32:
+		return !strstr(crc32c_impl(), "generic");
+	default:
+		return false;
+	}
+}
+
+/*
  * Return 0 if the superblock checksum type matches the checksum value of that
  * algorithm. Pass the raw disk superblock data.
  */
@@ -3373,7 +3388,8 @@ int __cold open_ctree(struct super_block *sb, struct btrfs_fs_devices *fs_device
 		btrfs_release_disk_super(disk_super);
 		goto fail_alloc;
 	}
-
+	if (btrfs_csum_is_fast(csum_type))
+		set_bit(BTRFS_FS_CSUM_IMPL_FAST, &fs_info->flags);
 	fs_info->csum_size = btrfs_super_csum_size(disk_super);
 
 	ret = btrfs_init_csum_hash(fs_info, csum_type);
