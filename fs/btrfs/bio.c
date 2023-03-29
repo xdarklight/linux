@@ -565,26 +565,26 @@ static void run_one_async_free(struct btrfs_work *work)
 
 static bool should_async_write(struct btrfs_bio *bbio)
 {
+	struct btrfs_fs_info *fs_info = bbio->inode->root->fs_info;
+
+	/*
+	 * Submit synchronously if the checksum implementation is fast.
+	 */
+	if (test_bit(BTRFS_FS_CSUM_IMPL_FAST, &fs_info->flags))
+		return false;
+
 	/*
 	 * Try to defer the submission to a workqueue to parallelize the
-	 * checksum calculation unless the I/O is issued synchronously.
+	 * checksum calculation only if the I/O is issued asynchronously.
 	 */
 	if (op_is_sync(bbio->bio.bi_opf))
 		return false;
 
 	/*
-	 * Submit metadata writes synchronously if the checksum implementation
-	 * is fast, or we are on a zoned device that wants I/O to be submitted
-	 * in order.
+	 * Zoned devices require I/O to be submitted in order.
 	 */
-	if (bbio->bio.bi_opf & REQ_META) {
-		struct btrfs_fs_info *fs_info = bbio->inode->root->fs_info;
-
-		if (btrfs_is_zoned(fs_info))
-			return false;
-		if (test_bit(BTRFS_FS_CSUM_IMPL_FAST, &fs_info->flags))
-			return false;
-	}
+	if ((bbio->bio.bi_opf & REQ_META) && btrfs_is_zoned(fs_info))
+		return false;
 
 	return true;
 }
