@@ -566,11 +566,10 @@ static void run_one_async_free(struct btrfs_work *work)
 static bool should_async_write(struct btrfs_bio *bbio)
 {
 	/*
-	 * If the I/O is not issued by fsync and friends, (->sync_writers != 0),
-	 * then try to defer the submission to a workqueue to parallelize the
-	 * checksum calculation.
+	 * Try to defer the submission to a workqueue to parallelize the
+	 * checksum calculation unless the I/O is issued synchronously.
 	 */
-	if (atomic_read(&bbio->inode->sync_writers))
+	if (op_is_sync(bbio->bio.bi_opf))
 		return false;
 
 	/*
