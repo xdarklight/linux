@@ -423,11 +423,6 @@ static int scrub_sectors(struct scrub_ctx *sctx, u64 logical, u32 len,
 static void scrub_bio_end_io(struct bio *bio);
 static void scrub_bio_end_io_worker(struct work_struct *work);
 static void scrub_block_complete(struct scrub_block *sblock);
-static void scrub_find_good_copy(struct btrfs_fs_info *fs_info,
-				 u64 extent_logical, u32 extent_len,
-				 u64 *extent_physical,
-				 struct btrfs_device **extent_dev,
-				 int *extent_mirror_num);
 static int scrub_add_sector_to_wr_bio(struct scrub_ctx *sctx,
 				      struct scrub_sector *sector);
 static void scrub_wr_submit(struct scrub_ctx *sctx);
@@ -1230,7 +1225,7 @@ static int scrub_handle_errored_block(struct scrub_block *sblock_to_check)
 			sblock_other = sblocks_for_recheck[mirror_index];
 		} else {
 			struct scrub_recover *r = sblock_bad->sectors[0]->recover;
-			int max_allowed = r->bioc->num_stripes - r->bioc->num_tgtdevs;
+			int max_allowed = r->bioc->num_stripes - r->bioc->replace_nr_stripes;
 
 			if (mirror_index >= max_allowed)
 				break;
@@ -1430,7 +1425,7 @@ static inline int scrub_nr_raid_mirrors(struct btrfs_io_context *bioc)
 }
 
 static inline void scrub_stripe_index_and_offset(u64 logical, u64 map_type,
-						 u64 *raid_map,
+						 u64 full_stripe_logical,
 						 int nstripes, int mirror,
 						 int *stripe_index,
 						 u64 *stripe_offset)
@@ -1438,19 +1433,22 @@ static inline void scrub_stripe_index_and_offset(u64 logical, u64 map_type,
 	int i;
 
 	if (map_type & BTRFS_BLOCK_GROUP_RAID56_MASK) {
-		/* RAID5/6 */
-		for (i = 0; i < nstripes; i++) {
-			if (raid_map[i] == RAID6_Q_STRIPE ||
-			    raid_map[i] == RAID5_P_STRIPE)
-				continue;
+		const int nr_data_stripes = (map_type & BTRFS_BLOCK_GROUP_RAID5) ?
+					    nstripes - 1 : nstripes - 2;
 
-			if (logical >= raid_map[i] &&
-			    logical < raid_map[i] + BTRFS_STRIPE_LEN)
+		/* RAID5/6 */
+		for (i = 0; i < nr_data_stripes; i++) {
+			const u64 data_stripe_start = full_stripe_logical +
+						(i * BTRFS_STRIPE_LEN);
+
+			if (logical >= data_stripe_start &&
+			    logical < data_stripe_start + BTRFS_STRIPE_LEN)
 				break;
 		}
 
 		*stripe_index = i;
-		*stripe_offset = logical - raid_map[i];
+		*stripe_offset = (logical - full_stripe_logical) &
+				 BTRFS_STRIPE_LEN_MASK;
 	} else {
 		/* The other RAID type */
 		*stripe_index = mirror;
@@ -1538,9 +1536,9 @@ static int scrub_setup_recheck_block(struct scrub_block *original_sblock,
 
 			scrub_stripe_index_and_offset(logical,
 						      bioc->map_type,
-						      bioc->raid_map,
+						      bioc->full_stripe_logical,
 						      bioc->num_stripes -
-						      bioc->num_tgtdevs,
+						      bioc->replace_nr_stripes,
 						      mirror_index,
 						      &stripe_index,
 						      &stripe_offset);
@@ -2398,7 +2396,7 @@ static void scrub_missing_raid56_pages(struct scrub_block *sblock)
 	btrfs_bio_counter_inc_blocked(fs_info);
 	ret = btrfs_map_sblock(fs_info, BTRFS_MAP_GET_READ_MIRRORS, logical,
 			       &length, &bioc);
-	if (ret || !bioc || !bioc->raid_map)
+	if (ret || !bioc)
 		goto bioc_out;
 
 	if (WARN_ON(!sctx->is_dev_replace ||
@@ -2707,6 +2705,110 @@ static int scrub_find_csum(struct scrub_ctx *sctx, u64 logical, u8 *csum)
 	return 1;
 }
 
+static bool should_use_device(struct btrfs_fs_info *fs_info,
+			      struct btrfs_device *dev,
+			      bool follow_replace_read_mode)
+{
+	struct btrfs_device *replace_srcdev = fs_info->dev_replace.srcdev;
+	struct btrfs_device *replace_tgtdev = fs_info->dev_replace.tgtdev;
+
+	if (!dev->bdev)
+		return false;
+
+	/*
+	 * We're doing scrub/replace, if it's pure scrub, no tgtdev should be
+	 * here.  If it's replace, we're going to write data to tgtdev, thus
+	 * the current data of the tgtdev is all garbage, thus we can not use
+	 * it at all.
+	 */
+	if (dev == replace_tgtdev)
+		return false;
+
+	/* No need to follow replace read mode, any existing device is fine. */
+	if (!follow_replace_read_mode)
+		return true;
+
+	/* Need to follow the mode. */
+	if (fs_info->dev_replace.cont_reading_from_srcdev_mode ==
+	    BTRFS_DEV_REPLACE_ITEM_CONT_READING_FROM_SRCDEV_MODE_AVOID)
+		return dev != replace_srcdev;
+	return true;
+}
+static int scrub_find_good_copy(struct btrfs_fs_info *fs_info,
+				u64 extent_logical, u32 extent_len,
+				u64 *extent_physical,
+				struct btrfs_device **extent_dev,
+				int *extent_mirror_num)
+{
+	u64 mapped_length;
+	struct btrfs_io_context *bioc = NULL;
+	int ret;
+	int i;
+
+	mapped_length = extent_len;
+	ret = btrfs_map_block(fs_info, BTRFS_MAP_GET_READ_MIRRORS,
+			      extent_logical, &mapped_length, &bioc, 0);
+	if (ret || !bioc || mapped_length < extent_len) {
+		btrfs_put_bioc(bioc);
+		btrfs_err_rl(fs_info, "btrfs_map_block() failed for logical %llu: %d",
+				extent_logical, ret);
+		return -EIO;
+	}
+
+	/*
+	 * First loop to exclude all missing devices and the source device if
+	 * needed.  And we don't want to use target device as mirror either, as
+	 * we're doing the replace, the target device range contains nothing.
+	 */
+	for (i = 0; i < bioc->num_stripes - bioc->replace_nr_stripes; i++) {
+		struct btrfs_io_stripe *stripe = &bioc->stripes[i];
+
+		if (!should_use_device(fs_info, stripe->dev, true))
+			continue;
+		goto found;
+	}
+	/*
+	 * We didn't find any alternative mirrors, we have to break our replace
+	 * read mode, or we can not read at all.
+	 */
+	for (i = 0; i < bioc->num_stripes - bioc->replace_nr_stripes; i++) {
+		struct btrfs_io_stripe *stripe = &bioc->stripes[i];
+
+		if (!should_use_device(fs_info, stripe->dev, false))
+			continue;
+		goto found;
+	}
+
+	btrfs_err_rl(fs_info, "failed to find any live mirror for logical %llu",
+			extent_logical);
+	return -EIO;
+
+found:
+	*extent_physical = bioc->stripes[i].physical;
+	*extent_mirror_num = i + 1;
+	*extent_dev = bioc->stripes[i].dev;
+	btrfs_put_bioc(bioc);
+	return 0;
+}
+
+static bool scrub_need_different_mirror(struct scrub_ctx *sctx,
+					struct map_lookup *map,
+					struct btrfs_device *dev)
+{
+	/*
+	 * For RAID56, all the extra mirrors are rebuilt from other P/Q,
+	 * cannot utilize other mirrors directly.
+	 */
+	if (map->type & BTRFS_BLOCK_GROUP_RAID56_MASK)
+		return false;
+
+	if (!dev->bdev)
+		return true;
+
+	return sctx->fs_info->dev_replace.cont_reading_from_srcdev_mode ==
+		BTRFS_DEV_REPLACE_ITEM_CONT_READING_FROM_SRCDEV_MODE_AVOID;
+}
+
 /* scrub extent tries to collect up to 64 kB for each bio */
 static int scrub_extent(struct scrub_ctx *sctx, struct map_lookup *map,
 			u64 logical, u32 len,
@@ -2722,7 +2824,7 @@ static int scrub_extent(struct scrub_ctx *sctx, struct map_lookup *map,
 
 	if (flags & BTRFS_EXTENT_FLAG_DATA) {
 		if (map->type & BTRFS_BLOCK_GROUP_RAID56_MASK)
-			blocksize = map->stripe_len;
+			blocksize = BTRFS_STRIPE_LEN;
 		else
 			blocksize = sctx->fs_info->sectorsize;
 		spin_lock(&sctx->stat_lock);
@@ -2731,7 +2833,7 @@ static int scrub_extent(struct scrub_ctx *sctx, struct map_lookup *map,
 		spin_unlock(&sctx->stat_lock);
 	} else if (flags & BTRFS_EXTENT_FLAG_TREE_BLOCK) {
 		if (map->type & BTRFS_BLOCK_GROUP_RAID56_MASK)
-			blocksize = map->stripe_len;
+			blocksize = BTRFS_STRIPE_LEN;
 		else
 			blocksize = sctx->fs_info->nodesize;
 		spin_lock(&sctx->stat_lock);
@@ -2744,17 +2846,15 @@ static int scrub_extent(struct scrub_ctx *sctx, struct map_lookup *map,
 	}
 
 	/*
-	 * For dev-replace case, we can have @dev being a missing device.
-	 * Regular scrub will avoid its execution on missing device at all,
-	 * as that would trigger tons of read error.
-	 *
-	 * Reading from missing device will cause read error counts to
-	 * increase unnecessarily.
-	 * So here we change the read source to a good mirror.
+	 * For dev-replace case, we can have @dev being a missing device, or
+	 * we want to avoid reading from the source device if possible.
 	 */
-	if (sctx->is_dev_replace && !dev->bdev)
-		scrub_find_good_copy(sctx->fs_info, logical, len, &src_physical,
-				     &src_dev, &src_mirror);
+	if (sctx->is_dev_replace && scrub_need_different_mirror(sctx, map, dev)) {
+		ret = scrub_find_good_copy(sctx->fs_info, logical, len,
+					   &src_physical, &src_dev, &src_mirror);
+		if (ret < 0)
+			return ret;
+	}
 	while (len) {
 		u32 l = min(len, blocksize);
 		int have_csum = 0;
@@ -2908,10 +3008,7 @@ static int get_raid56_logic_offset(u64 physical, int num,
 {
 	int i;
 	int j = 0;
-	u64 stripe_nr;
 	u64 last_offset;
-	u32 stripe_index;
-	u32 rot;
 	const int data_stripes = nr_data_stripes(map);
 
 	last_offset = (physical - map->stripes[num].physical) * data_stripes;
@@ -2920,13 +3017,17 @@ static int get_raid56_logic_offset(u64 physical, int num,
 
 	*offset = last_offset;
 	for (i = 0; i < data_stripes; i++) {
-		*offset = last_offset + i * map->stripe_len;
+		u32 stripe_nr;
+		u32 stripe_index;
+		u32 rot;
 
-		stripe_nr = div64_u64(*offset, map->stripe_len);
-		stripe_nr = div_u64(stripe_nr, data_stripes);
+		*offset = last_offset + (i << BTRFS_STRIPE_LEN_SHIFT);
+
+		stripe_nr = (u32)(*offset >> BTRFS_STRIPE_LEN_SHIFT) / data_stripes;
 
 		/* Work out the disk rotation on this stripe-set */
-		stripe_nr = div_u64_rem(stripe_nr, map->num_stripes, &rot);
+		rot = stripe_nr % map->num_stripes;
+		stripe_nr /= map->num_stripes;
 		/* calculate which stripe this data locates */
 		rot += i;
 		stripe_index = rot % map->num_stripes;
@@ -2935,7 +3036,7 @@ static int get_raid56_logic_offset(u64 physical, int num,
 		if (stripe_index < num)
 			j++;
 	}
-	*offset = last_offset + j * map->stripe_len;
+	*offset = last_offset + (j << BTRFS_STRIPE_LEN_SHIFT);
 	return 1;
 }
 
@@ -3006,7 +3107,7 @@ static void scrub_parity_check_and_repair(struct scrub_parity *sparity)
 	btrfs_bio_counter_inc_blocked(fs_info);
 	ret = btrfs_map_sblock(fs_info, BTRFS_MAP_WRITE, sparity->logic_start,
 			       &length, &bioc);
-	if (ret || !bioc || !bioc->raid_map)
+	if (ret || !bioc)
 		goto bioc_out;
 
 	bio = bio_alloc(NULL, BIO_MAX_VECS, REQ_OP_READ, GFP_NOFS);
@@ -3205,7 +3306,7 @@ static int scrub_raid56_data_stripe_for_parity(struct scrub_ctx *sctx,
 	/* Path must not be populated */
 	ASSERT(!path->nodes[0]);
 
-	while (cur_logical < logical + map->stripe_len) {
+	while (cur_logical < logical + BTRFS_STRIPE_LEN) {
 		struct btrfs_io_context *bioc = NULL;
 		struct btrfs_device *extent_dev;
 		u64 extent_start;
@@ -3217,7 +3318,7 @@ static int scrub_raid56_data_stripe_for_parity(struct scrub_ctx *sctx,
 		u64 extent_mirror_num;
 
 		ret = find_first_extent_item(extent_root, path, cur_logical,
-					     logical + map->stripe_len - cur_logical);
+					     logical + BTRFS_STRIPE_LEN - cur_logical);
 		/* No more extent item in this data stripe */
 		if (ret > 0) {
 			ret = 0;
@@ -3231,7 +3332,7 @@ static int scrub_raid56_data_stripe_for_parity(struct scrub_ctx *sctx,
 		/* Metadata should not cross stripe boundaries */
 		if ((extent_flags & BTRFS_EXTENT_FLAG_TREE_BLOCK) &&
 		    does_range_cross_boundary(extent_start, extent_size,
-					      logical, map->stripe_len)) {
+					      logical, BTRFS_STRIPE_LEN)) {
 			btrfs_err(fs_info,
 	"scrub: tree block %llu spanning stripes, ignored. logical=%llu",
 				  extent_start, logical);
@@ -3247,7 +3348,7 @@ static int scrub_raid56_data_stripe_for_parity(struct scrub_ctx *sctx,
 
 		/* Truncate the range inside this data stripe */
 		extent_size = min(extent_start + extent_size,
-				  logical + map->stripe_len) - cur_logical;
+				  logical + BTRFS_STRIPE_LEN) - cur_logical;
 		extent_start = cur_logical;
 		ASSERT(extent_size <= U32_MAX);
 
@@ -3320,8 +3421,7 @@ static noinline_for_stack int scrub_raid56_parity(struct scrub_ctx *sctx,
 	path->search_commit_root = 1;
 	path->skip_locking = 1;
 
-	ASSERT(map->stripe_len <= U32_MAX);
-	nsectors = map->stripe_len >> fs_info->sectorsize_bits;
+	nsectors = BTRFS_STRIPE_LEN >> fs_info->sectorsize_bits;
 	ASSERT(nsectors <= BITS_PER_LONG);
 	sparity = kzalloc(sizeof(struct scrub_parity), GFP_NOFS);
 	if (!sparity) {
@@ -3332,8 +3432,7 @@ static noinline_for_stack int scrub_raid56_parity(struct scrub_ctx *sctx,
 		return -ENOMEM;
 	}
 
-	ASSERT(map->stripe_len <= U32_MAX);
-	sparity->stripe_len = map->stripe_len;
+	sparity->stripe_len = BTRFS_STRIPE_LEN;
 	sparity->nsectors = nsectors;
 	sparity->sctx = sctx;
 	sparity->scrub_dev = sdev;
@@ -3344,7 +3443,7 @@ static noinline_for_stack int scrub_raid56_parity(struct scrub_ctx *sctx,
 
 	ret = 0;
 	for (cur_logical = logic_start; cur_logical < logic_end;
-	     cur_logical += map->stripe_len) {
+	     cur_logical += BTRFS_STRIPE_LEN) {
 		ret = scrub_raid56_data_stripe_for_parity(sctx, sparity, map,
 							  sdev, path, cur_logical);
 		if (ret < 0)
@@ -3410,8 +3509,6 @@ static int sync_write_pointer_for_zoned(struct scrub_ctx *sctx, u64 logical,
  * and @logical_length parameter.
  */
 static int scrub_simple_mirror(struct scrub_ctx *sctx,
-			       struct btrfs_root *extent_root,
-			       struct btrfs_root *csum_root,
 			       struct btrfs_block_group *bg,
 			       struct map_lookup *map,
 			       u64 logical_start, u64 logical_length,
@@ -3419,6 +3516,8 @@ static int scrub_simple_mirror(struct scrub_ctx *sctx,
 			       u64 physical, int mirror_num)
 {
 	struct btrfs_fs_info *fs_info = sctx->fs_info;
+	struct btrfs_root *csum_root = btrfs_csum_root(fs_info, bg->start);
+	struct btrfs_root *extent_root = btrfs_extent_root(fs_info, bg->start);
 	const u64 logical_end = logical_start + logical_length;
 	/* An artificial limit, inherit from old scrub behavior */
 	const u32 max_length = SZ_64K;
@@ -3536,7 +3635,7 @@ static u64 simple_stripe_full_stripe_len(const struct map_lookup *map)
 	ASSERT(map->type & (BTRFS_BLOCK_GROUP_RAID0 |
 			    BTRFS_BLOCK_GROUP_RAID10));
 
-	return map->num_stripes / map->sub_stripes * map->stripe_len;
+	return (map->num_stripes / map->sub_stripes) << BTRFS_STRIPE_LEN_SHIFT;
 }
 
 /* Get the logical bytenr for the stripe */
@@ -3552,7 +3651,8 @@ static u64 simple_stripe_get_logical(struct map_lookup *map,
 	 * (stripe_index / sub_stripes) gives how many data stripes we need to
 	 * skip.
 	 */
-	return (stripe_index / map->sub_stripes) * map->stripe_len + bg->start;
+	return ((stripe_index / map->sub_stripes) << BTRFS_STRIPE_LEN_SHIFT) +
+	       bg->start;
 }
 
 /* Get the mirror number for the stripe */
@@ -3567,8 +3667,6 @@ static int simple_stripe_mirror_num(struct map_lookup *map, int stripe_index)
 }
 
 static int scrub_simple_stripe(struct scrub_ctx *sctx,
-			       struct btrfs_root *extent_root,
-			       struct btrfs_root *csum_root,
 			       struct btrfs_block_group *bg,
 			       struct map_lookup *map,
 			       struct btrfs_device *device,
@@ -3588,15 +3686,15 @@ static int scrub_simple_stripe(struct scrub_ctx *sctx,
 		 * just RAID1, so we can reuse scrub_simple_mirror() to scrub
 		 * this stripe.
 		 */
-		ret = scrub_simple_mirror(sctx, extent_root, csum_root, bg, map,
-					  cur_logical, map->stripe_len, device,
-					  cur_physical, mirror_num);
+		ret = scrub_simple_mirror(sctx, bg, map, cur_logical,
+					  BTRFS_STRIPE_LEN, device, cur_physical,
+					  mirror_num);
 		if (ret)
 			return ret;
 		/* Skip to next stripe which belongs to the target device */
 		cur_logical += logical_increment;
 		/* For physical offset, we just go to next stripe */
-		cur_physical += map->stripe_len;
+		cur_physical += BTRFS_STRIPE_LEN;
 	}
 	return ret;
 }
@@ -3607,10 +3705,7 @@ static noinline_for_stack int scrub_stripe(struct scrub_ctx *sctx,
 					   struct btrfs_device *scrub_dev,
 					   int stripe_index)
 {
-	struct btrfs_path *path;
 	struct btrfs_fs_info *fs_info = sctx->fs_info;
-	struct btrfs_root *root;
-	struct btrfs_root *csum_root;
 	struct blk_plug plug;
 	struct map_lookup *map = em->map_lookup;
 	const u64 profile = map->type & BTRFS_BLOCK_GROUP_PROFILE_MASK;
@@ -3629,25 +3724,9 @@ static noinline_for_stack int scrub_stripe(struct scrub_ctx *sctx,
 	u64 stripe_end;
 	int stop_loop = 0;
 
-	path = btrfs_alloc_path();
-	if (!path)
-		return -ENOMEM;
-
-	/*
-	 * work on commit root. The related disk blocks are static as
-	 * long as COW is applied. This means, it is save to rewrite
-	 * them to repair disk errors without any race conditions
-	 */
-	path->search_commit_root = 1;
-	path->skip_locking = 1;
-	path->reada = READA_FORWARD;
-
 	wait_event(sctx->list_wait,
 		   atomic_read(&sctx->bios_in_flight) == 0);
 	scrub_blocked_if_needed(fs_info);
-
-	root = btrfs_extent_root(fs_info, bg->start);
-	csum_root = btrfs_csum_root(fs_info, bg->start);
 
 	/*
 	 * collect all data csums for the stripe to avoid seeking during
@@ -3680,17 +3759,15 @@ static noinline_for_stack int scrub_stripe(struct scrub_ctx *sctx,
 		 * Only @physical and @mirror_num needs to calculated using
 		 * @stripe_index.
 		 */
-		ret = scrub_simple_mirror(sctx, root, csum_root, bg, map,
-				bg->start, bg->length, scrub_dev,
-				map->stripes[stripe_index].physical,
+		ret = scrub_simple_mirror(sctx, bg, map, bg->start, bg->length,
+				scrub_dev, map->stripes[stripe_index].physical,
 				stripe_index + 1);
 		offset = 0;
 		goto out;
 	}
 	if (profile & (BTRFS_BLOCK_GROUP_RAID0 | BTRFS_BLOCK_GROUP_RAID10)) {
-		ret = scrub_simple_stripe(sctx, root, csum_root, bg, map,
-					  scrub_dev, stripe_index);
-		offset = map->stripe_len * (stripe_index / map->sub_stripes);
+		ret = scrub_simple_stripe(sctx, bg, map, scrub_dev, stripe_index);
+		offset = (stripe_index / map->sub_stripes) << BTRFS_STRIPE_LEN_SHIFT;
 		goto out;
 	}
 
@@ -3705,7 +3782,7 @@ static noinline_for_stack int scrub_stripe(struct scrub_ctx *sctx,
 
 	/* Initialize @offset in case we need to go to out: label */
 	get_raid56_logic_offset(physical, stripe_index, map, &offset, NULL);
-	increment = map->stripe_len * nr_data_stripes(map);
+	increment = nr_data_stripes(map) << BTRFS_STRIPE_LEN_SHIFT;
 
 	/*
 	 * Due to the rotation, for RAID56 it's better to iterate each stripe
@@ -3735,14 +3812,13 @@ static noinline_for_stack int scrub_stripe(struct scrub_ctx *sctx,
 		 * We can reuse scrub_simple_mirror() here, as the repair part
 		 * is still based on @mirror_num.
 		 */
-		ret = scrub_simple_mirror(sctx, root, csum_root, bg, map,
-					  logical, map->stripe_len,
+		ret = scrub_simple_mirror(sctx, bg, map, logical, BTRFS_STRIPE_LEN,
 					  scrub_dev, physical, 1);
 		if (ret < 0)
 			goto out;
 next:
 		logical += increment;
-		physical += map->stripe_len;
+		physical += BTRFS_STRIPE_LEN;
 		spin_lock(&sctx->stat_lock);
 		if (stop_loop)
 			sctx->stat.last_physical =
@@ -3761,7 +3837,6 @@ out:
 	mutex_unlock(&sctx->wr_lock);
 
 	blk_finish_plug(&plug);
-	btrfs_free_path(path);
 
 	if (sctx->is_dev_replace && ret >= 0) {
 		int ret2;
@@ -4540,29 +4615,4 @@ int btrfs_scrub_progress(struct btrfs_fs_info *fs_info, u64 devid,
 	mutex_unlock(&fs_info->fs_devices->device_list_mutex);
 
 	return dev ? (sctx ? 0 : -ENOTCONN) : -ENODEV;
-}
-
-static void scrub_find_good_copy(struct btrfs_fs_info *fs_info,
-				 u64 extent_logical, u32 extent_len,
-				 u64 *extent_physical,
-				 struct btrfs_device **extent_dev,
-				 int *extent_mirror_num)
-{
-	u64 mapped_length;
-	struct btrfs_io_context *bioc = NULL;
-	int ret;
-
-	mapped_length = extent_len;
-	ret = btrfs_map_block(fs_info, BTRFS_MAP_READ, extent_logical,
-			      &mapped_length, &bioc, 0);
-	if (ret || !bioc || mapped_length < extent_len ||
-	    !bioc->stripes[0].dev->bdev) {
-		btrfs_put_bioc(bioc);
-		return;
-	}
-
-	*extent_physical = bioc->stripes[0].physical;
-	*extent_mirror_num = bioc->mirror_num;
-	*extent_dev = bioc->stripes[0].dev;
-	btrfs_put_bioc(bioc);
 }

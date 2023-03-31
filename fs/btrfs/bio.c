@@ -48,41 +48,58 @@ void btrfs_bio_init(struct btrfs_bio *bbio, struct btrfs_inode *inode,
  * Just like the underlying bio_alloc_bioset it will not fail as it is backed by
  * a mempool.
  */
-struct bio *btrfs_bio_alloc(unsigned int nr_vecs, blk_opf_t opf,
-			    struct btrfs_inode *inode,
-			    btrfs_bio_end_io_t end_io, void *private)
+struct btrfs_bio *btrfs_bio_alloc(unsigned int nr_vecs, blk_opf_t opf,
+				  struct btrfs_inode *inode,
+				  btrfs_bio_end_io_t end_io, void *private)
 {
+	struct btrfs_bio *bbio;
 	struct bio *bio;
 
 	bio = bio_alloc_bioset(NULL, nr_vecs, opf, GFP_NOFS, &btrfs_bioset);
-	btrfs_bio_init(btrfs_bio(bio), inode, end_io, private);
-	return bio;
+	bbio = btrfs_bio(bio);
+	btrfs_bio_init(bbio, inode, end_io, private);
+	return bbio;
 }
 
-static struct bio *btrfs_split_bio(struct btrfs_fs_info *fs_info,
-				   struct bio *orig, u64 map_length,
-				   bool use_append)
+static blk_status_t btrfs_bio_extract_ordered_extent(struct btrfs_bio *bbio)
 {
-	struct btrfs_bio *orig_bbio = btrfs_bio(orig);
+	struct btrfs_ordered_extent *ordered;
+	int ret;
+
+	ordered = btrfs_lookup_ordered_extent(bbio->inode, bbio->file_offset);
+	if (WARN_ON_ONCE(!ordered))
+		return BLK_STS_IOERR;
+	ret = btrfs_extract_ordered_extent(bbio, ordered);
+	btrfs_put_ordered_extent(ordered);
+
+	return errno_to_blk_status(ret);
+}
+
+static struct btrfs_bio *btrfs_split_bio(struct btrfs_fs_info *fs_info,
+					 struct btrfs_bio *orig_bbio,
+					 u64 map_length, bool use_append)
+{
+	struct btrfs_bio *bbio;
 	struct bio *bio;
 
 	if (use_append) {
 		unsigned int nr_segs;
 
-		bio = bio_split_rw(orig, &fs_info->limits, &nr_segs,
+		bio = bio_split_rw(&orig_bbio->bio, &fs_info->limits, &nr_segs,
 				   &btrfs_clone_bioset, map_length);
 	} else {
-		bio = bio_split(orig, map_length >> SECTOR_SHIFT, GFP_NOFS,
-				&btrfs_clone_bioset);
+		bio = bio_split(&orig_bbio->bio, map_length >> SECTOR_SHIFT,
+				GFP_NOFS, &btrfs_clone_bioset);
 	}
-	btrfs_bio_init(btrfs_bio(bio), orig_bbio->inode, NULL, orig_bbio);
+	bbio = btrfs_bio(bio);
+	btrfs_bio_init(bbio, orig_bbio->inode, NULL, orig_bbio);
 
-	btrfs_bio(bio)->file_offset = orig_bbio->file_offset;
-	if (!(orig->bi_opf & REQ_BTRFS_ONE_ORDERED))
+	bbio->file_offset = orig_bbio->file_offset;
+	if (!(orig_bbio->bio.bi_opf & REQ_BTRFS_ONE_ORDERED))
 		orig_bbio->file_offset += map_length;
 
 	atomic_inc(&orig_bbio->pending_ios);
-	return bio;
+	return bbio;
 }
 
 static void btrfs_orig_write_end_io(struct bio *bio);
@@ -164,7 +181,7 @@ static void btrfs_end_repair_bio(struct btrfs_bio *repair_bbio,
 			goto done;
 		}
 
-		btrfs_submit_bio(&repair_bbio->bio, mirror);
+		btrfs_submit_bio(repair_bbio, mirror);
 		return;
 	}
 
@@ -224,7 +241,7 @@ static struct btrfs_failed_bio *repair_one_sector(struct btrfs_bio *failed_bbio,
 	repair_bio = bio_alloc_bioset(NULL, 1, REQ_OP_READ, GFP_NOFS,
 				      &btrfs_repair_bioset);
 	repair_bio->bi_iter.bi_sector = failed_bbio->saved_iter.bi_sector;
-	bio_add_page(repair_bio, bv->bv_page, bv->bv_len, bv->bv_offset);
+	__bio_add_page(repair_bio, bv->bv_page, bv->bv_len, bv->bv_offset);
 
 	repair_bbio = btrfs_bio(repair_bio);
 	btrfs_bio_init(repair_bbio, failed_bbio->inode, NULL, fbio);
@@ -232,7 +249,7 @@ static struct btrfs_failed_bio *repair_one_sector(struct btrfs_bio *failed_bbio,
 
 	mirror = next_repair_mirror(fbio, failed_bbio->mirror_num);
 	btrfs_debug(fs_info, "submitting repair read to mirror %d", mirror);
-	btrfs_submit_bio(repair_bio, mirror);
+	btrfs_submit_bio(repair_bbio, mirror);
 	return fbio;
 }
 
@@ -603,12 +620,12 @@ static bool btrfs_wq_submit_bio(struct btrfs_bio *bbio,
 	return true;
 }
 
-static bool btrfs_submit_chunk(struct bio *bio, int mirror_num)
+static bool btrfs_submit_chunk(struct btrfs_bio *bbio, int mirror_num)
 {
-	struct btrfs_bio *bbio = btrfs_bio(bio);
 	struct btrfs_inode *inode = bbio->inode;
 	struct btrfs_fs_info *fs_info = inode->root->fs_info;
 	struct btrfs_bio *orig_bbio = bbio;
+	struct bio *bio = &bbio->bio;
 	u64 logical = bio->bi_iter.bi_sector << 9;
 	u64 length = bio->bi_iter.bi_size;
 	u64 map_length = length;
@@ -631,8 +648,8 @@ static bool btrfs_submit_chunk(struct bio *bio, int mirror_num)
 		map_length = min(map_length, fs_info->max_zone_append_size);
 
 	if (map_length < length) {
-		bio = btrfs_split_bio(fs_info, bio, map_length, use_append);
-		bbio = btrfs_bio(bio);
+		bbio = btrfs_split_bio(fs_info, bbio, map_length, use_append);
+		bio = &bbio->bio;
 	}
 
 	/*
@@ -650,7 +667,7 @@ static bool btrfs_submit_chunk(struct bio *bio, int mirror_num)
 		if (use_append) {
 			bio->bi_opf &= ~REQ_OP_WRITE;
 			bio->bi_opf |= REQ_OP_ZONE_APPEND;
-			ret = btrfs_extract_ordered_extent(btrfs_bio(bio));
+			ret = btrfs_bio_extract_ordered_extent(bbio);
 			if (ret)
 				goto fail_put_bio;
 		}
@@ -686,9 +703,9 @@ fail:
 	return true;
 }
 
-void btrfs_submit_bio(struct bio *bio, int mirror_num)
+void btrfs_submit_bio(struct btrfs_bio *bbio, int mirror_num)
 {
-	while (!btrfs_submit_chunk(bio, mirror_num))
+	while (!btrfs_submit_chunk(bbio, mirror_num))
 		;
 }
 
