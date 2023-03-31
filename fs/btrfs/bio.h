@@ -94,6 +94,9 @@ static inline void btrfs_bio_end_io(struct btrfs_bio *bbio, blk_status_t status)
 /* Bio only refers to one ordered extent. */
 #define REQ_BTRFS_ONE_ORDERED			REQ_DRV
 
+/* Submit using blkcg_punt_bio_submit. */
+#define REQ_BTRFS_CGROUP_PUNT			REQ_FS_PRIVATE
+
 void btrfs_submit_bio(struct btrfs_bio *bbio, int mirror_num);
 void btrfs_submit_repair_write(struct btrfs_bio *bbio, int mirror_num,
 			       bool dev_replace);
