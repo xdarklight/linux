@@ -2305,8 +2305,7 @@ static inline int io_submit_sqe(struct io_ring_ctx *ctx, struct io_kiocb *req,
 	if (unlikely(ret))
 		return io_submit_fail_init(sqe, req, ret);
 
-	/* don't need @sqe from now on */
-	trace_io_uring_submit_sqe(req, true);
+	trace_io_uring_submit_req(req);
 
 	/*
 	 * If we already have a head request, queue this one for async
@@ -2435,7 +2434,7 @@ int io_submit_sqes(struct io_ring_ctx *ctx, unsigned int nr)
 	if (unlikely(!entries))
 		return 0;
 	/* make sure SQ entry isn't read before tail */
-	ret = left = min3(nr, ctx->sq_entries, entries);
+	ret = left = min(nr, entries);
 	io_get_task_refs(left);
 	io_submit_state_start(&ctx->submit_state, left);
 
