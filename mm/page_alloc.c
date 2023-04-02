@@ -112,17 +112,6 @@ typedef int __bitwise fpi_t;
  */
 #define FPI_TO_TAIL		((__force fpi_t)BIT(1))
 
-/*
- * Don't poison memory with KASAN (only for the tag-based modes).
- * During boot, all non-reserved memblock memory is exposed to page_alloc.
- * Poisoning all that memory lengthens boot time, especially on systems with
- * large amount of RAM. This flag is used to skip that poisoning.
- * This is only done for the tag-based KASAN modes, as those are able to
- * detect memory corruptions with the memory tags assigned by default.
- * All memory allocated normally after boot gets poisoned as usual.
- */
-#define FPI_SKIP_KASAN_POISON	((__force fpi_t)BIT(2))
-
 /* prevent >1 _updater_ of zone percpu pageset ->high and ->batch fields */
 static DEFINE_MUTEX(pcp_batch_high_lock);
 #define MIN_PERCPU_PAGELIST_HIGH_FRACTION (8)
@@ -252,6 +241,9 @@ EXPORT_SYMBOL(init_on_alloc);
 
 DEFINE_STATIC_KEY_MAYBE(CONFIG_INIT_ON_FREE_DEFAULT_ON, init_on_free);
 EXPORT_SYMBOL(init_on_free);
+
+/* perform sanity checks on struct pages being allocated or freed */
+static DEFINE_STATIC_KEY_MAYBE(CONFIG_DEBUG_VM, check_pages_enabled);
 
 static bool _init_on_alloc_enabled_early __read_mostly
 				= IS_ENABLED(CONFIG_INIT_ON_ALLOC_DEFAULT_ON);
@@ -893,6 +885,7 @@ static inline void clear_page_guard(struct zone *zone, struct page *page,
 void __init init_mem_debugging_and_hardening(void)
 {
 	bool page_poisoning_requested = false;
+	bool want_check_pages = false;
 
 #ifdef CONFIG_PAGE_POISONING
 	/*
@@ -904,6 +897,7 @@ void __init init_mem_debugging_and_hardening(void)
 	      debug_pagealloc_enabled())) {
 		static_branch_enable(&_page_poisoning_enabled);
 		page_poisoning_requested = true;
+		want_check_pages = true;
 	}
 #endif
 
@@ -915,31 +909,41 @@ void __init init_mem_debugging_and_hardening(void)
 		_init_on_free_enabled_early = false;
 	}
 
-	if (_init_on_alloc_enabled_early)
+	if (_init_on_alloc_enabled_early) {
+		want_check_pages = true;
 		static_branch_enable(&init_on_alloc);
-	else
+	} else {
 		static_branch_disable(&init_on_alloc);
+	}
 
-	if (_init_on_free_enabled_early)
+	if (_init_on_free_enabled_early) {
+		want_check_pages = true;
 		static_branch_enable(&init_on_free);
-	else
+	} else {
 		static_branch_disable(&init_on_free);
+	}
 
 	if (IS_ENABLED(CONFIG_KMSAN) &&
 	    (_init_on_alloc_enabled_early || _init_on_free_enabled_early))
 		pr_info("mem auto-init: please make sure init_on_alloc and init_on_free are disabled when running KMSAN\n");
 
 #ifdef CONFIG_DEBUG_PAGEALLOC
-	if (!debug_pagealloc_enabled())
-		return;
+	if (debug_pagealloc_enabled()) {
+		want_check_pages = true;
+		static_branch_enable(&_debug_pagealloc_enabled);
 
-	static_branch_enable(&_debug_pagealloc_enabled);
-
-	if (!debug_guardpage_minorder())
-		return;
-
-	static_branch_enable(&_debug_guardpage_enabled);
+		if (debug_guardpage_minorder())
+			static_branch_enable(&_debug_guardpage_enabled);
+	}
 #endif
+
+	/*
+	 * Any page debugging or hardening option also enables sanity checking
+	 * of struct pages being allocated or freed. With CONFIG_DEBUG_VM it's
+	 * enabled already.
+	 */
+	if (!IS_ENABLED(CONFIG_DEBUG_VM) && want_check_pages)
+		static_branch_enable(&check_pages_enabled);
 }
 
 static inline void set_buddy_order(struct page *page, unsigned int order)
@@ -1355,13 +1359,19 @@ out:
 /*
  * Skip KASAN memory poisoning when either:
  *
- * 1. Deferred memory initialization has not yet completed,
- *    see the explanation below.
- * 2. Skipping poisoning is requested via FPI_SKIP_KASAN_POISON,
- *    see the comment next to it.
- * 3. Skipping poisoning is requested via __GFP_SKIP_KASAN_POISON,
- *    see the comment next to it.
- * 4. The allocation is excluded from being checked due to sampling,
+ * 1. For generic KASAN: deferred memory initialization has not yet completed.
+ *    Tag-based KASAN modes skip pages freed via deferred memory initialization
+ *    using page tags instead (see below).
+ * 2. For tag-based KASAN modes: the page has a match-all KASAN tag, indicating
+ *    that error detection is disabled for accesses via the page address.
+ *
+ * Pages will have match-all tags in the following circumstances:
+ *
+ * 1. Pages are being initialized for the first time, including during deferred
+ *    memory init; see the call to page_kasan_tag_reset in __init_single_page.
+ * 2. The allocation was not unpoisoned due to __GFP_SKIP_KASAN, with the
+ *    exception of pages unpoisoned by kasan_unpoison_vmalloc.
+ * 3. The allocation was excluded from being checked due to sampling,
  *    see the call to kasan_unpoison_pages.
  *
  * Poisoning pages during deferred memory init will greatly lengthen the
@@ -1377,10 +1387,10 @@ out:
  */
 static inline bool should_skip_kasan_poison(struct page *page, fpi_t fpi_flags)
 {
-	return deferred_pages_enabled() ||
-	       (!IS_ENABLED(CONFIG_KASAN_GENERIC) &&
-		(fpi_flags & FPI_SKIP_KASAN_POISON)) ||
-	       PageSkipKASanPoison(page);
+	if (IS_ENABLED(CONFIG_KASAN_GENERIC))
+		return deferred_pages_enabled();
+
+	return page_kasan_tag(page) == 0xff;
 }
 
 static void kernel_init_pages(struct page *page, int numpages)
@@ -1395,7 +1405,7 @@ static void kernel_init_pages(struct page *page, int numpages)
 }
 
 static __always_inline bool free_pages_prepare(struct page *page,
-			unsigned int order, bool check_free, fpi_t fpi_flags)
+			unsigned int order, fpi_t fpi_flags)
 {
 	int bad = 0;
 	bool skip_kasan_poison = should_skip_kasan_poison(page, fpi_flags);
@@ -1433,9 +1443,11 @@ static __always_inline bool free_pages_prepare(struct page *page,
 		for (i = 1; i < (1 << order); i++) {
 			if (compound)
 				bad += free_tail_pages_check(page, page + i);
-			if (unlikely(free_page_is_bad(page + i))) {
-				bad++;
-				continue;
+			if (static_branch_unlikely(&check_pages_enabled)) {
+				if (unlikely(free_page_is_bad(page + i))) {
+					bad++;
+					continue;
+				}
 			}
 			(page + i)->flags &= ~PAGE_FLAGS_CHECK_AT_PREP;
 		}
@@ -1444,10 +1456,12 @@ static __always_inline bool free_pages_prepare(struct page *page,
 		page->mapping = NULL;
 	if (memcg_kmem_online() && PageMemcgKmem(page))
 		__memcg_kmem_uncharge_page(page, order);
-	if (check_free && free_page_is_bad(page))
-		bad++;
-	if (bad)
-		return false;
+	if (static_branch_unlikely(&check_pages_enabled)) {
+		if (free_page_is_bad(page))
+			bad++;
+		if (bad)
+			return false;
+	}
 
 	page_cpupid_reset_last(page);
 	page->flags &= ~PAGE_FLAGS_CHECK_AT_PREP;
@@ -1492,46 +1506,6 @@ static __always_inline bool free_pages_prepare(struct page *page,
 
 	return true;
 }
-
-#ifdef CONFIG_DEBUG_VM
-/*
- * With DEBUG_VM enabled, order-0 pages are checked immediately when being freed
- * to pcp lists. With debug_pagealloc also enabled, they are also rechecked when
- * moved from pcp lists to free lists.
- */
-static bool free_pcp_prepare(struct page *page, unsigned int order)
-{
-	return free_pages_prepare(page, order, true, FPI_NONE);
-}
-
-/* return true if this page has an inappropriate state */
-static bool bulkfree_pcp_prepare(struct page *page)
-{
-	if (debug_pagealloc_enabled_static())
-		return free_page_is_bad(page);
-	else
-		return false;
-}
-#else
-/*
- * With DEBUG_VM disabled, order-0 pages being freed are checked only when
- * moving from pcp lists to free list in order to reduce overhead. With
- * debug_pagealloc enabled, they are checked also immediately when being freed
- * to the pcp lists.
- */
-static bool free_pcp_prepare(struct page *page, unsigned int order)
-{
-	if (debug_pagealloc_enabled_static())
-		return free_pages_prepare(page, order, true, FPI_NONE);
-	else
-		return free_pages_prepare(page, order, false, FPI_NONE);
-}
-
-static bool bulkfree_pcp_prepare(struct page *page)
-{
-	return free_page_is_bad(page);
-}
-#endif /* CONFIG_DEBUG_VM */
 
 /*
  * Frees a number of pages from the PCP lists
@@ -1591,9 +1565,6 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 			list_del(&page->pcp_list);
 			count -= nr_pages;
 			pcp->count -= nr_pages;
-
-			if (bulkfree_pcp_prepare(page))
-				continue;
 
 			/* MIGRATE_ISOLATE page should not go to pcplists */
 			VM_BUG_ON_PAGE(is_migrate_isolate(mt), page);
@@ -1707,7 +1678,7 @@ static void __free_pages_ok(struct page *page, unsigned int order,
 	unsigned long pfn = page_to_pfn(page);
 	struct zone *zone = page_zone(page);
 
-	if (!free_pages_prepare(page, order, true, fpi_flags))
+	if (!free_pages_prepare(page, order, fpi_flags))
 		return;
 
 	/*
@@ -1754,7 +1725,7 @@ void __free_pages_core(struct page *page, unsigned int order)
 	 * Bypass PCP and place fresh pages right to the tail, primarily
 	 * relevant for memory onlining.
 	 */
-	__free_pages_ok(page, order, FPI_TO_TAIL | FPI_SKIP_KASAN_POISON);
+	__free_pages_ok(page, order, FPI_TO_TAIL);
 }
 
 #ifdef CONFIG_NUMA
@@ -2383,7 +2354,7 @@ static void check_new_page_bad(struct page *page)
 /*
  * This page is about to be returned from the page allocator
  */
-static inline int check_new_page(struct page *page)
+static int check_new_page(struct page *page)
 {
 	if (likely(page_expected_state(page,
 				PAGE_FLAGS_CHECK_AT_PREP|__PG_HWPOISON)))
@@ -2393,55 +2364,19 @@ static inline int check_new_page(struct page *page)
 	return 1;
 }
 
-static bool check_new_pages(struct page *page, unsigned int order)
+static inline bool check_new_pages(struct page *page, unsigned int order)
 {
-	int i;
-	for (i = 0; i < (1 << order); i++) {
-		struct page *p = page + i;
+	if (static_branch_unlikely(&check_pages_enabled)) {
+		for (int i = 0; i < (1 << order); i++) {
+			struct page *p = page + i;
 
-		if (unlikely(check_new_page(p)))
-			return true;
+			if (unlikely(check_new_page(p)))
+				return true;
+		}
 	}
 
 	return false;
 }
-
-#ifdef CONFIG_DEBUG_VM
-/*
- * With DEBUG_VM enabled, order-0 pages are checked for expected state when
- * being allocated from pcp lists. With debug_pagealloc also enabled, they are
- * also checked when pcp lists are refilled from the free lists.
- */
-static inline bool check_pcp_refill(struct page *page, unsigned int order)
-{
-	if (debug_pagealloc_enabled_static())
-		return check_new_pages(page, order);
-	else
-		return false;
-}
-
-static inline bool check_new_pcp(struct page *page, unsigned int order)
-{
-	return check_new_pages(page, order);
-}
-#else
-/*
- * With DEBUG_VM disabled, free order-0 pages are checked for expected state
- * when pcp lists are being refilled from the free lists. With debug_pagealloc
- * enabled, they are also checked when being allocated from the pcp lists.
- */
-static inline bool check_pcp_refill(struct page *page, unsigned int order)
-{
-	return check_new_pages(page, order);
-}
-static inline bool check_new_pcp(struct page *page, unsigned int order)
-{
-	if (debug_pagealloc_enabled_static())
-		return check_new_pages(page, order);
-	else
-		return false;
-}
-#endif /* CONFIG_DEBUG_VM */
 
 static inline bool should_skip_kasan_unpoison(gfp_t flags)
 {
@@ -2456,9 +2391,9 @@ static inline bool should_skip_kasan_unpoison(gfp_t flags)
 
 	/*
 	 * With hardware tag-based KASAN enabled, skip if this has been
-	 * requested via __GFP_SKIP_KASAN_UNPOISON.
+	 * requested via __GFP_SKIP_KASAN.
 	 */
-	return flags & __GFP_SKIP_KASAN_UNPOISON;
+	return flags & __GFP_SKIP_KASAN;
 }
 
 static inline bool should_skip_init(gfp_t flags)
@@ -2477,7 +2412,6 @@ inline void post_alloc_hook(struct page *page, unsigned int order,
 	bool init = !want_init_on_free() && want_init_on_alloc(gfp_flags) &&
 			!should_skip_init(gfp_flags);
 	bool zero_tags = init && (gfp_flags & __GFP_ZEROTAGS);
-	bool reset_tags = true;
 	int i;
 
 	set_page_private(page, 0);
@@ -2511,37 +2445,22 @@ inline void post_alloc_hook(struct page *page, unsigned int order,
 		/* Take note that memory was initialized by the loop above. */
 		init = false;
 	}
-	if (!should_skip_kasan_unpoison(gfp_flags)) {
-		/* Try unpoisoning (or setting tags) and initializing memory. */
-		if (kasan_unpoison_pages(page, order, init)) {
-			/* Take note that memory was initialized by KASAN. */
-			if (kasan_has_integrated_init())
-				init = false;
-			/* Take note that memory tags were set by KASAN. */
-			reset_tags = false;
-		} else {
-			/*
-			 * KASAN decided to exclude this allocation from being
-			 * (un)poisoned due to sampling. Make KASAN skip
-			 * poisoning when the allocation is freed.
-			 */
-			SetPageSkipKASanPoison(page);
-		}
-	}
-	/*
-	 * If memory tags have not been set by KASAN, reset the page tags to
-	 * ensure page_address() dereferencing does not fault.
-	 */
-	if (reset_tags) {
+	if (!should_skip_kasan_unpoison(gfp_flags) &&
+	    kasan_unpoison_pages(page, order, init)) {
+		/* Take note that memory was initialized by KASAN. */
+		if (kasan_has_integrated_init())
+			init = false;
+	} else {
+		/*
+		 * If memory tags have not been set by KASAN, reset the page
+		 * tags to ensure page_address() dereferencing does not fault.
+		 */
 		for (i = 0; i != 1 << order; ++i)
 			page_kasan_tag_reset(page + i);
 	}
 	/* If memory is still not initialized, initialize it now. */
 	if (init)
 		kernel_init_pages(page, 1 << order);
-	/* Propagate __GFP_SKIP_KASAN_POISON to page flags. */
-	if (kasan_hw_tags_enabled() && (gfp_flags & __GFP_SKIP_KASAN_POISON))
-		SetPageSkipKASanPoison(page);
 
 	set_page_owner(page, order, gfp_flags);
 	page_table_check_alloc(page, order);
@@ -3137,7 +3056,7 @@ static int rmqueue_bulk(struct zone *zone, unsigned int order,
 			int migratetype, unsigned int alloc_flags)
 {
 	unsigned long flags;
-	int i, allocated = 0;
+	int i;
 
 	spin_lock_irqsave(&zone->lock, flags);
 	for (i = 0; i < count; ++i) {
@@ -3145,9 +3064,6 @@ static int rmqueue_bulk(struct zone *zone, unsigned int order,
 								alloc_flags);
 		if (unlikely(page == NULL))
 			break;
-
-		if (unlikely(check_pcp_refill(page, order)))
-			continue;
 
 		/*
 		 * Split buddy pages returned by expand() are received here in
@@ -3160,21 +3076,15 @@ static int rmqueue_bulk(struct zone *zone, unsigned int order,
 		 * pages are ordered properly.
 		 */
 		list_add_tail(&page->pcp_list, list);
-		allocated++;
 		if (is_migrate_cma(get_pcppage_migratetype(page)))
 			__mod_zone_page_state(zone, NR_FREE_CMA_PAGES,
 					      -(1 << order));
 	}
 
-	/*
-	 * i pages were removed from the buddy list even if some leak due
-	 * to check_pcp_refill failing so adjust NR_FREE_PAGES based
-	 * on i. Do not confuse with 'allocated' which is the number of
-	 * pages added to the pcp list.
-	 */
 	__mod_zone_page_state(zone, NR_FREE_PAGES, -(i << order));
 	spin_unlock_irqrestore(&zone->lock, flags);
-	return allocated;
+
+	return i;
 }
 
 #ifdef CONFIG_NUMA
@@ -3385,7 +3295,7 @@ static bool free_unref_page_prepare(struct page *page, unsigned long pfn,
 {
 	int migratetype;
 
-	if (!free_pcp_prepare(page, order))
+	if (!free_pages_prepare(page, order, FPI_NONE))
 		return false;
 
 	migratetype = get_pfnblock_migratetype(page, pfn);
@@ -3791,7 +3701,7 @@ struct page *__rmqueue_pcplist(struct zone *zone, unsigned int order,
 		page = list_first_entry(list, struct page, pcp_list);
 		list_del(&page->pcp_list);
 		pcp->count -= 1 << order;
-	} while (check_new_pcp(page, order));
+	} while (check_new_pages(page, order));
 
 	return page;
 }
@@ -5648,7 +5558,7 @@ EXPORT_SYMBOL(__get_free_pages);
 
 unsigned long get_zeroed_page(gfp_t gfp_mask)
 {
-	return __get_free_pages(gfp_mask | __GFP_ZERO, 0);
+	return __get_free_page(gfp_mask | __GFP_ZERO);
 }
 EXPORT_SYMBOL(get_zeroed_page);
 
