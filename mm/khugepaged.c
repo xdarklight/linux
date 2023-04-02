@@ -55,6 +55,7 @@ enum scan_result {
 	SCAN_CGROUP_CHARGE_FAIL,
 	SCAN_TRUNCATED,
 	SCAN_PAGE_HAS_PRIVATE,
+	SCAN_COPY_MC,
 	SCAN_STORE_FAILED,
 };
 
@@ -682,20 +683,21 @@ out:
 	return result;
 }
 
-static void __collapse_huge_page_copy(pte_t *pte, struct page *page,
-				      struct vm_area_struct *vma,
-				      unsigned long address,
-				      spinlock_t *ptl,
-				      struct list_head *compound_pagelist)
+static void __collapse_huge_page_copy_succeeded(pte_t *pte,
+						struct vm_area_struct *vma,
+						unsigned long address,
+						spinlock_t *ptl,
+						struct list_head *compound_pagelist)
 {
-	struct page *src_page, *tmp;
+	struct page *src_page;
+	struct page *tmp;
 	pte_t *_pte;
-	for (_pte = pte; _pte < pte + HPAGE_PMD_NR;
-				_pte++, page++, address += PAGE_SIZE) {
-		pte_t pteval = *_pte;
+	pte_t pteval;
 
+	for (_pte = pte; _pte < pte + HPAGE_PMD_NR;
+	     _pte++, address += PAGE_SIZE) {
+		pteval = *_pte;
 		if (pte_none(pteval) || is_zero_pfn(pte_pfn(pteval))) {
-			clear_user_highpage(page, address);
 			add_mm_counter(vma->vm_mm, MM_ANONPAGES, 1);
 			if (is_zero_pfn(pte_pfn(pteval))) {
 				/*
@@ -707,7 +709,6 @@ static void __collapse_huge_page_copy(pte_t *pte, struct page *page,
 			}
 		} else {
 			src_page = pte_page(pteval);
-			copy_user_highpage(page, src_page, address, vma);
 			if (!PageCompound(src_page))
 				release_pte_page(src_page);
 			/*
@@ -732,6 +733,87 @@ static void __collapse_huge_page_copy(pte_t *pte, struct page *page,
 		free_swap_cache(src_page);
 		putback_lru_page(src_page);
 	}
+}
+
+static void __collapse_huge_page_copy_failed(pte_t *pte,
+					     pmd_t *pmd,
+					     pmd_t orig_pmd,
+					     struct vm_area_struct *vma,
+					     struct list_head *compound_pagelist)
+{
+	spinlock_t *pmd_ptl;
+
+	/*
+	 * Re-establish the PMD to point to the original page table
+	 * entry. Restoring PMD needs to be done prior to releasing
+	 * pages. Since pages are still isolated and locked here,
+	 * acquiring anon_vma_lock_write is unnecessary.
+	 */
+	pmd_ptl = pmd_lock(vma->vm_mm, pmd);
+	pmd_populate(vma->vm_mm, pmd, pmd_pgtable(orig_pmd));
+	spin_unlock(pmd_ptl);
+	/*
+	 * Release both raw and compound pages isolated
+	 * in __collapse_huge_page_isolate.
+	 */
+	release_pte_pages(pte, pte + HPAGE_PMD_NR, compound_pagelist);
+}
+
+/*
+ * __collapse_huge_page_copy - attempts to copy memory contents from raw
+ * pages to a hugepage. Cleans up the raw pages if copying succeeds;
+ * otherwise restores the original page table and releases isolated raw pages.
+ * Returns SCAN_SUCCEED if copying succeeds, otherwise returns SCAN_COPY_MC.
+ *
+ * @pte: starting of the PTEs to copy from
+ * @page: the new hugepage to copy contents to
+ * @pmd: pointer to the new hugepage's PMD
+ * @orig_pmd: the original raw pages' PMD
+ * @vma: the original raw pages' virtual memory area
+ * @address: starting address to copy
+ * @ptl: lock on raw pages' PTEs
+ * @compound_pagelist: list that stores compound pages
+ */
+static int __collapse_huge_page_copy(pte_t *pte,
+				     struct page *page,
+				     pmd_t *pmd,
+				     pmd_t orig_pmd,
+				     struct vm_area_struct *vma,
+				     unsigned long address,
+				     spinlock_t *ptl,
+				     struct list_head *compound_pagelist)
+{
+	struct page *src_page;
+	pte_t *_pte;
+	pte_t pteval;
+	unsigned long _address;
+	int result = SCAN_SUCCEED;
+
+	/*
+	 * Copying pages' contents is subject to memory poison at any iteration.
+	 */
+	for (_pte = pte, _address = address; _pte < pte + HPAGE_PMD_NR;
+	     _pte++, page++, _address += PAGE_SIZE) {
+		pteval = *_pte;
+		if (pte_none(pteval) || is_zero_pfn(pte_pfn(pteval))) {
+			clear_user_highpage(page, _address);
+			continue;
+		}
+		src_page = pte_page(pteval);
+		if (copy_mc_user_highpage(page, src_page, _address, vma) > 0) {
+			result = SCAN_COPY_MC;
+			break;
+		}
+	}
+
+	if (likely(result == SCAN_SUCCEED))
+		__collapse_huge_page_copy_succeeded(pte, vma, address, ptl,
+						    compound_pagelist);
+	else
+		__collapse_huge_page_copy_failed(pte, pmd, orig_pmd, vma,
+						 compound_pagelist);
+
+	return result;
 }
 
 static void khugepaged_alloc_sleep(void)
@@ -1057,6 +1139,7 @@ static int collapse_huge_page(struct mm_struct *mm, unsigned long address,
 	if (result != SCAN_SUCCEED)
 		goto out_up_write;
 
+	vma_start_write(vma);
 	anon_vma_lock_write(vma->anon_vma);
 
 	mmu_notifier_range_init(&range, MMU_NOTIFY_CLEAR, 0, mm, address,
@@ -1106,9 +1189,13 @@ static int collapse_huge_page(struct mm_struct *mm, unsigned long address,
 	 */
 	anon_vma_unlock_write(vma->anon_vma);
 
-	__collapse_huge_page_copy(pte, hpage, vma, address, pte_ptl,
-				  &compound_pagelist);
+	result = __collapse_huge_page_copy(pte, hpage, pmd, _pmd,
+					   vma, address, pte_ptl,
+					   &compound_pagelist);
 	pte_unmap(pte);
+	if (unlikely(result != SCAN_SUCCEED))
+		goto out_up_write;
+
 	/*
 	 * spin_lock() below is not the equivalent of smp_wmb(), but
 	 * the smp_wmb() inside __SetPageUptodate() can be reused to
@@ -1178,7 +1265,7 @@ static int hpage_collapse_scan_pmd(struct mm_struct *mm,
 				 * enabled swap entries.  Please see
 				 * comment below for pte_uffd_wp().
 				 */
-				if (pte_swp_uffd_wp(pteval)) {
+				if (pte_swp_uffd_wp_any(pteval)) {
 					result = SCAN_PTE_UFFD_WP;
 					goto out_unmap;
 				}
@@ -1518,6 +1605,9 @@ int collapse_pte_mapped_thp(struct mm_struct *mm, unsigned long addr,
 		goto drop_hpage;
 	}
 
+	/* Lock the vma before taking i_mmap and page table locks */
+	vma_start_write(vma);
+
 	/*
 	 * We need to lock the mapping so that from here on, only GUP-fast and
 	 * hardware page walks can access the parts of the page tables that
@@ -1695,6 +1785,10 @@ static int retract_page_tables(struct address_space *mapping, pgoff_t pgoff,
 		result = SCAN_PTE_MAPPED_HUGEPAGE;
 		if ((cc->is_khugepaged || is_target) &&
 		    mmap_write_trylock(mm)) {
+			/* trylock for the same lock inversion as above */
+			if (!vma_try_start_write(vma))
+				goto unlock_next;
+
 			/*
 			 * Re-check whether we have an ->anon_vma, because
 			 * collapse_and_free_pmd() requires that either no
@@ -1779,6 +1873,9 @@ static int collapse_file(struct mm_struct *mm, unsigned long addr,
 {
 	struct address_space *mapping = file->f_mapping;
 	struct page *hpage;
+	struct page *page;
+	struct page *tmp;
+	struct folio *folio;
 	pgoff_t index = 0, end = start + HPAGE_PMD_NR;
 	LIST_HEAD(pagelist);
 	XA_STATE_ORDER(xas, &mapping->i_pages, start, HPAGE_PMD_ORDER);
@@ -1823,8 +1920,7 @@ static int collapse_file(struct mm_struct *mm, unsigned long addr,
 
 	xas_set(&xas, start);
 	for (index = start; index < end; index++) {
-		struct page *page = xas_next(&xas);
-		struct folio *folio;
+		page = xas_next(&xas);
 
 		VM_BUG_ON(index != xas.xa_index);
 		if (is_shmem) {
@@ -2013,12 +2109,8 @@ out_unlock:
 		put_page(page);
 		goto xa_unlocked;
 	}
-	nr = thp_nr_pages(hpage);
 
-	if (is_shmem)
-		__mod_lruvec_page_state(hpage, NR_SHMEM_THPS, nr);
-	else {
-		__mod_lruvec_page_state(hpage, NR_FILE_THPS, nr);
+	if (!is_shmem) {
 		filemap_nr_thps_inc(mapping);
 		/*
 		 * Paired with smp_mb() in do_dentry_open() to ensure
@@ -2029,21 +2121,9 @@ out_unlock:
 		smp_mb();
 		if (inode_is_open_for_write(mapping->host)) {
 			result = SCAN_FAIL;
-			__mod_lruvec_page_state(hpage, NR_FILE_THPS, -nr);
 			filemap_nr_thps_dec(mapping);
-			goto xa_locked;
 		}
 	}
-
-	if (nr_none) {
-		__mod_lruvec_page_state(hpage, NR_FILE_PAGES, nr_none);
-		/* nr_none is always 0 for non-shmem. */
-		__mod_lruvec_page_state(hpage, NR_SHMEM, nr_none);
-	}
-
-	/* Join all the small entries into a single multi-index entry */
-	xas_set_order(&xas, start, HPAGE_PMD_ORDER);
-	xas_store(&xas, hpage);
 xa_locked:
 	xas_unlock_irq(&xas);
 xa_unlocked:
@@ -2056,21 +2136,36 @@ xa_unlocked:
 	try_to_unmap_flush();
 
 	if (result == SCAN_SUCCEED) {
-		struct page *page, *tmp;
-		struct folio *folio;
-
 		/*
 		 * Replacing old pages with new one has succeeded, now we
-		 * need to copy the content and free the old pages.
+		 * attempt to copy the contents.
 		 */
 		index = start;
-		list_for_each_entry_safe(page, tmp, &pagelist, lru) {
+		list_for_each_entry(page, &pagelist, lru) {
 			while (index < page->index) {
 				clear_highpage(hpage + (index % HPAGE_PMD_NR));
 				index++;
 			}
-			copy_highpage(hpage + (page->index % HPAGE_PMD_NR),
-				      page);
+			if (copy_mc_highpage(hpage + (page->index % HPAGE_PMD_NR),
+					     page) > 0) {
+				result = SCAN_COPY_MC;
+				break;
+			}
+			index++;
+		}
+		while (result == SCAN_SUCCEED && index < end) {
+			clear_highpage(hpage + (index % HPAGE_PMD_NR));
+			index++;
+		}
+	}
+
+	nr = thp_nr_pages(hpage);
+	if (result == SCAN_SUCCEED) {
+		/*
+		 * Copying old pages to huge one has succeeded, now we
+		 * need to free the old pages.
+		 */
+		list_for_each_entry_safe(page, tmp, &pagelist, lru) {
 			list_del(&page->lru);
 			page->mapping = NULL;
 			page_ref_unfreeze(page, 1);
@@ -2078,12 +2173,23 @@ xa_unlocked:
 			ClearPageUnevictable(page);
 			unlock_page(page);
 			put_page(page);
-			index++;
 		}
-		while (index < end) {
-			clear_highpage(hpage + (index % HPAGE_PMD_NR));
-			index++;
+
+		xas_lock_irq(&xas);
+		if (is_shmem)
+			__mod_lruvec_page_state(hpage, NR_SHMEM_THPS, nr);
+		else
+			__mod_lruvec_page_state(hpage, NR_FILE_THPS, nr);
+
+		if (nr_none) {
+			__mod_lruvec_page_state(hpage, NR_FILE_PAGES, nr_none);
+			/* nr_none is always 0 for non-shmem. */
+			__mod_lruvec_page_state(hpage, NR_SHMEM, nr_none);
 		}
+		/* Join all the small entries into a single multi-index entry. */
+		xas_set_order(&xas, start, HPAGE_PMD_ORDER);
+		xas_store(&xas, hpage);
+		xas_unlock_irq(&xas);
 
 		folio = page_folio(hpage);
 		folio_mark_uptodate(folio);
@@ -2101,8 +2207,6 @@ xa_unlocked:
 		unlock_page(hpage);
 		hpage = NULL;
 	} else {
-		struct page *page;
-
 		/* Something went wrong: roll back page cache changes */
 		xas_lock_irq(&xas);
 		if (nr_none) {
@@ -2136,6 +2240,20 @@ xa_unlocked:
 			xas_lock_irq(&xas);
 		}
 		VM_BUG_ON(nr_none);
+		/*
+		 * Undo the updates of filemap_nr_thps_inc for non-SHMEM
+		 * file only. This undo is not needed unless failure is
+		 * due to SCAN_COPY_MC.
+		 */
+		if (!is_shmem && result == SCAN_COPY_MC) {
+			filemap_nr_thps_dec(mapping);
+			/*
+			 * Paired with smp_mb() in do_dentry_open() to
+			 * ensure the update to nr_thps is visible.
+			 */
+			smp_mb();
+		}
+
 		xas_unlock_irq(&xas);
 
 		hpage->mapping = NULL;

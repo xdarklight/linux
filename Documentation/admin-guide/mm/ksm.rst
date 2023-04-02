@@ -20,12 +20,14 @@ content which can be replaced by a single write-protected page (which
 is automatically copied if a process later wants to update its
 content). The amount of pages that KSM daemon scans in a single pass
 and the time between the passes are configured using :ref:`sysfs
-intraface <ksm_sysfs>`
+interface <ksm_sysfs>`
 
 KSM only merges anonymous (private) pages, never pagecache (file) pages.
 KSM's merged pages were originally locked into kernel memory, but can now
 be swapped out just like other user pages (but sharing is broken when they
 are swapped back in: ksmd must rediscover their identity and merge again).
+
+.. _ksm_madvise:
 
 Controlling KSM with madvise
 ============================
@@ -67,6 +69,43 @@ and might fail with EAGAIN if not enough memory for internal structures.
 Applications should be considerate in their use of MADV_MERGEABLE,
 restricting its use to areas likely to benefit.  KSM's scans may use a lot
 of processing power: some installations will disable KSM for that reason.
+
+Controlling KSM with prctl
+============================
+
+KSM can be enabled for a process or a cgroup, by using the prctl(2) system
+call::
+
+	int prctl(PR_SET_MEMORY_MERGE, 1)
+
+The app may call
+
+::
+
+	int prctl(PR_SET_MEMORY_MERGE, 0)
+
+to cancel that advice and restore unshared pages: whereupon KSM
+unmerges whatever is merged for that process.  Note: this unmerging call
+may suddenly require more memory than is available - possibly failing
+with EAGAIN, but more probably arousing the Out-Of-Memory killer.
+
+The restrictions mentioned in :ref:`Controlling KSM with madvise <ksm_madvise>`'
+also apply here. Also consider the security implications of using KSM.
+
+KSM security concerns
+=======================
+
+KSM has the possibility of memory side channel attacks. When individual
+VMA's have KSM enabled, the security aspect needs to be considered.
+
+An individual workload doesn't know what else is running on
+the machine, so it needs to be highly conservative about what it can
+give up for system-wide merging.
+
+However, if the system is dedicated to running multiple jobs within the
+same security domain, there is a usecase where multiple instances of the
+same job are running inside a safe shared security domain and using the
+same sensitive data.
 
 .. _ksm_sysfs:
 
@@ -157,6 +196,8 @@ stable_node_chains_prune_millisecs
 
 The effectiveness of KSM and MADV_MERGEABLE is shown in ``/sys/kernel/mm/ksm/``:
 
+general_profit
+        how effective is KSM. The calculation is explained below.
 pages_shared
         how many shared pages are being used
 pages_sharing
@@ -207,7 +248,8 @@ several times, which are unprofitable memory consumed.
 			  ksm_rmap_items * sizeof(rmap_item).
 
    where ksm_merging_pages is shown under the directory ``/proc/<pid>/``,
-   and ksm_rmap_items is shown in ``/proc/<pid>/ksm_stat``.
+   and ksm_rmap_items is shown in ``/proc/<pid>/ksm_stat``. The process profit
+   is also shown in ``/proc/<pid>/ksm_stat`` as ksm_process_profit.
 
 From the perspective of application, a high ratio of ``ksm_rmap_items`` to
 ``ksm_merging_pages`` means a bad madvise-applied policy, so developers or
@@ -217,6 +259,9 @@ separately 32B on 32-bit CPU architecture and 64B on 64-bit CPU architecture.
 so if the ``ksm_rmap_items/ksm_merging_pages`` ratio exceeds 64 on 64-bit CPU
 or exceeds 128 on 32-bit CPU, then the app's madvise policy should be dropped,
 because the ksm profit is approximately zero or negative.
+
+The ksm_merge_type in ``/proc/<pid>/ksm_stat`` shows the merge type of the
+process. Valid values are ``none``, ``madvise`` and ``process``.
 
 Monitoring KSM events
 =====================
