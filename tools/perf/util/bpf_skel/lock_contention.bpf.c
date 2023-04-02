@@ -10,6 +10,9 @@
 /* default buffer size */
 #define MAX_ENTRIES  10240
 
+/* for collect_lock_syms().  4096 was rejected by the verifier */
+#define MAX_CPUS  1024
+
 /* lock contention flags from include/trace/events/lock.h */
 #define LCB_F_SPIN	(1U << 0)
 #define LCB_F_READ	(1U << 1)
@@ -58,6 +61,13 @@ struct {
 
 struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(key_size, sizeof(__u64));
+	__uint(value_size, sizeof(__u32));
+	__uint(max_entries, 16384);
+} lock_syms SEC(".maps");
+
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
 	__uint(key_size, sizeof(__u32));
 	__uint(value_size, sizeof(__u8));
 	__uint(max_entries, 1);
@@ -90,6 +100,14 @@ struct rw_semaphore___old {
 
 struct rw_semaphore___new {
 	atomic_long_t owner;
+} __attribute__((preserve_access_index));
+
+struct mm_struct___old {
+	struct rw_semaphore mmap_sem;
+} __attribute__((preserve_access_index));
+
+struct mm_struct___new {
+	struct rw_semaphore mmap_lock;
 } __attribute__((preserve_access_index));
 
 /* control flags */
@@ -182,7 +200,13 @@ static inline struct task_struct *get_lock_owner(__u64 lock, __u32 flags)
 		struct mutex *mutex = (void *)lock;
 		owner = BPF_CORE_READ(mutex, owner.counter);
 	} else if (flags == LCB_F_READ || flags == LCB_F_WRITE) {
-#if __has_builtin(bpf_core_type_matches)
+	/*
+	 * Support for the BPF_TYPE_MATCHES argument to the
+	 * __builtin_preserve_type_info builtin was added at some point during
+	 * development of clang 15 and it's what is needed for
+	 * bpf_core_type_matches.
+	 */
+#if __has_builtin(__builtin_preserve_type_info) && __clang_major__ >= 15
 		if (bpf_core_type_matches(struct rw_semaphore___old)) {
 			struct rw_semaphore___old *rwsem = (void *)lock;
 			owner = (unsigned long)BPF_CORE_READ(rwsem, owner);
@@ -202,6 +226,41 @@ static inline struct task_struct *get_lock_owner(__u64 lock, __u32 flags)
 
 	task = (void *)(owner & ~7UL);
 	return task;
+}
+
+static inline __u32 check_lock_type(__u64 lock, __u32 flags)
+{
+	struct task_struct *curr;
+	struct mm_struct___old *mm_old;
+	struct mm_struct___new *mm_new;
+
+	switch (flags) {
+	case LCB_F_READ:  /* rwsem */
+	case LCB_F_WRITE:
+		curr = bpf_get_current_task_btf();
+		if (curr->mm == NULL)
+			break;
+		mm_new = (void *)curr->mm;
+		if (bpf_core_field_exists(mm_new->mmap_lock)) {
+			if (&mm_new->mmap_lock == (void *)lock)
+				return LCD_F_MMAP_LOCK;
+			break;
+		}
+		mm_old = (void *)curr->mm;
+		if (bpf_core_field_exists(mm_old->mmap_sem)) {
+			if (&mm_old->mmap_sem == (void *)lock)
+				return LCD_F_MMAP_LOCK;
+		}
+		break;
+	case LCB_F_SPIN:  /* spinlock */
+		curr = bpf_get_current_task_btf();
+		if (&curr->sighand->siglock == (void *)lock)
+			return LCD_F_SIGHAND_LOCK;
+		break;
+	default:
+		break;
+	}
+	return 0;
 }
 
 SEC("tp_btf/contention_begin")
@@ -314,6 +373,9 @@ int contention_end(u64 *ctx)
 			.flags = pelem->flags,
 		};
 
+		if (aggr_mode == LOCK_AGGR_ADDR)
+			first.flags |= check_lock_type(pelem->lock, pelem->flags);
+
 		bpf_map_update_elem(&lock_stat, &key, &first, BPF_NOEXIST);
 		bpf_map_delete_elem(&tstamp, &pid);
 		return 0;
@@ -329,6 +391,27 @@ int contention_end(u64 *ctx)
 		data->min_time = duration;
 
 	bpf_map_delete_elem(&tstamp, &pid);
+	return 0;
+}
+
+extern struct rq runqueues __ksym;
+
+SEC("raw_tp/bpf_test_finish")
+int BPF_PROG(collect_lock_syms)
+{
+	__u64 lock_addr;
+	__u32 lock_flag;
+
+	for (int i = 0; i < MAX_CPUS; i++) {
+		struct rq *rq = bpf_per_cpu_ptr(&runqueues, i);
+
+		if (rq == NULL)
+			break;
+
+		lock_addr = (__u64)&rq->__lock;
+		lock_flag = LOCK_CLASS_RQLOCK;
+		bpf_map_update_elem(&lock_syms, &lock_addr, &lock_flag, BPF_ANY);
+	}
 	return 0;
 }
 
