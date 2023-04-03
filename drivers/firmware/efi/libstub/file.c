@@ -131,7 +131,7 @@ static efi_status_t efi_open_device_path(efi_file_protocol_t **volume,
 	efi_guid_t text_to_dp_guid = EFI_DEVICE_PATH_FROM_TEXT_PROTOCOL_GUID;
 	static efi_device_path_from_text_protocol_t *text_to_dp = NULL;
 	efi_guid_t fs_proto = EFI_FILE_SYSTEM_GUID;
-	efi_device_path_protocol_t *initrd_dp;
+	const efi_device_path_protocol_t *initrd_dp;
 	efi_simple_file_system_protocol_t *io;
 	struct efi_file_path_dev_path *fpath;
 	efi_handle_t handle;

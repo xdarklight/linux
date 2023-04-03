@@ -482,37 +482,50 @@ static const struct {
 };
 
 /**
- * efi_load_initrd_dev_path() - load the initrd from the Linux initrd device path
- * @initrd:	pointer of struct to store the address where the initrd was loaded
- *		and the size of the loaded initrd
- * @max:	upper limit for the initrd memory allocation
+ * efi_load_initrd_lf2() - load the initrd either from the LoadFile2 initrd
+ *			   loading protocol installed on the loaded image
+ *			   handle, or from the Linux initrd device path
+ * @image_handle: EFI handle of the loaded image
+ * @initrd:	  pointer of struct to store the address where the initrd was
+ *                loaded and the size of the loaded initrd
+ * @max:	  upper limit for the initrd memory allocation
  *
  * Return:
- * * %EFI_SUCCESS if the initrd was loaded successfully, in which
- *   case @load_addr and @load_size are assigned accordingly
- * * %EFI_NOT_FOUND if no LoadFile2 protocol exists on the initrd device path
+ * * %EFI_SUCCESS if the initrd was loaded successfully, in which case the base
+ *   and size members of @initrd are assigned accordingly
+ * * %EFI_NOT_FOUND if no LoadFile2 protocol exists on the loaded image handle
+ *   or on the initrd device path
  * * %EFI_OUT_OF_RESOURCES if memory allocation failed
  * * %EFI_LOAD_ERROR in all other cases
  */
 static
-efi_status_t efi_load_initrd_dev_path(struct linux_efi_initrd *initrd,
-				      unsigned long max)
+efi_status_t efi_load_initrd_lf2(efi_handle_t image_handle,
+				 struct linux_efi_initrd *initrd,
+				 unsigned long max)
 {
 	efi_guid_t lf2_proto_guid = EFI_LOAD_FILE2_PROTOCOL_GUID;
-	efi_device_path_protocol_t *dp;
+	efi_guid_t initrd_lf2_proto_guid = LINUX_EFI_INITRD_LF2_PROTOCOL_GUID;
+	const efi_device_path_protocol_t *dp = &initrd_dev_path.end;
 	efi_load_file2_protocol_t *lf2;
 	efi_handle_t handle;
 	efi_status_t status;
 
-	dp = (efi_device_path_protocol_t *)&initrd_dev_path;
-	status = efi_bs_call(locate_device_path, &lf2_proto_guid, &dp, &handle);
-	if (status != EFI_SUCCESS)
-		return status;
-
-	status = efi_bs_call(handle_protocol, handle, &lf2_proto_guid,
+	/* first look for a initrd loading protocol specific to this image */
+	status = efi_bs_call(handle_protocol, image_handle, &initrd_lf2_proto_guid,
 			     (void **)&lf2);
-	if (status != EFI_SUCCESS)
-		return status;
+	if (status != EFI_SUCCESS) {
+		/* look for the global singleton initrd loading protocol */
+		dp = &initrd_dev_path.vendor.header;
+		status = efi_bs_call(locate_device_path, &lf2_proto_guid, &dp,
+				     &handle);
+		if (status != EFI_SUCCESS)
+			return status;
+
+		status = efi_bs_call(handle_protocol, handle, &lf2_proto_guid,
+				     (void **)&lf2);
+		if (status != EFI_SUCCESS)
+			return status;
+	}
 
 	initrd->size = 0;
 	status = efi_call_proto(lf2, load_file, dp, false, &initrd->size, NULL);
@@ -554,7 +567,8 @@ efi_status_t efi_load_initrd_cmdline(efi_loaded_image_t *image,
  *
  * Return:	status code
  */
-efi_status_t efi_load_initrd(efi_loaded_image_t *image,
+efi_status_t efi_load_initrd(efi_handle_t handle,
+			     efi_loaded_image_t *image,
 			     unsigned long soft_limit,
 			     unsigned long hard_limit,
 			     const struct linux_efi_initrd **out)
@@ -566,9 +580,9 @@ efi_status_t efi_load_initrd(efi_loaded_image_t *image,
 	if (!IS_ENABLED(CONFIG_BLK_DEV_INITRD) || efi_noinitrd)
 		return EFI_SUCCESS;
 
-	status = efi_load_initrd_dev_path(&initrd, hard_limit);
+	status = efi_load_initrd_lf2(handle, &initrd, hard_limit);
 	if (status == EFI_SUCCESS) {
-		efi_info("Loaded initrd from LINUX_EFI_INITRD_MEDIA_GUID device path\n");
+		efi_info("Loaded initrd using LoadFile2 protocol\n");
 		if (initrd.size > 0 &&
 		    efi_measure_tagged_event(initrd.base, initrd.size,
 					     EFISTUB_EVT_INITRD) == EFI_SUCCESS)
