@@ -11,7 +11,6 @@
 #include <uapi/linux/uio.h>
 
 struct page;
-struct pipe_inode_info;
 
 typedef unsigned int __bitwise iov_iter_extraction_t;
 
@@ -25,7 +24,6 @@ enum iter_type {
 	ITER_IOVEC,
 	ITER_KVEC,
 	ITER_BVEC,
-	ITER_PIPE,
 	ITER_XARRAY,
 	ITER_DISCARD,
 	ITER_UBUF,
@@ -49,24 +47,51 @@ struct iov_iter {
 		size_t iov_offset;
 		int last_offset;
 	};
-	size_t count;
+	/*
+	 * Hack alert: overlay ubuf_iovec with iovec + count, so
+	 * that the members resolve correctly regardless of the type
+	 * of iterator used. This means that you can use:
+	 *
+	 * &iter->__ubuf_iovec or iter->__iov
+	 *
+	 * interchangably for the user_backed cases, hence simplifying
+	 * some of the cases that need to deal with both.
+	 */
 	union {
-		const struct iovec *iov;
-		const struct kvec *kvec;
-		const struct bio_vec *bvec;
-		struct xarray *xarray;
-		struct pipe_inode_info *pipe;
-		void __user *ubuf;
+		/*
+		 * This really should be a const, but we cannot do that without
+		 * also modifying any of the zero-filling iter init functions.
+		 * Leave it non-const for now, but it should be treated as such.
+		 */
+		struct iovec __ubuf_iovec;
+		struct {
+			union {
+				/* use iter_iov() to get the current vec */
+				const struct iovec *__iov;
+				const struct kvec *kvec;
+				const struct bio_vec *bvec;
+				struct xarray *xarray;
+				struct pipe_inode_info *pipe;
+				void __user *ubuf;
+			};
+			size_t count;
+		};
 	};
 	union {
 		unsigned long nr_segs;
-		struct {
-			unsigned int head;
-			unsigned int start_head;
-		};
 		loff_t xarray_start;
 	};
 };
+
+static inline const struct iovec *iter_iov(const struct iov_iter *iter)
+{
+	if (iter->iter_type == ITER_UBUF)
+		return (const struct iovec *) &iter->__ubuf_iovec;
+	return iter->__iov;
+}
+
+#define iter_iov_addr(iter)	(iter_iov(iter)->iov_base + (iter)->iov_offset)
+#define iter_iov_len(iter)	(iter_iov(iter)->iov_len - (iter)->iov_offset)
 
 static inline enum iter_type iov_iter_type(const struct iov_iter *i)
 {
@@ -99,11 +124,6 @@ static inline bool iov_iter_is_kvec(const struct iov_iter *i)
 static inline bool iov_iter_is_bvec(const struct iov_iter *i)
 {
 	return iov_iter_type(i) == ITER_BVEC;
-}
-
-static inline bool iov_iter_is_pipe(const struct iov_iter *i)
-{
-	return iov_iter_type(i) == ITER_PIPE;
 }
 
 static inline bool iov_iter_is_discard(const struct iov_iter *i)
@@ -141,15 +161,6 @@ static inline size_t iov_length(const struct iovec *iov, unsigned long nr_segs)
 	for (seg = 0; seg < nr_segs; seg++)
 		ret += iov[seg].iov_len;
 	return ret;
-}
-
-static inline struct iovec iov_iter_iovec(const struct iov_iter *iter)
-{
-	return (struct iovec) {
-		.iov_base = iter->iov->iov_base + iter->iov_offset,
-		.iov_len = min(iter->count,
-			       iter->iov->iov_len - iter->iov_offset),
-	};
 }
 
 size_t copy_page_from_iter_atomic(struct page *page, unsigned offset,
@@ -249,8 +260,6 @@ void iov_iter_kvec(struct iov_iter *i, unsigned int direction, const struct kvec
 			unsigned long nr_segs, size_t count);
 void iov_iter_bvec(struct iov_iter *i, unsigned int direction, const struct bio_vec *bvec,
 			unsigned long nr_segs, size_t count);
-void iov_iter_pipe(struct iov_iter *i, unsigned int direction, struct pipe_inode_info *pipe,
-			size_t count);
 void iov_iter_discard(struct iov_iter *i, unsigned int direction, size_t count);
 void iov_iter_xarray(struct iov_iter *i, unsigned int direction, struct xarray *xarray,
 		     loff_t start, size_t count);
@@ -361,7 +370,8 @@ static inline void iov_iter_ubuf(struct iov_iter *i, unsigned int direction,
 		.user_backed = true,
 		.data_source = direction,
 		.ubuf = buf,
-		.count = count
+		.count = count,
+		.nr_segs = 1
 	};
 }
 /* Flags for iov_iter_get/extract_pages*() */
