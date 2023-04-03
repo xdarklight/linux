@@ -322,7 +322,7 @@ static inline enum comp_state check_ack(struct rxe_qp *qp,
 					qp->comp.psn = pkt->psn;
 					if (qp->req.wait_psn) {
 						qp->req.wait_psn = 0;
-						rxe_run_task(&qp->req.task);
+						rxe_sched_task(&qp->req.task);
 					}
 				}
 				return COMPST_ERROR_RETRY;
@@ -428,6 +428,10 @@ static void make_send_cqe(struct rxe_qp *qp, struct rxe_send_wqe *wqe,
 				uwc->wc_flags = IB_WC_WITH_IMM;
 			uwc->byte_len = wqe->dma.length;
 		}
+	} else {
+		if (wqe->status != IB_WC_WR_FLUSH_ERR)
+			rxe_err_qp(qp, "non-flush error status = %d",
+				wqe->status);
 	}
 }
 
@@ -469,7 +473,7 @@ static void do_complete(struct rxe_qp *qp, struct rxe_send_wqe *wqe)
 	 */
 	if (qp->req.wait_fence) {
 		qp->req.wait_fence = 0;
-		rxe_run_task(&qp->req.task);
+		rxe_sched_task(&qp->req.task);
 	}
 }
 
@@ -483,7 +487,7 @@ static inline enum comp_state complete_ack(struct rxe_qp *qp,
 		if (qp->req.need_rd_atomic) {
 			qp->comp.timeout_retry = 0;
 			qp->req.need_rd_atomic = 0;
-			rxe_run_task(&qp->req.task);
+			rxe_sched_task(&qp->req.task);
 		}
 	}
 
@@ -538,25 +542,60 @@ static inline enum comp_state complete_wqe(struct rxe_qp *qp,
 	return COMPST_GET_WQE;
 }
 
-static void rxe_drain_resp_pkts(struct rxe_qp *qp, bool notify)
+/* drain incoming response packet queue */
+static void drain_resp_pkts(struct rxe_qp *qp)
 {
 	struct sk_buff *skb;
-	struct rxe_send_wqe *wqe;
-	struct rxe_queue *q = qp->sq.queue;
 
 	while ((skb = skb_dequeue(&qp->resp_pkts))) {
 		rxe_put(qp);
 		kfree_skb(skb);
 		ib_device_put(qp->ibqp.device);
 	}
+}
+
+/* complete send wqe with flush error */
+static int flush_send_wqe(struct rxe_qp *qp, struct rxe_send_wqe *wqe)
+{
+	struct rxe_cqe cqe = {};
+	struct ib_wc *wc = &cqe.ibwc;
+	struct ib_uverbs_wc *uwc = &cqe.uibwc;
+	int err;
+
+	if (qp->is_user) {
+		uwc->wr_id = wqe->wr.wr_id;
+		uwc->status = IB_WC_WR_FLUSH_ERR;
+		uwc->qp_num = qp->ibqp.qp_num;
+	} else {
+		wc->wr_id = wqe->wr.wr_id;
+		wc->status = IB_WC_WR_FLUSH_ERR;
+		wc->qp = &qp->ibqp;
+	}
+
+	err = rxe_cq_post(qp->scq, &cqe, 0);
+	if (err)
+		rxe_dbg_cq(qp->scq, "post cq failed, err = %d", err);
+
+	return err;
+}
+
+/* drain and optionally complete the send queue
+ * if unable to complete a wqe, i.e. cq is full, stop
+ * completing and flush the remaining wqes
+ */
+static void flush_send_queue(struct rxe_qp *qp, bool notify)
+{
+	struct rxe_send_wqe *wqe;
+	struct rxe_queue *q = qp->sq.queue;
+	int err;
 
 	while ((wqe = queue_head(q, q->type))) {
 		if (notify) {
-			wqe->status = IB_WC_WR_FLUSH_ERR;
-			do_complete(qp, wqe);
-		} else {
-			queue_advance_consumer(q, q->type);
+			err = flush_send_wqe(qp, wqe);
+			if (err)
+				notify = 0;
 		}
+		queue_advance_consumer(q, q->type);
 	}
 }
 
@@ -571,9 +610,8 @@ static void free_pkt(struct rxe_pkt_info *pkt)
 	ib_device_put(dev);
 }
 
-int rxe_completer(void *arg)
+int rxe_completer(struct rxe_qp *qp)
 {
-	struct rxe_qp *qp = (struct rxe_qp *)arg;
 	struct rxe_dev *rxe = to_rdev(qp->ibqp.device);
 	struct rxe_send_wqe *wqe = NULL;
 	struct sk_buff *skb = NULL;
@@ -581,13 +619,12 @@ int rxe_completer(void *arg)
 	enum comp_state state;
 	int ret;
 
-	if (!rxe_get(qp))
-		return -EAGAIN;
-
 	if (!qp->valid || qp->comp.state == QP_STATE_ERROR ||
 	    qp->comp.state == QP_STATE_RESET) {
-		rxe_drain_resp_pkts(qp, qp->valid &&
-				    qp->comp.state == QP_STATE_ERROR);
+		bool notify = qp->valid &&
+				(qp->comp.state == QP_STATE_ERROR);
+		drain_resp_pkts(qp);
+		flush_send_queue(qp, notify);
 		goto exit;
 	}
 
@@ -730,7 +767,7 @@ int rxe_completer(void *arg)
 							RXE_CNT_COMP_RETRY);
 					qp->req.need_retry = 1;
 					qp->comp.started_retry = 1;
-					rxe_run_task(&qp->req.task);
+					rxe_sched_task(&qp->req.task);
 				}
 				goto done;
 
@@ -784,7 +821,5 @@ exit:
 out:
 	if (pkt)
 		free_pkt(pkt);
-	rxe_put(qp);
-
 	return ret;
 }
