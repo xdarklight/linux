@@ -185,11 +185,11 @@ static void cdns_spi_chipselect(struct spi_device *spi, bool is_high)
 		/* Select the slave */
 		ctrl_reg &= ~CDNS_SPI_CR_SSCTRL;
 		if (!(xspi->is_decoded_cs))
-			ctrl_reg |= ((~(CDNS_SPI_SS0 << spi->chip_select)) <<
+			ctrl_reg |= ((~(CDNS_SPI_SS0 << spi_get_chipselect(spi, 0))) <<
 				     CDNS_SPI_SS_SHIFT) &
 				     CDNS_SPI_CR_SSCTRL;
 		else
-			ctrl_reg |= (spi->chip_select << CDNS_SPI_SS_SHIFT) &
+			ctrl_reg |= (spi_get_chipselect(spi, 0) << CDNS_SPI_SS_SHIFT) &
 				     CDNS_SPI_CR_SSCTRL;
 	}
 
@@ -625,7 +625,7 @@ remove_master:
  *
  * Return:	0 on success and error value on error
  */
-static int cdns_spi_remove(struct platform_device *pdev)
+static void cdns_spi_remove(struct platform_device *pdev)
 {
 	struct spi_master *master = platform_get_drvdata(pdev);
 	struct cdns_spi *xspi = spi_master_get_devdata(master);
@@ -638,8 +638,6 @@ static int cdns_spi_remove(struct platform_device *pdev)
 	pm_runtime_disable(&pdev->dev);
 
 	spi_unregister_master(master);
-
-	return 0;
 }
 
 /**
@@ -739,7 +737,7 @@ MODULE_DEVICE_TABLE(of, cdns_spi_of_match);
 /* cdns_spi_driver - This structure defines the SPI subsystem platform driver */
 static struct platform_driver cdns_spi_driver = {
 	.probe	= cdns_spi_probe,
-	.remove	= cdns_spi_remove,
+	.remove_new = cdns_spi_remove,
 	.driver = {
 		.name = CDNS_SPI_NAME,
 		.of_match_table = cdns_spi_of_match,
