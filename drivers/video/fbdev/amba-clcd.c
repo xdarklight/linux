@@ -759,7 +759,7 @@ static int clcdfb_of_vram_setup(struct clcd_fb *fb)
 {
 	int err;
 	struct device_node *memory;
-	u64 size;
+	struct resource res;
 
 	err = clcdfb_of_init_display(fb);
 	if (err)
@@ -769,18 +769,20 @@ static int clcdfb_of_vram_setup(struct clcd_fb *fb)
 	if (!memory)
 		return -ENODEV;
 
-	fb->fb.screen_base = of_iomap(memory, 0);
-	if (!fb->fb.screen_base) {
-		of_node_put(memory);
-		return -ENOMEM;
-	}
 
-	fb->fb.fix.smem_start = of_translate_address(memory,
-			of_get_address(memory, 0, &size, NULL));
-	fb->fb.fix.smem_len = size;
+	err = of_address_to_resource(memory, 0, &res);
+	if (err)
+		goto out;
+
+	fb->fb.screen_base = ioremap(res.start, resource_size(&res));
+	if (!fb->fb.screen_base)
+		goto out;
+
+	fb->fb.fix.smem_start = res.start;
+	fb->fb.fix.smem_len = resource_size(&res);
+out:
 	of_node_put(memory);
-
-	return 0;
+	return err;
 }
 
 static int clcdfb_of_vram_mmap(struct clcd_fb *fb, struct vm_area_struct *vma)
