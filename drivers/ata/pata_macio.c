@@ -24,6 +24,7 @@
 #include <linux/of.h>
 #include <linux/gfp.h>
 #include <linux/pci.h>
+#include <linux/irqdomain.h>
 
 #include <scsi/scsi.h>
 #include <scsi/scsi_host.h>
