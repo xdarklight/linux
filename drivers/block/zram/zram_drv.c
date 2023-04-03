@@ -606,15 +606,6 @@ static void free_block_bdev(struct zram *zram, unsigned long blk_idx)
 	atomic64_dec(&zram->stats.bd_count);
 }
 
-static void zram_page_end_io(struct bio *bio)
-{
-	struct page *page = bio_first_page_all(bio);
-
-	page_endio(page, op_is_write(bio_op(bio)),
-			blk_status_to_errno(bio->bi_status));
-	bio_put(bio);
-}
-
 /*
  * Returns 1 if the submission is successful.
  */
@@ -634,11 +625,10 @@ static int read_from_bdev_async(struct zram *zram, struct bio_vec *bvec,
 		return -EIO;
 	}
 
-	if (!parent)
-		bio->bi_end_io = zram_page_end_io;
-	else
-		bio_chain(bio, parent);
+	if (WARN_ON_ONCE(!parent))
+		return -EINVAL;
 
+	bio_chain(bio, parent);
 	submit_bio(bio);
 	return 1;
 }
