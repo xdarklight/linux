@@ -72,8 +72,6 @@ task_storage_lookup(struct task_struct *task, struct bpf_map *map,
 void bpf_task_storage_free(struct task_struct *task)
 {
 	struct bpf_local_storage *local_storage;
-	bool free_task_storage = false;
-	unsigned long flags;
 
 	rcu_read_lock();
 
@@ -84,14 +82,9 @@ void bpf_task_storage_free(struct task_struct *task)
 	}
 
 	bpf_task_storage_lock();
-	raw_spin_lock_irqsave(&local_storage->lock, flags);
-	free_task_storage = bpf_local_storage_unlink_nolock(local_storage);
-	raw_spin_unlock_irqrestore(&local_storage->lock, flags);
+	bpf_local_storage_destroy(local_storage);
 	bpf_task_storage_unlock();
 	rcu_read_unlock();
-
-	if (free_task_storage)
-		kfree_rcu(local_storage, rcu);
 }
 
 static void *bpf_pid_task_storage_lookup_elem(struct bpf_map *map, void *key)
@@ -127,8 +120,8 @@ out:
 	return ERR_PTR(err);
 }
 
-static int bpf_pid_task_storage_update_elem(struct bpf_map *map, void *key,
-					    void *value, u64 map_flags)
+static long bpf_pid_task_storage_update_elem(struct bpf_map *map, void *key,
+					     void *value, u64 map_flags)
 {
 	struct bpf_local_storage_data *sdata;
 	struct task_struct *task;
@@ -175,12 +168,12 @@ static int task_storage_delete(struct task_struct *task, struct bpf_map *map,
 	if (!nobusy)
 		return -EBUSY;
 
-	bpf_selem_unlink(SELEM(sdata), true);
+	bpf_selem_unlink(SELEM(sdata), false);
 
 	return 0;
 }
 
-static int bpf_pid_task_storage_delete_elem(struct bpf_map *map, void *key)
+static long bpf_pid_task_storage_delete_elem(struct bpf_map *map, void *key)
 {
 	struct task_struct *task;
 	unsigned int f_flags;
@@ -316,7 +309,7 @@ static int notsupp_get_next_key(struct bpf_map *map, void *key, void *next_key)
 
 static struct bpf_map *task_storage_map_alloc(union bpf_attr *attr)
 {
-	return bpf_local_storage_map_alloc(attr, &task_cache);
+	return bpf_local_storage_map_alloc(attr, &task_cache, true);
 }
 
 static void task_storage_map_free(struct bpf_map *map)

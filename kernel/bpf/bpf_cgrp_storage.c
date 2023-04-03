@@ -46,8 +46,6 @@ static struct bpf_local_storage __rcu **cgroup_storage_ptr(void *owner)
 void bpf_cgrp_storage_free(struct cgroup *cgroup)
 {
 	struct bpf_local_storage *local_storage;
-	bool free_cgroup_storage = false;
-	unsigned long flags;
 
 	rcu_read_lock();
 	local_storage = rcu_dereference(cgroup->bpf_cgrp_storage);
@@ -57,14 +55,9 @@ void bpf_cgrp_storage_free(struct cgroup *cgroup)
 	}
 
 	bpf_cgrp_storage_lock();
-	raw_spin_lock_irqsave(&local_storage->lock, flags);
-	free_cgroup_storage = bpf_local_storage_unlink_nolock(local_storage);
-	raw_spin_unlock_irqrestore(&local_storage->lock, flags);
+	bpf_local_storage_destroy(local_storage);
 	bpf_cgrp_storage_unlock();
 	rcu_read_unlock();
-
-	if (free_cgroup_storage)
-		kfree_rcu(local_storage, rcu);
 }
 
 static struct bpf_local_storage_data *
@@ -100,8 +93,8 @@ static void *bpf_cgrp_storage_lookup_elem(struct bpf_map *map, void *key)
 	return sdata ? sdata->data : NULL;
 }
 
-static int bpf_cgrp_storage_update_elem(struct bpf_map *map, void *key,
-					  void *value, u64 map_flags)
+static long bpf_cgrp_storage_update_elem(struct bpf_map *map, void *key,
+					 void *value, u64 map_flags)
 {
 	struct bpf_local_storage_data *sdata;
 	struct cgroup *cgroup;
@@ -128,11 +121,11 @@ static int cgroup_storage_delete(struct cgroup *cgroup, struct bpf_map *map)
 	if (!sdata)
 		return -ENOENT;
 
-	bpf_selem_unlink(SELEM(sdata), true);
+	bpf_selem_unlink(SELEM(sdata), false);
 	return 0;
 }
 
-static int bpf_cgrp_storage_delete_elem(struct bpf_map *map, void *key)
+static long bpf_cgrp_storage_delete_elem(struct bpf_map *map, void *key)
 {
 	struct cgroup *cgroup;
 	int err, fd;
@@ -156,7 +149,7 @@ static int notsupp_get_next_key(struct bpf_map *map, void *key, void *next_key)
 
 static struct bpf_map *cgroup_storage_map_alloc(union bpf_attr *attr)
 {
-	return bpf_local_storage_map_alloc(attr, &cgroup_cache);
+	return bpf_local_storage_map_alloc(attr, &cgroup_cache, true);
 }
 
 static void cgroup_storage_map_free(struct bpf_map *map)
