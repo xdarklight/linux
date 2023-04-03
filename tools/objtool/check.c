@@ -17,7 +17,7 @@
 #include <objtool/warn.h>
 #include <objtool/endianness.h>
 
-#include <linux/objtool.h>
+#include <linux/objtool_types.h>
 #include <linux/hashtable.h>
 #include <linux/kernel.h>
 #include <linux/static_call_types.h>
@@ -202,6 +202,7 @@ static bool __dead_end_function(struct objtool_file *file, struct symbol *func,
 		"__reiserfs_panic",
 		"__stack_chk_fail",
 		"__ubsan_handle_builtin_unreachable",
+		"arch_cpu_idle_dead",
 		"cpu_bringup_and_idle",
 		"cpu_startup_entry",
 		"do_exit",
@@ -2242,6 +2243,7 @@ static void set_func_state(struct cfi_state *state)
 	memcpy(&state->regs, &initial_func_cfi.regs,
 	       CFI_NUM_REGS * sizeof(struct cfi_reg));
 	state->stack_size = initial_func_cfi.cfa.offset;
+	state->type = UNWIND_HINT_TYPE_CALL;
 }
 
 static int read_unwind_hints(struct objtool_file *file)
@@ -2306,14 +2308,7 @@ static int read_unwind_hints(struct objtool_file *file)
 					WARN_FUNC("UNWIND_HINT_IRET_REGS without ENDBR",
 						  insn->sec, insn->offset);
 				}
-
-				insn->entry = 1;
 			}
-		}
-
-		if (hint->type == UNWIND_HINT_TYPE_ENTRY) {
-			hint->type = UNWIND_HINT_TYPE_CALL;
-			insn->entry = 1;
 		}
 
 		if (hint->type == UNWIND_HINT_TYPE_FUNC) {
@@ -2333,7 +2328,6 @@ static int read_unwind_hints(struct objtool_file *file)
 		cfi.cfa.offset = bswap_if_needed(file->elf, hint->sp_offset);
 		cfi.type = hint->type;
 		cfi.signal = hint->signal;
-		cfi.end = hint->end;
 
 		insn->cfi = cfi_hash_find_or_add(&cfi);
 	}
@@ -2447,6 +2441,34 @@ static int read_instr_hints(struct objtool_file *file)
 
 	return 0;
 }
+
+static int read_validate_unret_hints(struct objtool_file *file)
+{
+	struct section *sec;
+	struct instruction *insn;
+	struct reloc *reloc;
+
+	sec = find_section_by_name(file->elf, ".rela.discard.validate_unret");
+	if (!sec)
+		return 0;
+
+	list_for_each_entry(reloc, &sec->reloc_list, list) {
+		if (reloc->sym->type != STT_SECTION) {
+			WARN("unexpected relocation symbol type in %s", sec->name);
+			return -1;
+		}
+
+		insn = find_insn(file, reloc->sym->sec, reloc->addend);
+		if (!insn) {
+			WARN("bad .discard.instr_end entry");
+			return -1;
+		}
+		insn->unret = 1;
+	}
+
+	return 0;
+}
+
 
 static int read_intra_function_calls(struct objtool_file *file)
 {
@@ -2663,6 +2685,10 @@ static int decode_sections(struct objtool_file *file)
 		return ret;
 
 	ret = read_instr_hints(file);
+	if (ret)
+		return ret;
+
+	ret = read_validate_unret_hints(file);
 	if (ret)
 		return ret;
 
@@ -3862,10 +3888,10 @@ static int validate_unwind_hints(struct objtool_file *file, struct section *sec)
 /*
  * Validate rethunk entry constraint: must untrain RET before the first RET.
  *
- * Follow every branch (intra-function) and ensure ANNOTATE_UNRET_END comes
+ * Follow every branch (intra-function) and ensure VALIDATE_UNRET_END comes
  * before an actual RET instruction.
  */
-static int validate_entry(struct objtool_file *file, struct instruction *insn)
+static int validate_unret(struct objtool_file *file, struct instruction *insn)
 {
 	struct instruction *next, *dest;
 	int ret, warnings = 0;
@@ -3873,10 +3899,10 @@ static int validate_entry(struct objtool_file *file, struct instruction *insn)
 	for (;;) {
 		next = next_insn_to_validate(file, insn);
 
-		if (insn->visited & VISITED_ENTRY)
+		if (insn->visited & VISITED_UNRET)
 			return 0;
 
-		insn->visited |= VISITED_ENTRY;
+		insn->visited |= VISITED_UNRET;
 
 		if (!insn->ignore_alts && insn->alts) {
 			struct alternative *alt;
@@ -3886,7 +3912,7 @@ static int validate_entry(struct objtool_file *file, struct instruction *insn)
 				if (alt->skip_orig)
 					skip_orig = true;
 
-				ret = validate_entry(file, alt->insn);
+				ret = validate_unret(file, alt->insn);
 				if (ret) {
 				        if (opts.backtrace)
 						BT_FUNC("(alt)", insn);
@@ -3914,7 +3940,7 @@ static int validate_entry(struct objtool_file *file, struct instruction *insn)
 						  insn->sec, insn->offset);
 					return -1;
 				}
-				ret = validate_entry(file, insn->jump_dest);
+				ret = validate_unret(file, insn->jump_dest);
 				if (ret) {
 					if (opts.backtrace) {
 						BT_FUNC("(branch%s)", insn,
@@ -3939,7 +3965,7 @@ static int validate_entry(struct objtool_file *file, struct instruction *insn)
 				return -1;
 			}
 
-			ret = validate_entry(file, dest);
+			ret = validate_unret(file, dest);
 			if (ret) {
 				if (opts.backtrace)
 					BT_FUNC("(call)", insn);
@@ -3975,19 +4001,19 @@ static int validate_entry(struct objtool_file *file, struct instruction *insn)
 }
 
 /*
- * Validate that all branches starting at 'insn->entry' encounter UNRET_END
- * before RET.
+ * Validate that all branches starting at VALIDATE_UNRET_BEGIN encounter
+ * VALIDATE_UNRET_END before RET.
  */
-static int validate_unret(struct objtool_file *file)
+static int validate_unrets(struct objtool_file *file)
 {
 	struct instruction *insn;
 	int ret, warnings = 0;
 
 	for_each_insn(file, insn) {
-		if (!insn->entry)
+		if (!insn->unret)
 			continue;
 
-		ret = validate_entry(file, insn);
+		ret = validate_unret(file, insn);
 		if (ret < 0) {
 			WARN_FUNC("Failed UNRET validation", insn->sec, insn->offset);
 			return ret;
@@ -4606,7 +4632,7 @@ int check(struct objtool_file *file)
 		 * Must be after validate_branch() and friends, it plays
 		 * further games with insn->visited.
 		 */
-		ret = validate_unret(file);
+		ret = validate_unrets(file);
 		if (ret < 0)
 			return ret;
 		warnings += ret;

@@ -710,7 +710,7 @@ void intel_rc6_fini(struct intel_rc6 *rc6)
 
 	intel_rc6_disable(rc6);
 
-	pctx = fetch_and_zero(&rc6->pctx);
+	pctx = __xchg(&rc6->pctx, 0);
 	if (pctx)
 		i915_gem_object_put(pctx);
 

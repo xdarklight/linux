@@ -2,6 +2,7 @@
 /*
  * Helpers for IOMMU drivers implementing SVA
  */
+#include <linux/mmu_context.h>
 #include <linux/mutex.h>
 #include <linux/sched/mm.h>
 #include <linux/iommu.h>
@@ -16,14 +17,17 @@ static int iommu_sva_alloc_pasid(struct mm_struct *mm, ioasid_t min, ioasid_t ma
 {
 	int ret = 0;
 
-	if (!pasid_valid(min) || !pasid_valid(max) ||
+	if (min == IOMMU_PASID_INVALID || max == IOMMU_PASID_INVALID ||
 	    min == 0 || max < min)
 		return -EINVAL;
 
+	if (!arch_pgtable_dma_compat(mm))
+		return -EBUSY;
+
 	mutex_lock(&iommu_sva_lock);
 	/* Is a PASID already associated with this mm? */
-	if (pasid_valid(mm->pasid)) {
-		if (mm->pasid < min || mm->pasid > max)
+	if (mm_valid_pasid(mm)) {
+		if (mm->pasid < min || mm->pasid >= max)
 			ret = -EOVERFLOW;
 		goto out;
 	}
@@ -208,7 +212,7 @@ out_put_mm:
 
 void mm_pasid_drop(struct mm_struct *mm)
 {
-	if (likely(!pasid_valid(mm->pasid)))
+	if (likely(!mm_valid_pasid(mm)))
 		return;
 
 	ida_free(&iommu_global_pasid_ida, mm->pasid);

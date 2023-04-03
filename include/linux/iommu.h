@@ -1172,15 +1172,14 @@ static inline bool tegra_dev_iommu_get_stream_id(struct device *dev, u32 *stream
 	return false;
 }
 
-static inline bool pasid_valid(ioasid_t ioasid)
-{
-	return ioasid != IOMMU_PASID_INVALID;
-}
-
 #ifdef CONFIG_IOMMU_SVA
 static inline void mm_pasid_init(struct mm_struct *mm)
 {
 	mm->pasid = IOMMU_PASID_INVALID;
+}
+static inline bool mm_valid_pasid(struct mm_struct *mm)
+{
+	return mm->pasid != IOMMU_PASID_INVALID;
 }
 void mm_pasid_drop(struct mm_struct *mm);
 struct iommu_sva *iommu_sva_bind_device(struct device *dev,
@@ -1203,6 +1202,7 @@ static inline u32 iommu_sva_get_pasid(struct iommu_sva *handle)
 	return IOMMU_PASID_INVALID;
 }
 static inline void mm_pasid_init(struct mm_struct *mm) {}
+static inline bool mm_valid_pasid(struct mm_struct *mm) { return false; }
 static inline void mm_pasid_drop(struct mm_struct *mm) {}
 #endif /* CONFIG_IOMMU_SVA */
 

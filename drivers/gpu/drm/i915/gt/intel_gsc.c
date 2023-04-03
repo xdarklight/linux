@@ -70,7 +70,7 @@ out_put:
 
 static void gsc_ext_om_destroy(struct intel_gsc_intf *intf)
 {
-	struct drm_i915_gem_object *obj = fetch_and_zero(&intf->gem_obj);
+	struct drm_i915_gem_object *obj = __xchg(&intf->gem_obj, 0);
 
 	if (!obj)
 		return;

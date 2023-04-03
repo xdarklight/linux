@@ -1005,12 +1005,17 @@ static inline pte_t pte_wrprotect(pte_t pte)
 	return set_pte_bit(pte, __pgprot(_PAGE_PROTECT));
 }
 
-static inline pte_t pte_mkwrite(pte_t pte)
+static inline pte_t pte_mkwrite_kernel(pte_t pte)
 {
 	pte = set_pte_bit(pte, __pgprot(_PAGE_WRITE));
 	if (pte_val(pte) & _PAGE_DIRTY)
 		pte = clear_pte_bit(pte, __pgprot(_PAGE_PROTECT));
 	return pte;
+}
+
+static inline pte_t pte_mkwrite(pte_t pte, struct vm_area_struct *vma)
+{
+	return pte_mkwrite_kernel(pte);
 }
 
 static inline pte_t pte_mkclean(pte_t pte)
@@ -1488,12 +1493,17 @@ static inline pmd_t pmd_wrprotect(pmd_t pmd)
 	return set_pmd_bit(pmd, __pgprot(_SEGMENT_ENTRY_PROTECT));
 }
 
-static inline pmd_t pmd_mkwrite(pmd_t pmd)
+static inline pmd_t pmd_mkwrite_kernel(pmd_t pmd)
 {
 	pmd = set_pmd_bit(pmd, __pgprot(_SEGMENT_ENTRY_WRITE));
 	if (pmd_val(pmd) & _SEGMENT_ENTRY_DIRTY)
 		pmd = clear_pmd_bit(pmd, __pgprot(_SEGMENT_ENTRY_PROTECT));
 	return pmd;
+}
+
+static inline pmd_t pmd_mkwrite(pmd_t pmd, struct vm_area_struct *vma)
+{
+	return pmd_mkwrite_kernel(pmd);
 }
 
 static inline pmd_t pmd_mkclean(pmd_t pmd)

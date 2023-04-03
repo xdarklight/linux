@@ -20,9 +20,9 @@ static inline unsigned long huge_pte_dirty(pte_t pte)
 	return pte_dirty(pte);
 }
 
-static inline pte_t huge_pte_mkwrite(pte_t pte)
+static inline pte_t huge_pte_mkwrite(pte_t pte, struct vm_area_struct *vma)
 {
-	return pte_mkwrite(pte);
+	return pte_mkwrite(pte, vma);
 }
 
 #ifndef __HAVE_ARCH_HUGE_PTE_WRPROTECT
