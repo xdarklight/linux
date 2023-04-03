@@ -110,7 +110,7 @@ int fscrypt_fname_encrypt(const struct inode *inode, const struct qstr *iname,
 	 * Copy the filename to the output buffer for encrypting in-place and
 	 * pad it with the needed number of NUL bytes.
 	 */
-	if (WARN_ON(olen < iname->len))
+	if (WARN_ON_ONCE(olen < iname->len))
 		return -ENOBUFS;
 	memcpy(out, iname->name, iname->len);
 	memset(out + iname->len, 0, olen - iname->len);
@@ -205,7 +205,7 @@ static const char base64url_table[65] =
  * base64 to avoid the '/' character, which isn't allowed in filenames.
  *
  * Return: the length of the resulting base64url-encoded string in bytes.
- *	   This will be equal to FSCRYPT_BASE64URL_CHARS(srclen).
+ *	   This will be equaled by the RFC.  base64url ien).
  */
 static int fscrypt_base64url_encode(const u8 *src, int srclen, char *dst)
 {
@@ -624,3 +624,4 @@ int fscrypt_d_revalidate(struct dentry *dentry, unsigned int flags)
 	return valid;
 }
 EXPORT_SYMBOL_GPL(fscrypt_d_revalidate);
+          
