@@ -1326,13 +1326,14 @@ static void rtl8188e_usb_quirks(struct rtl8xxxu_priv *priv)
 	rtl8xxxu_write8(priv, REG_EARLY_MODE_CONTROL_8188E + 3, 0x01);
 }
 
-static s8 rtl8188e_cck_rssi(struct rtl8xxxu_priv *priv, u8 cck_agc_rpt)
+static s8 rtl8188e_cck_rssi(struct rtl8xxxu_priv *priv, struct rtl8723au_phy_stats *phy_stats)
 {
 	/* only use lna 0/1/2/3/7 */
 	static const s8 lna_gain_table_0[8] = {17, -1, -13, -29, -32, -35, -38, -41};
 	/* only use lna 3/7 */
 	static const s8 lna_gain_table_1[8] = {29, 20, 12, 3, -6, -15, -24, -33};
 
+	u8 cck_agc_rpt = phy_stats->cck_agc_rpt_ofdm_cfosho_a;
 	s8 rx_pwr_all = 0x00;
 	u8 vga_idx, lna_idx;
 	s8 lna_gain = 0;
@@ -1699,6 +1700,12 @@ void rtl8188e_handle_ra_tx_report2(struct rtl8xxxu_priv *priv, struct sk_buff *s
 
 	dev_dbg(dev, "%s: len: %d items: %d\n", __func__, tx_rpt_len, items);
 
+	/* We only use macid 0, so only the first item is relevant.
+	 * AP mode will use more of them if it's ever implemented.
+	 */
+	if (!priv->vif || priv->vif->type == NL80211_IFTYPE_STATION)
+		items = 1;
+
 	for (macid = 0; macid < items; macid++) {
 		valid = false;
 
@@ -1741,12 +1748,6 @@ void rtl8188e_handle_ra_tx_report2(struct rtl8xxxu_priv *priv, struct sk_buff *s
 			min_rpt_time = ra->rpt_time;
 
 		rpt += TX_RPT2_ITEM_SIZE;
-
-		/*
-		 * We only use macid 0, so only the first item is relevant.
-		 * AP mode will use more of them if it's ever implemented.
-		 */
-		break;
 	}
 
 	if (min_rpt_time != ra->pre_min_rpt_time) {
@@ -1856,6 +1857,7 @@ struct rtl8xxxu_fileops rtl8188eu_fops = {
 	.load_firmware = rtl8188eu_load_firmware,
 	.power_on = rtl8188eu_power_on,
 	.power_off = rtl8188eu_power_off,
+	.read_efuse = rtl8xxxu_read_efuse,
 	.reset_8051 = rtl8188eu_reset_8051,
 	.llt_init = rtl8xxxu_init_llt_table,
 	.init_phy_bb = rtl8188eu_init_phy_bb,
@@ -1864,6 +1866,7 @@ struct rtl8xxxu_fileops rtl8188eu_fops = {
 	.phy_iq_calibrate = rtl8188eu_phy_iq_calibrate,
 	.config_channel = rtl8188eu_config_channel,
 	.parse_rx_desc = rtl8xxxu_parse_rxdesc16,
+	.parse_phystats = rtl8723au_rx_parse_phystats,
 	.init_aggregation = rtl8188eu_init_aggregation,
 	.enable_rf = rtl8188e_enable_rf,
 	.disable_rf = rtl8188e_disable_rf,
