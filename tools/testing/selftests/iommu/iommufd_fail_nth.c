@@ -297,7 +297,7 @@ TEST_FAIL_NTH(basic_fail_nth, basic)
 TEST_FAIL_NTH(basic_fail_nth, map_domain)
 {
 	uint32_t ioas_id;
-	__u32 device_id;
+	__u32 stdev_id;
 	__u32 hwpt_id;
 	__u64 iova;
 
@@ -313,7 +313,7 @@ TEST_FAIL_NTH(basic_fail_nth, map_domain)
 
 	fail_nth_enable();
 
-	if (_test_cmd_mock_domain(self->fd, ioas_id, &device_id, &hwpt_id))
+	if (_test_cmd_mock_domain(self->fd, ioas_id, &stdev_id, &hwpt_id, NULL))
 		return -1;
 
 	if (_test_ioctl_ioas_map(self->fd, ioas_id, buffer, 262144, &iova,
@@ -321,12 +321,10 @@ TEST_FAIL_NTH(basic_fail_nth, map_domain)
 					 IOMMU_IOAS_MAP_READABLE))
 		return -1;
 
-	if (_test_ioctl_destroy(self->fd, device_id))
-		return -1;
-	if (_test_ioctl_destroy(self->fd, hwpt_id))
+	if (_test_ioctl_destroy(self->fd, stdev_id))
 		return -1;
 
-	if (_test_cmd_mock_domain(self->fd, ioas_id, &device_id, &hwpt_id))
+	if (_test_cmd_mock_domain(self->fd, ioas_id, &stdev_id, &hwpt_id, NULL))
 		return -1;
 	return 0;
 }
@@ -334,8 +332,8 @@ TEST_FAIL_NTH(basic_fail_nth, map_domain)
 TEST_FAIL_NTH(basic_fail_nth, map_two_domains)
 {
 	uint32_t ioas_id;
-	__u32 device_id2;
-	__u32 device_id;
+	__u32 stdev_id2;
+	__u32 stdev_id;
 	__u32 hwpt_id2;
 	__u32 hwpt_id;
 	__u64 iova;
@@ -350,12 +348,13 @@ TEST_FAIL_NTH(basic_fail_nth, map_two_domains)
 	if (_test_ioctl_set_temp_memory_limit(self->fd, 32))
 		return -1;
 
-	if (_test_cmd_mock_domain(self->fd, ioas_id, &device_id, &hwpt_id))
+	if (_test_cmd_mock_domain(self->fd, ioas_id, &stdev_id, &hwpt_id, NULL))
 		return -1;
 
 	fail_nth_enable();
 
-	if (_test_cmd_mock_domain(self->fd, ioas_id, &device_id2, &hwpt_id2))
+	if (_test_cmd_mock_domain(self->fd, ioas_id, &stdev_id2, &hwpt_id2,
+				  NULL))
 		return -1;
 
 	if (_test_ioctl_ioas_map(self->fd, ioas_id, buffer, 262144, &iova,
@@ -363,19 +362,16 @@ TEST_FAIL_NTH(basic_fail_nth, map_two_domains)
 					 IOMMU_IOAS_MAP_READABLE))
 		return -1;
 
-	if (_test_ioctl_destroy(self->fd, device_id))
-		return -1;
-	if (_test_ioctl_destroy(self->fd, hwpt_id))
+	if (_test_ioctl_destroy(self->fd, stdev_id))
 		return -1;
 
-	if (_test_ioctl_destroy(self->fd, device_id2))
-		return -1;
-	if (_test_ioctl_destroy(self->fd, hwpt_id2))
+	if (_test_ioctl_destroy(self->fd, stdev_id2))
 		return -1;
 
-	if (_test_cmd_mock_domain(self->fd, ioas_id, &device_id, &hwpt_id))
+	if (_test_cmd_mock_domain(self->fd, ioas_id, &stdev_id, &hwpt_id, NULL))
 		return -1;
-	if (_test_cmd_mock_domain(self->fd, ioas_id, &device_id2, &hwpt_id2))
+	if (_test_cmd_mock_domain(self->fd, ioas_id, &stdev_id2, &hwpt_id2,
+				  NULL))
 		return -1;
 	return 0;
 }
@@ -518,7 +514,7 @@ TEST_FAIL_NTH(basic_fail_nth, access_pin_domain)
 {
 	uint32_t access_pages_id;
 	uint32_t ioas_id;
-	__u32 device_id;
+	__u32 stdev_id;
 	__u32 hwpt_id;
 	__u64 iova;
 
@@ -532,7 +528,7 @@ TEST_FAIL_NTH(basic_fail_nth, access_pin_domain)
 	if (_test_ioctl_set_temp_memory_limit(self->fd, 32))
 		return -1;
 
-	if (_test_cmd_mock_domain(self->fd, ioas_id, &device_id, &hwpt_id))
+	if (_test_cmd_mock_domain(self->fd, ioas_id, &stdev_id, &hwpt_id, NULL))
 		return -1;
 
 	if (_test_ioctl_ioas_map(self->fd, ioas_id, buffer, BUFFER_SIZE, &iova,
@@ -570,9 +566,43 @@ TEST_FAIL_NTH(basic_fail_nth, access_pin_domain)
 		return -1;
 	self->access_id = 0;
 
-	if (_test_ioctl_destroy(self->fd, device_id))
+	if (_test_ioctl_destroy(self->fd, stdev_id))
 		return -1;
-	if (_test_ioctl_destroy(self->fd, hwpt_id))
+	return 0;
+}
+
+/* device.c */
+TEST_FAIL_NTH(basic_fail_nth, device)
+{
+	uint32_t ioas_id;
+	uint32_t ioas_id2;
+	uint32_t stdev_id;
+	uint32_t idev_id;
+	uint32_t hwpt_id;
+
+	self->fd = open("/dev/iommu", O_RDWR);
+	if (self->fd == -1)
+		return -1;
+
+	if (_test_ioctl_ioas_alloc(self->fd, &ioas_id))
+		return -1;
+
+	if (_test_ioctl_ioas_alloc(self->fd, &ioas_id2))
+		return -1;
+
+	fail_nth_enable();
+
+	if (_test_cmd_mock_domain(self->fd, ioas_id, &stdev_id, NULL,
+				  &idev_id))
+		return -1;
+
+	if (_test_cmd_hwpt_alloc(self->fd, idev_id, ioas_id, &hwpt_id))
+		return -1;
+
+	if (_test_cmd_mock_domain_replace(self->fd, stdev_id, ioas_id2, NULL))
+		return -1;
+
+	if (_test_cmd_mock_domain_replace(self->fd, stdev_id, hwpt_id, NULL))
 		return -1;
 	return 0;
 }
