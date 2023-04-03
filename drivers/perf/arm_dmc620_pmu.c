@@ -27,6 +27,7 @@
 #include <linux/printk.h>
 #include <linux/rculist.h>
 #include <linux/refcount.h>
+#include <linux/mod_devicetable.h>
 
 #define DMC620_PA_SHIFT					12
 #define DMC620_CNT_INIT					0x80000000
