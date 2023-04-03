@@ -10,11 +10,13 @@
 
 #include <linux/errno.h>
 #include <linux/ioport.h>	/* for struct resource */
-#include <linux/irqdomain.h>
 #include <linux/resource_ext.h>
 #include <linux/device.h>
 #include <linux/property.h>
 #include <linux/uuid.h>
+
+struct irq_domain;
+struct irq_domain_ops;
 
 #ifndef _LINUX
 #define _LINUX
