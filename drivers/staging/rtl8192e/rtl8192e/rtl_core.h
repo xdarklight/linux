@@ -55,18 +55,11 @@
 #define IS_HARDWARE_TYPE_8192SE(_priv)		\
 	(((struct r8192_priv *)rtllib_priv(dev))->card_8192 == NIC_8192SE)
 
-#define RTL_PCI_DEVICE(vend, dev, cfg) \
-	.vendor = (vend), .device = (dev), \
-	.subvendor = PCI_ANY_ID, .subdevice = PCI_ANY_ID, \
-	.driver_data = (kernel_ulong_t)&(cfg)
-
 #define TOTAL_CAM_ENTRY		32
 #define CAM_CONTENT_COUNT	8
 
 #define HAL_HW_PCI_REVISION_ID_8192PCIE		0x01
 #define HAL_HW_PCI_REVISION_ID_8192SE	0x10
-
-#define RTL819X_DEFAULT_RF_TYPE		RF_1T2R
 
 #define RTLLIB_WATCH_DOG_TIME		2000
 
@@ -134,15 +127,6 @@ enum dcmg_txcmd_op {
 	TXCMD_XXXX_CTRL,
 };
 
-enum rt_rf_type_819xu {
-	RF_TYPE_MIN = 0,
-	RF_8225,
-	RF_8256,
-	RF_8258,
-	RF_6052 = 4,
-	RF_PSEUDO_11N = 5,
-};
-
 enum rt_customer_id {
 	RT_CID_DEFAULT	  = 0,
 	RT_CID_819x_CAMEO       = 6,
@@ -203,41 +187,6 @@ struct rtl8192_tx_ring {
 	struct sk_buff_head queue;
 };
 
-struct rtl819x_ops {
-	enum nic_t nic_type;
-	void (*get_eeprom_size)(struct net_device *dev);
-	void (*init_adapter_variable)(struct net_device *dev);
-	void (*init_before_adapter_start)(struct net_device *dev);
-	bool (*initialize_adapter)(struct net_device *dev);
-	void (*link_change)(struct net_device *dev);
-	void (*tx_fill_descriptor)(struct net_device *dev,
-				   struct tx_desc *tx_desc,
-				   struct cb_desc *cb_desc,
-				   struct sk_buff *skb);
-	void (*tx_fill_cmd_descriptor)(struct net_device *dev,
-				       struct tx_desc_cmd *entry,
-				       struct cb_desc *cb_desc,
-				       struct sk_buff *skb);
-	bool (*rx_query_status_descriptor)(struct net_device *dev,
-					   struct rtllib_rx_stats *stats,
-					   struct rx_desc *pdesc,
-					   struct sk_buff *skb);
-	bool (*rx_command_packet_handler)(struct net_device *dev,
-					  struct sk_buff *skb,
-					  struct rx_desc *pdesc);
-	void (*stop_adapter)(struct net_device *dev, bool reset);
-	void (*update_ratr_table)(struct net_device *dev);
-	void (*irq_enable)(struct net_device *dev);
-	void (*irq_disable)(struct net_device *dev);
-	void (*irq_clear)(struct net_device *dev);
-	void (*rx_enable)(struct net_device *dev);
-	void (*tx_enable)(struct net_device *dev);
-	void (*interrupt_recognized)(struct net_device *dev,
-				     u32 *p_inta, u32 *p_intb);
-	bool (*tx_check_stuck_handler)(struct net_device *dev);
-	bool (*rx_check_stuck_handler)(struct net_device *dev);
-};
-
 struct r8192_priv {
 	struct pci_dev *pdev;
 	struct pci_dev *bridge_pdev;
@@ -255,14 +204,12 @@ struct r8192_priv {
 	struct delayed_work		txpower_tracking_wq;
 	struct delayed_work		rfpath_check_wq;
 	struct delayed_work		gpio_change_rf_wq;
-	struct rtl819x_ops			*ops;
 	struct rtllib_device			*rtllib;
 
 	struct work_struct				reset_wq;
 
 	enum rt_customer_id customer_id;
 
-	enum rt_rf_type_819xu rf_chip;
 	enum ht_channel_width current_chnl_bw;
 	struct bb_reg_definition phy_reg_def[4];
 	struct rate_adaptive rate_adaptive;
@@ -342,7 +289,6 @@ struct r8192_priv {
 	enum nic_t card_8192;
 	u8 card_8192_version;
 
-	u8 rf_type;
 	u8 ic_cut;
 	char nick[IW_ESSID_MAX_SIZE + 1];
 	u8 check_roaming_cnt;
