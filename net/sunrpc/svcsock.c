@@ -1086,9 +1086,9 @@ static int svc_tcp_sendmsg(struct socket *sock, struct xdr_buf *xdr,
 		.iov_len	= sizeof(marker),
 	};
 	struct msghdr msg = {
-		.msg_flags	= 0,
+		.msg_flags	= MSG_MORE,
 	};
-	int ret;
+	int flags, ret;
 
 	*sentp = 0;
 	ret = xdr_alloc_bvec(xdr, GFP_KERNEL);
@@ -1101,8 +1101,8 @@ static int svc_tcp_sendmsg(struct socket *sock, struct xdr_buf *xdr,
 	*sentp += ret;
 	if (ret != rm.iov_len)
 		return -EAGAIN;
-
-	ret = svc_tcp_send_kvec(sock, head, 0);
+	flags = head->iov_len < xdr->len ? MSG_MORE | MSG_SENDPAGE_NOTLAST : 0;
+	ret = svc_tcp_send_kvec(sock, head, flags);
 	if (ret < 0)
 		return ret;
 	*sentp += ret;
@@ -1117,10 +1117,12 @@ static int svc_tcp_sendmsg(struct socket *sock, struct xdr_buf *xdr,
 		offset = offset_in_page(xdr->page_base);
 		remaining = xdr->page_len;
 		while (remaining > 0) {
+			if (remaining <= PAGE_SIZE && tail->iov_len == 0)
+				flags = 0;
 			len = min(remaining, bvec->bv_len - offset);
 			ret = kernel_sendpage(sock, bvec->bv_page,
 					      bvec->bv_offset + offset,
-					      len, 0);
+					      len, flags);
 			if (ret < 0)
 				return ret;
 			*sentp += ret;
@@ -1293,26 +1295,37 @@ static struct svc_sock *svc_setup_socket(struct svc_serv *serv,
 						struct socket *sock,
 						int flags)
 {
+	struct file	*filp = NULL;
 	struct svc_sock	*svsk;
 	struct sock	*inet;
 	int		pmap_register = !(flags & SVC_SOCK_ANONYMOUS);
-	int		err = 0;
 
 	svsk = kzalloc(sizeof(*svsk), GFP_KERNEL);
 	if (!svsk)
 		return ERR_PTR(-ENOMEM);
 
+	if (!sock->file) {
+		filp = sock_alloc_file(sock, O_NONBLOCK, NULL);
+		if (IS_ERR(filp)) {
+			kfree(svsk);
+			return ERR_CAST(filp);
+		}
+	}
+
 	inet = sock->sk;
 
-	/* Register socket with portmapper */
-	if (pmap_register)
+	if (pmap_register) {
+		int err;
+
 		err = svc_register(serv, sock_net(sock->sk), inet->sk_family,
 				     inet->sk_protocol,
 				     ntohs(inet_sk(inet)->inet_sport));
-
-	if (err < 0) {
-		kfree(svsk);
-		return ERR_PTR(err);
+		if (err < 0) {
+			if (filp)
+				fput(filp);
+			kfree(svsk);
+			return ERR_PTR(err);
+		}
 	}
 
 	svsk->sk_sock = sock;
