@@ -19,6 +19,7 @@
 #include "intel_mchbar_regs.h"
 #include "intel_pch_refclk.h"
 #include "intel_pcode.h"
+#include "intel_pps_regs.h"
 #include "intel_snps_phy.h"
 #include "skl_watermark.h"
 #include "vlv_sideband.h"
@@ -1182,8 +1183,10 @@ static void assert_can_disable_lcpll(struct drm_i915_private *dev_priv)
 				"CPU PWM2 enabled\n");
 	I915_STATE_WARN(intel_de_read(dev_priv, BLC_PWM_PCH_CTL1) & BLM_PCH_PWM_ENABLE,
 			"PCH PWM1 enabled\n");
-	I915_STATE_WARN(intel_de_read(dev_priv, UTIL_PIN_CTL) & UTIL_PIN_ENABLE,
-			"Utility pin enabled\n");
+	I915_STATE_WARN((intel_de_read(dev_priv, UTIL_PIN_CTL) &
+			 (UTIL_PIN_ENABLE | UTIL_PIN_MODE_MASK)) ==
+			(UTIL_PIN_ENABLE | UTIL_PIN_MODE_PWM),
+			"Utility pin enabled in PWM mode\n");
 	I915_STATE_WARN(intel_de_read(dev_priv, PCH_GTC_CTL) & PCH_GTC_ENABLE,
 			"PCH GTC enabled\n");
 
