@@ -17,9 +17,6 @@
 
 static const struct regcache_ops *cache_types[] = {
 	&regcache_rbtree_ops,
-#if IS_ENABLED(CONFIG_REGCACHE_COMPRESSED)
-	&regcache_lzo_ops,
-#endif
 	&regcache_flat_ops,
 };
 
@@ -148,7 +145,7 @@ int regcache_init(struct regmap *map, const struct regmap_config *config)
 			break;
 
 	if (i == ARRAY_SIZE(cache_types)) {
-		dev_err(map->dev, "Could not match compress type: %d\n",
+		dev_err(map->dev, "Could not match cache type: %d\n",
 			map->cache_type);
 		return -EINVAL;
 	}
@@ -242,7 +239,7 @@ int regcache_read(struct regmap *map,
 	int ret;
 
 	if (map->cache_type == REGCACHE_NONE)
-		return -ENOSYS;
+		return -EINVAL;
 
 	BUG_ON(!map->cache_ops);
 
@@ -311,6 +308,8 @@ static int regcache_default_sync(struct regmap *map, unsigned int min,
 			continue;
 
 		ret = regcache_read(map, reg, &val);
+		if (ret == -ENOENT)
+			continue;
 		if (ret)
 			return ret;
 
@@ -348,6 +347,9 @@ int regcache_sync(struct regmap *map)
 	unsigned int i;
 	const char *name;
 	bool bypass;
+
+	if (WARN_ON(map->cache_type == REGCACHE_NONE))
+		return -EINVAL;
 
 	BUG_ON(!map->cache_ops);
 
@@ -417,6 +419,9 @@ int regcache_sync_region(struct regmap *map, unsigned int min,
 	int ret = 0;
 	const char *name;
 	bool bypass;
+
+	if (WARN_ON(map->cache_type == REGCACHE_NONE))
+		return -EINVAL;
 
 	BUG_ON(!map->cache_ops);
 
