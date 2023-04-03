@@ -81,23 +81,14 @@ static void __init mpc837x_mds_setup_arch(void)
 
 machine_device_initcall(mpc837x_mds, mpc83xx_declare_of_platform_devices);
 
-/*
- * Called very early, MMU is off, device-tree isn't unflattened
- */
-static int __init mpc837x_mds_probe(void)
-{
-	return of_machine_is_compatible("fsl,mpc837xmds");
-}
-
 define_machine(mpc837x_mds) {
 	.name			= "MPC837x MDS",
-	.probe			= mpc837x_mds_probe,
+	.compatible		= "fsl,mpc837xmds",
 	.setup_arch		= mpc837x_mds_setup_arch,
 	.discover_phbs  	= mpc83xx_setup_pci,
 	.init_IRQ		= mpc83xx_ipic_init_IRQ,
 	.get_irq		= ipic_get_irq,
 	.restart		= mpc83xx_restart,
 	.time_init		= mpc83xx_time_init,
-	.calibrate_decr		= generic_calibrate_decr,
 	.progress		= udbg_progress,
 };
