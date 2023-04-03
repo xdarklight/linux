@@ -16,6 +16,7 @@
 static const struct pci_device_id adf_pci_tbl[] = {
 	{ PCI_VDEVICE(INTEL, ADF_4XXX_PCI_DEVICE_ID), },
 	{ PCI_VDEVICE(INTEL, ADF_401XX_PCI_DEVICE_ID), },
+	{ PCI_VDEVICE(INTEL, ADF_402XX_PCI_DEVICE_ID), },
 	{ }
 };
 MODULE_DEVICE_TABLE(pci, adf_pci_tbl);
@@ -330,7 +331,7 @@ static int adf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	}
 
 	accel_dev->hw_device = hw_data;
-	adf_init_hw_data_4xxx(accel_dev->hw_device);
+	adf_init_hw_data_4xxx(accel_dev->hw_device, ent->device);
 
 	pci_read_config_byte(pdev, PCI_REVISION_ID, &accel_pci_dev->revid);
 	pci_read_config_dword(pdev, ADF_4XXX_FUSECTL4_OFFSET, &hw_data->fuses);
@@ -403,38 +404,24 @@ static int adf_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	pci_set_master(pdev);
 
-	adf_enable_aer(accel_dev);
-
 	if (pci_save_state(pdev)) {
 		dev_err(&pdev->dev, "Failed to save pci state.\n");
 		ret = -ENOMEM;
-		goto out_err_disable_aer;
+		goto out_err;
 	}
 
+	ret = adf_dev_up(accel_dev, true);
+	if (ret)
+		goto out_err_dev_stop;
+
 	ret = adf_sysfs_init(accel_dev);
-	if (ret)
-		goto out_err_disable_aer;
-
-	ret = hw_data->dev_config(accel_dev);
-	if (ret)
-		goto out_err_disable_aer;
-
-	ret = adf_dev_init(accel_dev);
-	if (ret)
-		goto out_err_dev_shutdown;
-
-	ret = adf_dev_start(accel_dev);
 	if (ret)
 		goto out_err_dev_stop;
 
 	return ret;
 
 out_err_dev_stop:
-	adf_dev_stop(accel_dev);
-out_err_dev_shutdown:
-	adf_dev_shutdown(accel_dev);
-out_err_disable_aer:
-	adf_disable_aer(accel_dev);
+	adf_dev_down(accel_dev, false);
 out_err:
 	adf_cleanup_accel(accel_dev);
 	return ret;
@@ -448,9 +435,7 @@ static void adf_remove(struct pci_dev *pdev)
 		pr_err("QAT: Driver removal failed\n");
 		return;
 	}
-	adf_dev_stop(accel_dev);
-	adf_dev_shutdown(accel_dev);
-	adf_disable_aer(accel_dev);
+	adf_dev_down(accel_dev, false);
 	adf_cleanup_accel(accel_dev);
 }
 
