@@ -269,7 +269,7 @@
 				compatible = "qcom,rpm-msm8953";
 				qcom,smd-channels = "rpm_requests";
 
-				rpmcc: rpmcc {
+				rpmcc: clock-controller {
 					compatible = "qcom,rpmcc-msm8953", "qcom,rpmcc";
 					clocks = <&xo_board>;
 					clock-names = "xo";
@@ -280,9 +280,6 @@
 					compatible = "qcom,msm8953-rpmpd";
 					#power-domain-cells = <1>;
 					operating-points-v2 = <&rpmpd_opp_table>;
-
-					clocks = <&xo_board>;
-					clock-names = "ref";
 
 					rpmpd_opp_table: opp-table {
 						compatible = "operating-points-v2";
