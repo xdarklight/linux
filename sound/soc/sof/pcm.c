@@ -301,6 +301,8 @@ static int sof_pcm_trigger(struct snd_soc_component *component,
 		ipc_first = true;
 		break;
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+		if (pcm_ops && pcm_ops->ipc_first_on_start)
+			ipc_first = true;
 		break;
 	case SNDRV_PCM_TRIGGER_START:
 		if (spcm->stream[substream->stream].suspend_ignored) {
@@ -312,6 +314,9 @@ static int sof_pcm_trigger(struct snd_soc_component *component,
 			spcm->stream[substream->stream].suspend_ignored = false;
 			return 0;
 		}
+
+		if (pcm_ops && pcm_ops->ipc_first_on_start)
+			ipc_first = true;
 		break;
 	case SNDRV_PCM_TRIGGER_SUSPEND:
 		if (sdev->system_suspend_target == SOF_SUSPEND_S0IX &&
@@ -325,29 +330,44 @@ static int sof_pcm_trigger(struct snd_soc_component *component,
 			spcm->stream[substream->stream].suspend_ignored = true;
 			return 0;
 		}
+
+		/* On suspend the DMA must be stopped in DSPless mode */
+		if (sdev->dspless_mode_selected)
+			reset_hw_params = true;
+
 		fallthrough;
 	case SNDRV_PCM_TRIGGER_STOP:
 		ipc_first = true;
-		reset_hw_params = true;
+		if (pcm_ops && pcm_ops->reset_hw_params_during_stop)
+			reset_hw_params = true;
 		break;
 	default:
 		dev_err(component->dev, "Unhandled trigger cmd %d\n", cmd);
 		return -EINVAL;
 	}
 
-	/*
-	 * DMA and IPC sequence is different for start and stop. Need to send
-	 * STOP IPC before stop DMA
-	 */
 	if (!ipc_first)
 		snd_sof_pcm_platform_trigger(sdev, substream, cmd);
 
 	if (pcm_ops && pcm_ops->trigger)
 		ret = pcm_ops->trigger(component, substream, cmd);
 
-	/* need to STOP DMA even if trigger IPC failed */
-	if (ipc_first)
+	switch (cmd) {
+	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+	case SNDRV_PCM_TRIGGER_START:
+		/* invoke platform trigger to start DMA only if pcm_ops is successful */
+		if (ipc_first && !ret)
+			snd_sof_pcm_platform_trigger(sdev, substream, cmd);
+		break;
+	case SNDRV_PCM_TRIGGER_SUSPEND:
+	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+	case SNDRV_PCM_TRIGGER_STOP:
+		/* invoke platform trigger to stop DMA even if pcm_ops failed */
 		snd_sof_pcm_platform_trigger(sdev, substream, cmd);
+		break;
+	default:
+		break;
+	}
 
 	/* free PCM if reset_hw_params is set and the STOP IPC is successful */
 	if (!ret && reset_hw_params)
@@ -690,7 +710,6 @@ void snd_sof_new_platform_drv(struct snd_sof_dev *sdev)
 
 	pd->pcm_construct = sof_pcm_new;
 	pd->ignore_machine = drv_name;
-	pd->be_hw_params_fixup = sof_pcm_dai_link_fixup;
 	pd->be_pcm_base = SOF_BE_PCM_BASE;
 	pd->use_dai_pcm_id = true;
 	pd->topology_name_prefix = "sof";
@@ -699,4 +718,11 @@ void snd_sof_new_platform_drv(struct snd_sof_dev *sdev)
 	pd->module_get_upon_open = 1;
 
 	pd->legacy_dai_naming = 1;
+
+	/*
+	 * The fixup is only needed when the DSP is in use as with the DSPless
+	 * mode we are directly using the audio interface
+	 */
+	if (!sdev->dspless_mode_selected)
+		pd->be_hw_params_fixup = sof_pcm_dai_link_fixup;
 }
