@@ -98,6 +98,7 @@
 #include <linux/bpf.h>
 #include <linux/stackprotector.h>
 #include <linux/iommu.h>
+#include <linux/user_events.h>
 
 #include <asm/pgalloc.h>
 #include <linux/uaccess.h>
@@ -2729,6 +2730,7 @@ __latent_entropy struct task_struct *copy_process(
 
 	trace_task_newtask(p, clone_flags);
 	uprobe_copy_process(p, clone_flags);
+	user_events_fork(p, clone_flags);
 
 	copy_oom_score_adj(clone_flags, p);
 
