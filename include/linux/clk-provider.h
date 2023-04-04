@@ -608,6 +608,7 @@ struct clk *clk_register_gate(struct device *dev, const char *name,
 	__devm_clk_hw_register_gate((dev), NULL, (name), (parent_name), NULL, \
 			       NULL, (flags), (reg), (bit_idx),		      \
 			       (clk_gate_flags), (lock))
+
 /**
  * devm_clk_hw_register_gate_parent_data - register a gate clock with the
  * clock framework

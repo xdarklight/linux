@@ -153,9 +153,6 @@ extern struct imx_fracn_gppll_clk imx_fracn_gppll;
 #define imx_clk_pllv2(name, parent, base) \
 	to_clk(imx_clk_hw_pllv2(name, parent, base))
 
-#define imx_clk_mux_flags(name, reg, shift, width, parents, num_parents, flags) \
-	to_clk(imx_clk_hw_mux_flags(name, reg, shift, width, parents, num_parents, flags))
-
 #define imx_clk_hw_gate(name, parent, reg, shift) \
 	imx_clk_hw_gate_flags(name, parent, reg, shift, 0)
 
@@ -416,6 +413,10 @@ struct clk_hw *__imx8m_clk_hw_composite(const char *name,
 #define imx8m_clk_hw_composite(name, parent_names, reg) \
 	_imx8m_clk_hw_composite(name, parent_names, reg, \
 			0, IMX_COMPOSITE_CLK_FLAGS_DEFAULT)
+
+#define imx8m_clk_hw_composite_flags(name, parent_names, reg, flags) \
+	_imx8m_clk_hw_composite(name, parent_names, reg, \
+			0, IMX_COMPOSITE_CLK_FLAGS_DEFAULT |  flags)
 
 #define imx8m_clk_hw_composite_critical(name, parent_names, reg) \
 	_imx8m_clk_hw_composite(name, parent_names, reg, \
