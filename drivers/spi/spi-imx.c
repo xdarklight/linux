@@ -528,7 +528,7 @@ static int mx51_ecspi_prepare_message(struct spi_imx_data *spi_imx,
 		ctrl |= MX51_ECSPI_CTRL_DRCTL(spi_imx->spi_drctl);
 
 	/* set chip select to use */
-	ctrl |= MX51_ECSPI_CTRL_CS(spi->chip_select);
+	ctrl |= MX51_ECSPI_CTRL_CS(spi_get_chipselect(spi, 0));
 
 	/*
 	 * The ctrl register must be written first, with the EN bit set other
@@ -549,22 +549,22 @@ static int mx51_ecspi_prepare_message(struct spi_imx_data *spi_imx,
 	 * BURST_LENGTH + 1 bits are received
 	 */
 	if (spi_imx->slave_mode && is_imx53_ecspi(spi_imx))
-		cfg &= ~MX51_ECSPI_CONFIG_SBBCTRL(spi->chip_select);
+		cfg &= ~MX51_ECSPI_CONFIG_SBBCTRL(spi_get_chipselect(spi, 0));
 	else
-		cfg |= MX51_ECSPI_CONFIG_SBBCTRL(spi->chip_select);
+		cfg |= MX51_ECSPI_CONFIG_SBBCTRL(spi_get_chipselect(spi, 0));
 
 	if (spi->mode & SPI_CPOL) {
-		cfg |= MX51_ECSPI_CONFIG_SCLKPOL(spi->chip_select);
-		cfg |= MX51_ECSPI_CONFIG_SCLKCTL(spi->chip_select);
+		cfg |= MX51_ECSPI_CONFIG_SCLKPOL(spi_get_chipselect(spi, 0));
+		cfg |= MX51_ECSPI_CONFIG_SCLKCTL(spi_get_chipselect(spi, 0));
 	} else {
-		cfg &= ~MX51_ECSPI_CONFIG_SCLKPOL(spi->chip_select);
-		cfg &= ~MX51_ECSPI_CONFIG_SCLKCTL(spi->chip_select);
+		cfg &= ~MX51_ECSPI_CONFIG_SCLKPOL(spi_get_chipselect(spi, 0));
+		cfg &= ~MX51_ECSPI_CONFIG_SCLKCTL(spi_get_chipselect(spi, 0));
 	}
 
 	if (spi->mode & SPI_CS_HIGH)
-		cfg |= MX51_ECSPI_CONFIG_SSBPOL(spi->chip_select);
+		cfg |= MX51_ECSPI_CONFIG_SSBPOL(spi_get_chipselect(spi, 0));
 	else
-		cfg &= ~MX51_ECSPI_CONFIG_SSBPOL(spi->chip_select);
+		cfg &= ~MX51_ECSPI_CONFIG_SSBPOL(spi_get_chipselect(spi, 0));
 
 	if (cfg == current_cfg)
 		return 0;
@@ -614,9 +614,9 @@ static void mx51_configure_cpha(struct spi_imx_data *spi_imx,
 	cpha ^= flip_cpha;
 
 	if (cpha)
-		cfg |= MX51_ECSPI_CONFIG_SCLKPHA(spi->chip_select);
+		cfg |= MX51_ECSPI_CONFIG_SCLKPHA(spi_get_chipselect(spi, 0));
 	else
-		cfg &= ~MX51_ECSPI_CONFIG_SCLKPHA(spi->chip_select);
+		cfg &= ~MX51_ECSPI_CONFIG_SCLKPHA(spi_get_chipselect(spi, 0));
 
 	writel(cfg, spi_imx->base + MX51_ECSPI_CONFIG);
 }
@@ -768,8 +768,8 @@ static int mx31_prepare_transfer(struct spi_imx_data *spi_imx,
 		reg |= MX31_CSPICTRL_POL;
 	if (spi->mode & SPI_CS_HIGH)
 		reg |= MX31_CSPICTRL_SSPOL;
-	if (!spi->cs_gpiod)
-		reg |= (spi->chip_select) <<
+	if (!spi_get_csgpiod(spi, 0))
+		reg |= (spi_get_chipselect(spi, 0)) <<
 			(is_imx35_cspi(spi_imx) ? MX35_CSPICTRL_CS_SHIFT :
 						  MX31_CSPICTRL_CS_SHIFT);
 
@@ -868,8 +868,8 @@ static int mx21_prepare_transfer(struct spi_imx_data *spi_imx,
 		reg |= MX21_CSPICTRL_POL;
 	if (spi->mode & SPI_CS_HIGH)
 		reg |= MX21_CSPICTRL_SSPOL;
-	if (!spi->cs_gpiod)
-		reg |= spi->chip_select << MX21_CSPICTRL_CS_SHIFT;
+	if (!spi_get_csgpiod(spi, 0))
+		reg |= spi_get_chipselect(spi, 0) << MX21_CSPICTRL_CS_SHIFT;
 
 	writel(reg, spi_imx->base + MXC_CSPICTRL);
 
@@ -1848,7 +1848,7 @@ out_controller_put:
 	return ret;
 }
 
-static int spi_imx_remove(struct platform_device *pdev)
+static void spi_imx_remove(struct platform_device *pdev)
 {
 	struct spi_controller *controller = platform_get_drvdata(pdev);
 	struct spi_imx_data *spi_imx = spi_controller_get_devdata(controller);
@@ -1856,21 +1856,17 @@ static int spi_imx_remove(struct platform_device *pdev)
 
 	spi_unregister_controller(controller);
 
-	ret = pm_runtime_resume_and_get(spi_imx->dev);
-	if (ret < 0) {
-		dev_err(spi_imx->dev, "failed to enable clock\n");
-		return ret;
-	}
-
-	writel(0, spi_imx->base + MXC_CSPICTRL);
+	ret = pm_runtime_get_sync(spi_imx->dev);
+	if (ret >= 0)
+		writel(0, spi_imx->base + MXC_CSPICTRL);
+	else
+		dev_warn(spi_imx->dev, "failed to enable clock, skip hw disable\n");
 
 	pm_runtime_dont_use_autosuspend(spi_imx->dev);
 	pm_runtime_put_sync(spi_imx->dev);
 	pm_runtime_disable(spi_imx->dev);
 
 	spi_imx_sdma_exit(spi_imx);
-
-	return 0;
 }
 
 static int __maybe_unused spi_imx_runtime_resume(struct device *dev)
@@ -1932,7 +1928,7 @@ static struct platform_driver spi_imx_driver = {
 		   .pm = &imx_spi_pm,
 	},
 	.probe = spi_imx_probe,
-	.remove = spi_imx_remove,
+	.remove_new = spi_imx_remove,
 };
 module_platform_driver(spi_imx_driver);
 

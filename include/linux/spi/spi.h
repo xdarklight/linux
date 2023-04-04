@@ -244,7 +244,7 @@ static inline void spi_dev_put(struct spi_device *spi)
 }
 
 /* ctldata is for the bus_controller driver's runtime state */
-static inline void *spi_get_ctldata(struct spi_device *spi)
+static inline void *spi_get_ctldata(const struct spi_device *spi)
 {
 	return spi->controller_state;
 }
@@ -261,12 +261,12 @@ static inline void spi_set_drvdata(struct spi_device *spi, void *data)
 	dev_set_drvdata(&spi->dev, data);
 }
 
-static inline void *spi_get_drvdata(struct spi_device *spi)
+static inline void *spi_get_drvdata(const struct spi_device *spi)
 {
 	return dev_get_drvdata(&spi->dev);
 }
 
-static inline u8 spi_get_chipselect(struct spi_device *spi, u8 idx)
+static inline u8 spi_get_chipselect(const struct spi_device *spi, u8 idx)
 {
 	return spi->chip_select;
 }
@@ -276,7 +276,7 @@ static inline void spi_set_chipselect(struct spi_device *spi, u8 idx, u8 chipsel
 	spi->chip_select = chipselect;
 }
 
-static inline struct gpio_desc *spi_get_csgpiod(struct spi_device *spi, u8 idx)
+static inline struct gpio_desc *spi_get_csgpiod(const struct spi_device *spi, u8 idx)
 {
 	return spi->cs_gpiod;
 }
@@ -1093,6 +1093,9 @@ struct spi_message {
 
 	unsigned		is_dma_mapped:1;
 
+	/* spi_prepare_message() was called for this message */
+	bool			prepared;
+
 	/* REVISIT:  we might want a flag affecting the behavior of the
 	 * last transfer ... allowing things like "read 16 bit length L"
 	 * immediately followed by "read L bytes".  Basically imposing
@@ -1105,11 +1108,11 @@ struct spi_message {
 	 */
 
 	/* Completion is reported through a callback */
+	int			status;
 	void			(*complete)(void *context);
 	void			*context;
 	unsigned		frame_length;
 	unsigned		actual_length;
-	int			status;
 
 	/* For optional use by whatever driver currently owns the
 	 * spi_message ...  between calls to spi_async and then later
@@ -1120,9 +1123,6 @@ struct spi_message {
 
 	/* List of spi_res reources when the spi message is processed */
 	struct list_head        resources;
-
-	/* spi_prepare_message() was called for this message */
-	bool			prepared;
 };
 
 static inline void spi_message_init_no_memset(struct spi_message *m)
@@ -1295,6 +1295,10 @@ extern int spi_split_transfers_maxsize(struct spi_controller *ctlr,
 				       struct spi_message *msg,
 				       size_t maxsize,
 				       gfp_t gfp);
+extern int spi_split_transfers_maxwords(struct spi_controller *ctlr,
+					struct spi_message *msg,
+					size_t maxwords,
+					gfp_t gfp);
 
 /*---------------------------------------------------------------------------*/
 
