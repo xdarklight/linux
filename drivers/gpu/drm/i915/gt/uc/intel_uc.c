@@ -168,7 +168,7 @@ static void __uc_capture_load_err_log(struct intel_uc *uc)
 
 static void __uc_free_load_err_log(struct intel_uc *uc)
 {
-	struct drm_i915_gem_object *log = fetch_and_zero(&uc->load_err_log);
+	struct drm_i915_gem_object *log = __xchg(&uc->load_err_log, NULL);
 
 	if (log)
 		i915_gem_object_put(log);

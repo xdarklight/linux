@@ -269,7 +269,7 @@ static int live_ctx_switch_wa(void *arg)
 		if (IS_GRAPHICS_VER(gt->i915, 4, 5))
 			continue; /* MI_STORE_DWORD is privileged! */
 
-		saved_wa = fetch_and_zero(&engine->wa_ctx.vma);
+		saved_wa = __xchg(&engine->wa_ctx.vma, 0);
 
 		intel_engine_pm_get(engine);
 		err = __live_ctx_switch_wa(engine);
