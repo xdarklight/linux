@@ -217,8 +217,7 @@ void rtl92e_dm_init(struct net_device *dev)
 	if (IS_HARDWARE_TYPE_8192SE(dev))
 		_rtl92e_dm_init_wa_broadcom_iot(dev);
 
-	INIT_DELAYED_WORK_RSL(&priv->gpio_change_rf_wq,
-			      (void *)_rtl92e_dm_check_rf_ctrl_gpio, dev);
+	INIT_DELAYED_WORK(&priv->gpio_change_rf_wq, (void *)_rtl92e_dm_check_rf_ctrl_gpio);
 }
 
 void rtl92e_dm_deinit(struct net_device *dev)
@@ -273,25 +272,13 @@ void rtl92e_init_adaptive_rate(struct net_device *dev)
 		pra->ping_rssi_enable = 0;
 	pra->ping_rssi_thresh_for_ra = 15;
 
-
-	if (priv->rf_type == RF_2T4R) {
-		pra->upper_rssi_threshold_ratr		=	0x8f0f0000;
-		pra->middle_rssi_threshold_ratr		=	0x8f0ff000;
-		pra->low_rssi_threshold_ratr		=	0x8f0ff001;
-		pra->low_rssi_threshold_ratr_40M	=	0x8f0ff005;
-		pra->low_rssi_threshold_ratr_20M	=	0x8f0ff001;
-		pra->ping_rssi_ratr	=	0x0000000d;
-	} else if (priv->rf_type == RF_1T2R) {
-		pra->upper_rssi_threshold_ratr		=	0x000fc000;
-		pra->middle_rssi_threshold_ratr		=	0x000ff000;
-		pra->low_rssi_threshold_ratr		=	0x000ff001;
-		pra->low_rssi_threshold_ratr_40M	=	0x000ff005;
-		pra->low_rssi_threshold_ratr_20M	=	0x000ff001;
-		pra->ping_rssi_ratr	=	0x0000000d;
-	}
-
+	pra->upper_rssi_threshold_ratr		=	0x000fc000;
+	pra->middle_rssi_threshold_ratr		=	0x000ff000;
+	pra->low_rssi_threshold_ratr		=	0x000ff001;
+	pra->low_rssi_threshold_ratr_40M	=	0x000ff005;
+	pra->low_rssi_threshold_ratr_20M	=	0x000ff001;
+	pra->ping_rssi_ratr	=	0x0000000d;
 }
-
 
 static void _rtl92e_dm_check_rate_adaptive(struct net_device *dev)
 {
@@ -309,8 +296,7 @@ static void _rtl92e_dm_check_rate_adaptive(struct net_device *dev)
 	if (pra->rate_adaptive_disabled)
 		return;
 
-	if (!(priv->rtllib->mode == WIRELESS_MODE_N_24G ||
-	    priv->rtllib->mode == WIRELESS_MODE_N_5G))
+	if (priv->rtllib->mode != WIRELESS_MODE_N_24G)
 		return;
 
 	if (priv->rtllib->state == RTLLIB_LINKED) {
@@ -391,8 +377,7 @@ static void _rtl92e_dm_check_rate_adaptive(struct net_device *dev)
 			u32 ratr_value;
 
 			ratr_value = targetRATR;
-			if (priv->rf_type == RF_1T2R)
-				ratr_value &= ~(RATE_ALL_OFDM_2SS);
+			ratr_value &= ~(RATE_ALL_OFDM_2SS);
 			rtl92e_writel(dev, RATR0, ratr_value);
 			rtl92e_writeb(dev, UFWP, 1);
 
@@ -495,47 +480,18 @@ static void _rtl92e_dm_tx_update_tssi_weak_signal(struct net_device *dev,
 {
 	struct r8192_priv *p = rtllib_priv(dev);
 
-	if (RF_Type == RF_2T4R) {
-		if ((p->rfa_txpowertrackingindex > 0) &&
-		    (p->rfc_txpowertrackingindex > 0)) {
-			p->rfa_txpowertrackingindex--;
-			if (p->rfa_txpowertrackingindex_real > 4) {
-				p->rfa_txpowertrackingindex_real--;
-				rtl92e_set_bb_reg(dev, rOFDM0_XATxIQImbalance,
-						  bMaskDWord,
-						  dm_tx_bb_gain[p->rfa_txpowertrackingindex_real]);
-			}
-
-			p->rfc_txpowertrackingindex--;
-			if (p->rfc_txpowertrackingindex_real > 4) {
-				p->rfc_txpowertrackingindex_real--;
-				rtl92e_set_bb_reg(dev,
-						  rOFDM0_XCTxIQImbalance,
-						  bMaskDWord,
-						  dm_tx_bb_gain[p->rfc_txpowertrackingindex_real]);
-			}
-		} else {
-			rtl92e_set_bb_reg(dev, rOFDM0_XATxIQImbalance,
-					  bMaskDWord,
-					  dm_tx_bb_gain[4]);
+	if (p->rfa_txpowertrackingindex > 0) {
+		p->rfa_txpowertrackingindex--;
+		if (p->rfa_txpowertrackingindex_real > 4) {
+			p->rfa_txpowertrackingindex_real--;
 			rtl92e_set_bb_reg(dev,
-					  rOFDM0_XCTxIQImbalance,
-					  bMaskDWord, dm_tx_bb_gain[4]);
+					  rOFDM0_XATxIQImbalance,
+					  bMaskDWord,
+					  dm_tx_bb_gain[p->rfa_txpowertrackingindex_real]);
 		}
 	} else {
-		if (p->rfa_txpowertrackingindex > 0) {
-			p->rfa_txpowertrackingindex--;
-			if (p->rfa_txpowertrackingindex_real > 4) {
-				p->rfa_txpowertrackingindex_real--;
-				rtl92e_set_bb_reg(dev,
-						  rOFDM0_XATxIQImbalance,
-						  bMaskDWord,
-						  dm_tx_bb_gain[p->rfa_txpowertrackingindex_real]);
-			}
-		} else {
-			rtl92e_set_bb_reg(dev, rOFDM0_XATxIQImbalance,
-					  bMaskDWord, dm_tx_bb_gain[4]);
-		}
+		rtl92e_set_bb_reg(dev, rOFDM0_XATxIQImbalance,
+				  bMaskDWord, dm_tx_bb_gain[4]);
 	}
 }
 
@@ -544,39 +500,16 @@ static void _rtl92e_dm_tx_update_tssi_strong_signal(struct net_device *dev,
 {
 	struct r8192_priv *p = rtllib_priv(dev);
 
-	if (RF_Type == RF_2T4R) {
-		if ((p->rfa_txpowertrackingindex < TX_BB_GAIN_TABLE_LEN - 1) &&
-		    (p->rfc_txpowertrackingindex < TX_BB_GAIN_TABLE_LEN - 1)) {
-			p->rfa_txpowertrackingindex++;
-			p->rfa_txpowertrackingindex_real++;
-			rtl92e_set_bb_reg(dev, rOFDM0_XATxIQImbalance,
-					  bMaskDWord,
-					  dm_tx_bb_gain[p->rfa_txpowertrackingindex_real]);
-			p->rfc_txpowertrackingindex++;
-			p->rfc_txpowertrackingindex_real++;
-			rtl92e_set_bb_reg(dev, rOFDM0_XCTxIQImbalance,
-					  bMaskDWord,
-					  dm_tx_bb_gain[p->rfc_txpowertrackingindex_real]);
-		} else {
-			rtl92e_set_bb_reg(dev, rOFDM0_XATxIQImbalance,
-					  bMaskDWord,
-					  dm_tx_bb_gain[TX_BB_GAIN_TABLE_LEN - 1]);
-			rtl92e_set_bb_reg(dev, rOFDM0_XCTxIQImbalance,
-					  bMaskDWord,
-					  dm_tx_bb_gain[TX_BB_GAIN_TABLE_LEN - 1]);
-		}
+	if (p->rfa_txpowertrackingindex < (TX_BB_GAIN_TABLE_LEN - 1)) {
+		p->rfa_txpowertrackingindex++;
+		p->rfa_txpowertrackingindex_real++;
+		rtl92e_set_bb_reg(dev, rOFDM0_XATxIQImbalance,
+				  bMaskDWord,
+				  dm_tx_bb_gain[p->rfa_txpowertrackingindex_real]);
 	} else {
-		if (p->rfa_txpowertrackingindex < (TX_BB_GAIN_TABLE_LEN - 1)) {
-			p->rfa_txpowertrackingindex++;
-			p->rfa_txpowertrackingindex_real++;
-			rtl92e_set_bb_reg(dev, rOFDM0_XATxIQImbalance,
-					  bMaskDWord,
-					  dm_tx_bb_gain[p->rfa_txpowertrackingindex_real]);
-		} else {
-			rtl92e_set_bb_reg(dev, rOFDM0_XATxIQImbalance,
-					  bMaskDWord,
-					  dm_tx_bb_gain[TX_BB_GAIN_TABLE_LEN - 1]);
-		}
+		rtl92e_set_bb_reg(dev, rOFDM0_XATxIQImbalance,
+				  bMaskDWord,
+				  dm_tx_bb_gain[TX_BB_GAIN_TABLE_LEN - 1]);
 	}
 }
 
@@ -598,7 +531,7 @@ static void _rtl92e_dm_tx_power_tracking_callback_tssi(struct net_device *dev)
 	priv->rtllib->bdynamic_txpower_enable = false;
 
 	powerlevelOFDM24G = priv->pwr_track >> 24;
-	RF_Type = priv->rf_type;
+	RF_Type = RF_1T2R;
 	Value = (RF_Type<<8) | powerlevelOFDM24G;
 
 	for (j = 0; j <= 30; j++) {
@@ -682,13 +615,8 @@ static void _rtl92e_dm_tx_power_tracking_callback_tssi(struct net_device *dev)
 			else
 				_rtl92e_dm_tx_update_tssi_strong_signal(dev, RF_Type);
 
-			if (RF_Type == RF_2T4R) {
-				priv->cck_present_attn_diff
-					= priv->rfa_txpowertrackingindex - priv->rfa_txpowertracking_default;
-			} else {
-				priv->cck_present_attn_diff
-					= priv->rfa_txpowertrackingindex_real - priv->rfa_txpowertracking_default;
-			}
+			priv->cck_present_attn_diff
+				= priv->rfa_txpowertrackingindex_real - priv->rfa_txpowertracking_default;
 
 			if (priv->current_chnl_bw == HT_CHANNEL_WIDTH_20)
 				priv->cck_present_attn =
@@ -1042,12 +970,10 @@ void rtl92e_dm_restore_state(struct net_device *dev)
 
 	if (priv->rate_adaptive.rate_adaptive_disabled)
 		return;
-	if (!(priv->rtllib->mode == WIRELESS_MODE_N_24G ||
-	      priv->rtllib->mode == WIRELESS_MODE_N_5G))
+	if (priv->rtllib->mode != WIRELESS_MODE_N_24G)
 		return;
 	ratr_value = reg_ratr;
-	if (priv->rf_type == RF_1T2R)
-		ratr_value &= ~(RATE_ALL_OFDM_2SS);
+	ratr_value &= ~(RATE_ALL_OFDM_2SS);
 	rtl92e_writel(dev, RATR0, ratr_value);
 	rtl92e_writeb(dev, UFWP, 1);
 	if (priv->tx_pwr_tracking_init && priv->btxpower_tracking)
@@ -1729,9 +1655,6 @@ static void _rtl92e_dm_rx_path_sel_byrssi(struct net_device *dev)
 	long cur_cck_pwdb;
 	static u8 disabled_rf_cnt, cck_Rx_Path_initialized;
 	u8 update_cck_rx_path;
-
-	if (priv->rf_type != RF_2T4R)
-		return;
 
 	if (!cck_Rx_Path_initialized) {
 		dm_rx_path_sel_table.cck_rx_path = (rtl92e_readb(dev, 0xa07)&0xf);
