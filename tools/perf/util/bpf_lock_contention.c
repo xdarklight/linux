@@ -151,6 +151,8 @@ int lock_contention_prepare(struct lock_contention *con)
 	skel->bss->needs_callstack = con->save_callstack;
 	skel->bss->lock_owner = con->owner;
 
+	bpf_program__set_autoload(skel->progs.collect_lock_syms, false);
+
 	lock_contention_bpf__attach(skel);
 	return 0;
 }
@@ -169,7 +171,7 @@ int lock_contention_stop(void)
 
 static const char *lock_contention_get_name(struct lock_contention *con,
 					    struct contention_key *key,
-					    u64 *stack_trace)
+					    u64 *stack_trace, u32 flags)
 {
 	int idx = 0;
 	u64 addr;
@@ -198,10 +200,26 @@ static const char *lock_contention_get_name(struct lock_contention *con,
 	}
 
 	if (con->aggr_mode == LOCK_AGGR_ADDR) {
+		int lock_fd = bpf_map__fd(skel->maps.lock_syms);
+
+		/* per-process locks set upper bits of the flags */
+		if (flags & LCD_F_MMAP_LOCK)
+			return "mmap_lock";
+		if (flags & LCD_F_SIGHAND_LOCK)
+			return "siglock";
+
+		/* global locks with symbols */
 		sym = machine__find_kernel_symbol(machine, key->lock_addr, &kmap);
 		if (sym)
-			name = sym->name;
-		return name;
+			return sym->name;
+
+		/* try semi-global locks collected separately */
+		if (!bpf_map_lookup_elem(lock_fd, &key->lock_addr, &flags)) {
+			if (flags == LOCK_CLASS_RQLOCK)
+				return "rq_lock";
+		}
+
+		return "";
 	}
 
 	/* LOCK_AGGR_CALLER: skip lock internal functions */
@@ -231,7 +249,7 @@ static const char *lock_contention_get_name(struct lock_contention *con,
 int lock_contention_read(struct lock_contention *con)
 {
 	int fd, stack, err = 0;
-	struct contention_key *prev_key, key;
+	struct contention_key *prev_key, key = {};
 	struct contention_data data = {};
 	struct lock_stat *st = NULL;
 	struct machine *machine = con->machine;
@@ -252,6 +270,15 @@ int lock_contention_read(struct lock_contention *con)
 								/*pid=*/0,
 								/*tid=*/0);
 		thread__set_comm(idle, "swapper", /*timestamp=*/0);
+	}
+
+	if (con->aggr_mode == LOCK_AGGR_ADDR) {
+		DECLARE_LIBBPF_OPTS(bpf_test_run_opts, opts,
+			.flags = BPF_F_TEST_RUN_ON_CPU,
+		);
+		int prog_fd = bpf_program__fd(skel->progs.collect_lock_syms);
+
+		bpf_prog_test_run_opts(prog_fd, &opts);
 	}
 
 	/* make sure it loads the kernel map */
@@ -301,7 +328,7 @@ int lock_contention_read(struct lock_contention *con)
 			goto next;
 		}
 
-		name = lock_contention_get_name(con, &key, stack_trace);
+		name = lock_contention_get_name(con, &key, stack_trace, data.flags);
 		st = lock_stat_findnew(ls_key, name, data.flags);
 		if (st == NULL)
 			break;

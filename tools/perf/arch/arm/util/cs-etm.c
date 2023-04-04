@@ -659,8 +659,12 @@ static bool cs_etm_is_ete(struct auxtrace_record *itr, int cpu)
 {
 	struct cs_etm_recording *ptr = container_of(itr, struct cs_etm_recording, itr);
 	struct perf_pmu *cs_etm_pmu = ptr->cs_etm_pmu;
-	int trcdevarch = cs_etm_get_ro(cs_etm_pmu, cpu, metadata_ete_ro[CS_ETE_TRCDEVARCH]);
+	int trcdevarch;
 
+	if (!cs_etm_pmu_path_exists(cs_etm_pmu, cpu, metadata_ete_ro[CS_ETE_TRCDEVARCH]))
+		return false;
+
+	trcdevarch = cs_etm_get_ro(cs_etm_pmu, cpu, metadata_ete_ro[CS_ETE_TRCDEVARCH]);
 	/*
 	 * ETE if ARCHVER is 5 (ARCHVER is 4 for ETM) and ARCHPART is 0xA13.
 	 * See ETM_DEVARCH_ETE_ARCH in coresight-etm4x.h
@@ -694,8 +698,8 @@ static void cs_etm_save_etmv4_header(__u64 data[], struct auxtrace_record *itr, 
 		data[CS_ETMV4_TS_SOURCE] = (__u64) cs_etm_get_ro_signed(cs_etm_pmu, cpu,
 				metadata_etmv4_ro[CS_ETMV4_TS_SOURCE]);
 	else {
-		pr_warning("[%03d] pmu file 'ts_source' not found. Fallback to safe value (-1)\n",
-			   cpu);
+		pr_debug3("[%03d] pmu file 'ts_source' not found. Fallback to safe value (-1)\n",
+			  cpu);
 		data[CS_ETMV4_TS_SOURCE] = (__u64) -1;
 	}
 }
@@ -729,8 +733,8 @@ static void cs_etm_save_ete_header(__u64 data[], struct auxtrace_record *itr, in
 		data[CS_ETE_TS_SOURCE] = (__u64) cs_etm_get_ro_signed(cs_etm_pmu, cpu,
 				metadata_ete_ro[CS_ETE_TS_SOURCE]);
 	else {
-		pr_warning("[%03d] pmu file 'ts_source' not found. Fallback to safe value (-1)\n",
-			   cpu);
+		pr_debug3("[%03d] pmu file 'ts_source' not found. Fallback to safe value (-1)\n",
+			  cpu);
 		data[CS_ETE_TS_SOURCE] = (__u64) -1;
 	}
 }
