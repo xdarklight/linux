@@ -9,7 +9,6 @@
 #include <linux/delay.h>
 #include <linux/dma-mapping.h>
 #include <linux/workqueue.h>
-#include <linux/aer.h>
 #include <linux/fs.h>
 #include <linux/io-64-nonatomic-lo-hi.h>
 #include <linux/device.h>
@@ -389,7 +388,7 @@ static void idxd_read_table_offsets(struct idxd_device *idxd)
 	dev_dbg(dev, "IDXD Perfmon Offset: %#x\n", idxd->perfmon_offset);
 }
 
-static void multi_u64_to_bmap(unsigned long *bmap, u64 *val, int count)
+void multi_u64_to_bmap(unsigned long *bmap, u64 *val, int count)
 {
 	int i, j, nr;
 
@@ -461,6 +460,10 @@ static void idxd_read_caps(struct idxd_device *idxd)
 		dev_dbg(dev, "opcap[%d]: %#llx\n", i, idxd->hw.opcap.bits[i]);
 	}
 	multi_u64_to_bmap(idxd->opcap_bmap, &idxd->hw.opcap.bits[0], 4);
+
+	/* read iaa cap */
+	if (idxd->data->type == IDXD_TYPE_IAX && idxd->hw.version >= DEVICE_VERSION_2)
+		idxd->hw.iaa_cap.bits = ioread64(idxd->reg_base + IDXD_IAACAP_OFFSET);
 }
 
 static struct idxd_device *idxd_alloc(struct pci_dev *pdev, struct idxd_driver_data *data)
