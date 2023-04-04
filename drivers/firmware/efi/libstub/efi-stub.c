@@ -172,8 +172,8 @@ efi_status_t efi_stub_common(efi_handle_t handle,
 	/* Ask the firmware to clear memory on unclean shutdown */
 	efi_enable_reset_attack_mitigation();
 
-	efi_load_initrd(image, ULONG_MAX, efi_get_max_initrd_addr(image_addr),
-			NULL);
+	efi_load_initrd(handle, image, ULONG_MAX,
+			efi_get_max_initrd_addr(image_addr), NULL);
 
 	efi_random_get_seed();
 
