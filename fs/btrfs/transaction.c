@@ -2035,7 +2035,20 @@ static void cleanup_transaction(struct btrfs_trans_handle *trans, int err)
 
 	if (current->journal_info == trans)
 		current->journal_info = NULL;
-	btrfs_scrub_cancel(fs_info);
+
+	/*
+	 * If relocation is running, we can't cancel scrub because that will
+	 * result in a deadlock. Before relocating a block group, relocation
+	 * pauses scrub, then starts and commits a transaction before unpausing
+	 * scrub. If the transaction commit is being done by the relocation
+	 * task or triggered by another task and the relocation task is waiting
+	 * for the commit, and we end up here due to an error in the commit
+	 * path, then calling btrfs_scrub_cancel() will deadlock, as we are
+	 * asking for scrub to stop while having it asked to be paused higher
+	 * above in relocation code.
+	 */
+	if (!test_bit(BTRFS_FS_RELOC_RUNNING, &fs_info->flags))
+		btrfs_scrub_cancel(fs_info);
 
 	kmem_cache_free(btrfs_trans_handle_cachep, trans);
 }
@@ -2464,6 +2477,11 @@ int btrfs_commit_transaction(struct btrfs_trans_handle *trans)
 	wake_up(&fs_info->transaction_wait);
 	btrfs_trans_state_lockdep_release(fs_info, BTRFS_LOCKDEP_TRANS_UNBLOCKED);
 
+	/* If we have features changed, wake up the cleaner to update sysfs. */
+	if (test_bit(BTRFS_FS_FEATURE_CHANGED, &fs_info->flags) &&
+	    fs_info->cleaner_kthread)
+		wake_up_process(fs_info->cleaner_kthread);
+
 	ret = btrfs_write_and_wait_transaction(trans);
 	if (ret) {
 		btrfs_handle_fs_error(fs_info, ret,
@@ -2602,6 +2620,35 @@ int btrfs_clean_one_deleted_snapshot(struct btrfs_fs_info *fs_info)
 
 	btrfs_put_root(root);
 	return (ret < 0) ? 0 : 1;
+}
+
+/*
+ * We only mark the transaction aborted and then set the file system read-only.
+ * This will prevent new transactions from starting or trying to join this
+ * one.
+ *
+ * This means that error recovery at the call site is limited to freeing
+ * any local memory allocations and passing the error code up without
+ * further cleanup. The transaction should complete as it normally would
+ * in the call path but will return -EIO.
+ *
+ * We'll complete the cleanup in btrfs_end_transaction and
+ * btrfs_commit_transaction.
+ */
+void __cold __btrfs_abort_transaction(struct btrfs_trans_handle *trans,
+				      const char *function,
+				      unsigned int line, int errno, bool first_hit)
+{
+	struct btrfs_fs_info *fs_info = trans->fs_info;
+
+	WRITE_ONCE(trans->aborted, errno);
+	WRITE_ONCE(trans->transaction->aborted, errno);
+	if (first_hit && errno == -ENOSPC)
+		btrfs_dump_space_info_for_trans_abort(fs_info);
+	/* Wake up anybody who may be waiting on this transaction */
+	wake_up(&fs_info->transaction_wait);
+	wake_up(&fs_info->transaction_blocked_wait);
+	__btrfs_handle_fs_error(fs_info, function, line, errno, NULL);
 }
 
 int __init btrfs_transaction_init(void)
