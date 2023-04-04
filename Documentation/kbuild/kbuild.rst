@@ -161,7 +161,6 @@ But some architectures such as x86 and sparc have aliases.
 
 - x86: i386 for 32 bit, x86_64 for 64 bit
 - parisc: parisc64 for 64 bit
-- sh: sh for 32 bit, sh64 for 64 bit
 - sparc: sparc32 for 32 bit, sparc64 for 64 bit
 
 CROSS_COMPILE
