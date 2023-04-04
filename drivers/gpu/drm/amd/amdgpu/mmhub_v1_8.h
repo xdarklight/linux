@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-15 Advanced Micro Devices, Inc.
+ * Copyright 2022 Advanced Micro Devices, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -19,9 +19,10 @@
  * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
  * OTHER DEALINGS IN THE SOFTWARE.
  *
- * Authors: AMD
- *
  */
+#ifndef __MMHUB_V1_8_H__
+#define __MMHUB_V1_8_H__
 
-// TODO - remove this file after external build dependencies is resolved.
-/* NOTE: This file is pending to be removed, do not add new code to this file */
+extern const struct amdgpu_mmhub_funcs mmhub_v1_8_funcs;
+
+#endif

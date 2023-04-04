@@ -6535,6 +6535,13 @@ T:	git git://anongit.freedesktop.org/drm/drm-misc
 F:	Documentation/devicetree/bindings/display/panel/sony,acx424akp.yaml
 F:	drivers/gpu/drm/panel/panel-novatek-nt35560.c
 
+DRM DRIVER FOR NOVATEK NT36523 PANELS
+M:	Jianhua Lu <lujianhua000@gmail.com>
+S:	Maintained
+T:	git git://anongit.freedesktop.org/drm/drm-misc
+F:	Documentation/devicetree/bindings/display/panel/novatek,nt36523.yaml
+F:	drivers/gpu/drm/panel/panel-novatek-nt36523.c
+
 DRM DRIVER FOR NOVATEK NT36672A PANELS
 M:	Sumit Semwal <sumit.semwal@linaro.org>
 S:	Maintained
@@ -6614,6 +6621,15 @@ S:	Maintained
 T:	git git://anongit.freedesktop.org/drm/drm-misc
 F:	Documentation/devicetree/bindings/display/panel/samsung,lms397kf04.yaml
 F:	drivers/gpu/drm/panel/panel-samsung-db7430.c
+
+DRM DRIVER FOR SAMSUNG MIPI DSIM BRIDGE
+M:	Inki Dae <inki.dae@samsung.com>
+M:	Jagan Teki <jagan@amarulasolutions.com>
+M:	Marek Szyprowski <m.szyprowski@samsung.com>
+S:	Maintained
+T:	git git://anongit.freedesktop.org/drm/drm-misc
+F:	drivers/gpu/drm/bridge/samsung-dsim.c
+F:	include/drm/bridge/samsung-dsim.h
 
 DRM DRIVER FOR SAMSUNG S6D27A1 PANELS
 M:	Markuss Broks <markuss.broks@gmail.com>
@@ -6822,6 +6838,7 @@ S:	Maintained
 T:	git git://anongit.freedesktop.org/drm/drm-misc
 F:	Documentation/devicetree/bindings/display/bridge/
 F:	drivers/gpu/drm/bridge/
+F:	include/drm/drm_bridge.h
 
 DRM DRIVERS FOR EXYNOS
 M:	Inki Dae <inki.dae@samsung.com>
@@ -7042,7 +7059,7 @@ F:	Documentation/devicetree/bindings/display/xlnx/
 F:	drivers/gpu/drm/xlnx/
 
 DRM PANEL DRIVERS
-M:	Thierry Reding <thierry.reding@gmail.com>
+M:	Neil Armstrong <neil.armstrong@linaro.org>
 R:	Sam Ravnborg <sam@ravnborg.org>
 L:	dri-devel@lists.freedesktop.org
 S:	Maintained
