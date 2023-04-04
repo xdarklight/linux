@@ -40,7 +40,7 @@ static int bpf_sk_storage_del(struct sock *sk, struct bpf_map *map)
 	if (!sdata)
 		return -ENOENT;
 
-	bpf_selem_unlink(SELEM(sdata), true);
+	bpf_selem_unlink(SELEM(sdata), false);
 
 	return 0;
 }
@@ -49,7 +49,6 @@ static int bpf_sk_storage_del(struct sock *sk, struct bpf_map *map)
 void bpf_sk_storage_free(struct sock *sk)
 {
 	struct bpf_local_storage *sk_storage;
-	bool free_sk_storage = false;
 
 	rcu_read_lock();
 	sk_storage = rcu_dereference(sk->sk_bpf_storage);
@@ -58,13 +57,8 @@ void bpf_sk_storage_free(struct sock *sk)
 		return;
 	}
 
-	raw_spin_lock_bh(&sk_storage->lock);
-	free_sk_storage = bpf_local_storage_unlink_nolock(sk_storage);
-	raw_spin_unlock_bh(&sk_storage->lock);
+	bpf_local_storage_destroy(sk_storage);
 	rcu_read_unlock();
-
-	if (free_sk_storage)
-		kfree_rcu(sk_storage, rcu);
 }
 
 static void bpf_sk_storage_map_free(struct bpf_map *map)
@@ -74,7 +68,7 @@ static void bpf_sk_storage_map_free(struct bpf_map *map)
 
 static struct bpf_map *bpf_sk_storage_map_alloc(union bpf_attr *attr)
 {
-	return bpf_local_storage_map_alloc(attr, &sk_cache);
+	return bpf_local_storage_map_alloc(attr, &sk_cache, false);
 }
 
 static int notsupp_get_next_key(struct bpf_map *map, void *key,
@@ -100,8 +94,8 @@ static void *bpf_fd_sk_storage_lookup_elem(struct bpf_map *map, void *key)
 	return ERR_PTR(err);
 }
 
-static int bpf_fd_sk_storage_update_elem(struct bpf_map *map, void *key,
-					 void *value, u64 map_flags)
+static long bpf_fd_sk_storage_update_elem(struct bpf_map *map, void *key,
+					  void *value, u64 map_flags)
 {
 	struct bpf_local_storage_data *sdata;
 	struct socket *sock;
@@ -120,7 +114,7 @@ static int bpf_fd_sk_storage_update_elem(struct bpf_map *map, void *key,
 	return err;
 }
 
-static int bpf_fd_sk_storage_delete_elem(struct bpf_map *map, void *key)
+static long bpf_fd_sk_storage_delete_elem(struct bpf_map *map, void *key)
 {
 	struct socket *sock;
 	int fd, err;
@@ -203,7 +197,7 @@ int bpf_sk_storage_clone(const struct sock *sk, struct sock *newsk)
 		} else {
 			ret = bpf_local_storage_alloc(newsk, smap, copy_selem, GFP_ATOMIC);
 			if (ret) {
-				kfree(copy_selem);
+				bpf_selem_free(copy_selem, smap, true);
 				atomic_sub(smap->elem_size,
 					   &newsk->sk_omem_alloc);
 				bpf_map_put(map);

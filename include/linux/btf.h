@@ -71,6 +71,10 @@
 #define KF_SLEEPABLE    (1 << 5) /* kfunc may sleep */
 #define KF_DESTRUCTIVE  (1 << 6) /* kfunc performs destructive actions */
 #define KF_RCU          (1 << 7) /* kfunc takes either rcu or trusted pointer arguments */
+/* only one of KF_ITER_{NEW,NEXT,DESTROY} could be specified per kfunc */
+#define KF_ITER_NEW     (1 << 8) /* kfunc implements BPF iter constructor */
+#define KF_ITER_NEXT    (1 << 9) /* kfunc implements BPF iter next method */
+#define KF_ITER_DESTROY (1 << 10) /* kfunc implements BPF iter destructor */
 
 /*
  * Tag marking a kernel function as a kfunc. This is meant to minimize the
@@ -116,8 +120,6 @@ struct btf_struct_metas {
 	u32 cnt;
 	struct btf_struct_meta types[];
 };
-
-typedef void (*btf_dtor_kfunc_t)(void *);
 
 extern const struct file_operations btf_fops;
 
