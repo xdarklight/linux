@@ -92,7 +92,7 @@
 #define REG_SDIO_HCPWM2				(SDIO_LOCAL_OFFSET + 0x0026)
 /* Free Tx Page Sequence */
 #define REG_SDIO_FREE_TXPG_SEQ			(SDIO_LOCAL_OFFSET + 0x0028)
-/* HTSF Informaion */
+/* HTSF Information */
 #define REG_SDIO_HTSFR_INFO			(SDIO_LOCAL_OFFSET + 0x0030)
 #define REG_SDIO_HCPWM1_V2			(SDIO_LOCAL_OFFSET + 0x0038)
 /* H2C */

@@ -22,7 +22,7 @@
 
 static bool rtw_sdio_is_bus_addr(u32 addr)
 {
-	return (addr & RTW_SDIO_BUS_MSK) != 0;
+	return !!(addr & RTW_SDIO_BUS_MSK);
 }
 
 static bool rtw_sdio_bus_claim_needed(struct rtw_sdio *rtwsdio)
@@ -1026,9 +1026,12 @@ static void rtw_sdio_rx_isr(struct rtw_dev *rtwdev)
 static void rtw_sdio_handle_interrupt(struct sdio_func *sdio_func)
 {
 	struct ieee80211_hw *hw = sdio_get_drvdata(sdio_func);
-	struct rtw_dev *rtwdev = hw->priv;
-	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+	struct rtw_sdio *rtwsdio;
+	struct rtw_dev *rtwdev;
 	u32 hisr;
+
+	rtwdev = hw->priv;
+	rtwsdio = (struct rtw_sdio *)rtwdev->priv;
 
 	rtwsdio->irq_thread = current;
 
@@ -1200,9 +1203,12 @@ static void rtw_sdio_tx_handler(struct work_struct *work)
 {
 	struct rtw_sdio_work_data *work_data =
 		container_of(work, struct rtw_sdio_work_data, work);
-	struct rtw_dev *rtwdev = work_data->rtwdev;
-	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+	struct rtw_sdio *rtwsdio;
+	struct rtw_dev *rtwdev;
 	int limit, queue;
+
+	rtwdev = work_data->rtwdev;
+	rtwsdio = (struct rtw_sdio *)rtwdev->priv;
 
 	if (!rtw_fw_feature_check(&rtwdev->fw, FW_FEATURE_TX_WAKE))
 		rtw_sdio_deep_ps_leave(rtwdev);
@@ -1366,10 +1372,11 @@ EXPORT_SYMBOL(rtw_sdio_remove);
 void rtw_sdio_shutdown(struct device *dev)
 {
 	struct sdio_func *sdio_func = dev_to_sdio_func(dev);
-	struct ieee80211_hw *hw = sdio_get_drvdata(sdio_func);
 	const struct rtw_chip_info *chip;
+	struct ieee80211_hw *hw;
 	struct rtw_dev *rtwdev;
 
+	hw = sdio_get_drvdata(sdio_func);
 	if (!hw)
 		return;
 
