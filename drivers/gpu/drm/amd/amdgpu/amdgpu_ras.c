@@ -34,6 +34,7 @@
 #include "amdgpu_atomfirmware.h"
 #include "amdgpu_xgmi.h"
 #include "ivsrcid/nbio/irqsrcs_nbif_7_4.h"
+#include "nbio_v4_3.h"
 #include "atom.h"
 #include "amdgpu_reset.h"
 
@@ -2340,6 +2341,7 @@ static bool amdgpu_ras_asic_supported(struct amdgpu_device *adev)
 	if (amdgpu_sriov_vf(adev)) {
 		switch (adev->ip_versions[MP0_HWIP][0]) {
 		case IP_VERSION(13, 0, 2):
+		case IP_VERSION(13, 0, 10):
 			return true;
 		default:
 			return false;
@@ -2554,20 +2556,33 @@ int amdgpu_ras_init(struct amdgpu_device *adev)
 	/* initialize nbio ras function ahead of any other
 	 * ras functions so hardware fatal error interrupt
 	 * can be enabled as early as possible */
-	switch (adev->asic_type) {
-	case CHIP_VEGA20:
-	case CHIP_ARCTURUS:
-	case CHIP_ALDEBARAN:
-		if (!adev->gmc.xgmi.connected_to_cpu) {
+	switch (adev->ip_versions[NBIO_HWIP][0]) {
+	case IP_VERSION(7, 4, 0):
+	case IP_VERSION(7, 4, 1):
+	case IP_VERSION(7, 4, 4):
+		if (!adev->gmc.xgmi.connected_to_cpu)
 			adev->nbio.ras = &nbio_v7_4_ras;
-			amdgpu_ras_register_ras_block(adev, &adev->nbio.ras->ras_block);
-			adev->nbio.ras_if = &adev->nbio.ras->ras_block.ras_comm;
-		}
+		break;
+	case IP_VERSION(4, 3, 0):
+		if (adev->ras_hw_enabled & (1 << AMDGPU_RAS_BLOCK__DF))
+			/* unlike other generation of nbio ras,
+			 * nbio v4_3 only support fatal error interrupt
+			 * to inform software that DF is freezed due to
+			 * system fatal error event. driver should not
+			 * enable nbio ras in such case. Instead,
+			 * check DF RAS */
+			adev->nbio.ras = &nbio_v4_3_ras;
 		break;
 	default:
 		/* nbio ras is not available */
 		break;
 	}
+
+	/* nbio ras block needs to be enabled ahead of other ras blocks
+	 * to handle fatal error */
+	r = amdgpu_nbio_ras_sw_init(adev);
+	if (r)
+		return r;
 
 	if (adev->nbio.ras &&
 	    adev->nbio.ras->init_ras_controller_interrupt) {
@@ -3072,9 +3087,6 @@ int amdgpu_ras_register_ras_block(struct amdgpu_device *adev,
 	struct amdgpu_ras_block_list *ras_node;
 	if (!adev || !ras_block_obj)
 		return -EINVAL;
-
-	if (!amdgpu_ras_asic_supported(adev))
-		return 0;
 
 	ras_node = kzalloc(sizeof(*ras_node), GFP_KERNEL);
 	if (!ras_node)
