@@ -29,10 +29,6 @@
 #include <asm/export.h>
 #include <asm/nospec-insn.h>
 
-STACK_SHIFT = PAGE_SHIFT + THREAD_SIZE_ORDER
-STACK_SIZE  = 1 << STACK_SHIFT
-STACK_INIT = STACK_SIZE - STACK_FRAME_OVERHEAD - __PT_SIZE
-
 _LPP_OFFSET	= __LC_LPP
 
 	.macro STBEAR address
@@ -53,7 +49,7 @@ _LPP_OFFSET	= __LC_LPP
 
 	.macro	CHECK_STACK savearea
 #ifdef CONFIG_CHECK_STACK
-	tml	%r15,STACK_SIZE - CONFIG_STACK_GUARD
+	tml	%r15,THREAD_SIZE - CONFIG_STACK_GUARD
 	lghi	%r14,\savearea
 	jz	stack_overflow
 #endif
@@ -62,8 +58,8 @@ _LPP_OFFSET	= __LC_LPP
 	.macro	CHECK_VMAP_STACK savearea,oklabel
 #ifdef CONFIG_VMAP_STACK
 	lgr	%r14,%r15
-	nill	%r14,0x10000 - STACK_SIZE
-	oill	%r14,STACK_INIT
+	nill	%r14,0x10000 - THREAD_SIZE
+	oill	%r14,STACK_INIT_OFFSET
 	clg	%r14,__LC_KERNEL_STACK
 	je	\oklabel
 	clg	%r14,__LC_ASYNC_STACK
@@ -154,25 +150,25 @@ _LPP_OFFSET	= __LC_LPP
 	.endm
 #endif
 
+	.macro STACKLEAK_ERASE
+#ifdef CONFIG_GCC_PLUGIN_STACKLEAK
+	brasl	%r14,stackleak_erase_on_task_stack
+#endif
+	.endm
+
 	GEN_BR_THUNK %r14
 
 	.section .kprobes.text, "ax"
 .Ldummy:
 	/*
-	 * This nop exists only in order to avoid that __bpon starts at
-	 * the beginning of the kprobes text section. In that case we would
-	 * have several symbols at the same address. E.g. objdump would take
-	 * an arbitrary symbol name when disassembling this code.
-	 * With the added nop in between the __bpon symbol is unique
-	 * again.
+	 * The following nop exists only in order to avoid that the next
+	 * symbol starts at the beginning of the kprobes text section.
+	 * In that case there would be several symbols at the same address.
+	 * E.g. objdump would take an arbitrary symbol when disassembling
+	 * the code.
+	 * With the added nop in between this cannot happen.
 	 */
 	nop	0
-
-ENTRY(__bpon)
-	.globl __bpon
-	BPON
-	BR_EX	%r14
-ENDPROC(__bpon)
 
 /*
  * Scheduler resume function, called by switch_to
@@ -185,7 +181,7 @@ ENTRY(__switch_to)
 	stmg	%r6,%r15,__SF_GPRS(%r15)	# store gprs of prev task
 	lghi	%r4,__TASK_stack
 	lghi	%r1,__TASK_thread
-	llill	%r5,STACK_INIT
+	llill	%r5,STACK_INIT_OFFSET
 	stg	%r15,__THREAD_ksp(%r1,%r2)	# store kernel stack of prev
 	lg	%r15,0(%r4,%r3)			# start of kernel stack of next
 	agr	%r15,%r5			# end of kernel stack of next
@@ -227,7 +223,7 @@ ENTRY(__sie64a)
 	TSTMSK	__LC_CPU_FLAGS,_CIF_FPU
 	jo	.Lsie_skip			# exit if fp/vx regs changed
 	lg	%r14,__SF_SIE_CONTROL_PHYS(%r15)	# get sie block phys addr
-	BPEXIT	__SF_SIE_FLAGS(%r15),(_TIF_ISOLATE_BP|_TIF_ISOLATE_BP_GUEST)
+	BPEXIT	__SF_SIE_FLAGS(%r15),_TIF_ISOLATE_BP_GUEST
 .Lsie_entry:
 	sie	0(%r14)
 # Let the next instruction be NOP to avoid triggering a machine check
@@ -235,7 +231,7 @@ ENTRY(__sie64a)
 	nopr	7
 .Lsie_leave:
 	BPOFF
-	BPENTER	__SF_SIE_FLAGS(%r15),(_TIF_ISOLATE_BP|_TIF_ISOLATE_BP_GUEST)
+	BPENTER	__SF_SIE_FLAGS(%r15),_TIF_ISOLATE_BP_GUEST
 .Lsie_skip:
 	lg	%r14,__SF_SIE_CONTROL(%r15)	# get control block pointer
 	ni	__SIE_PROG0C+3(%r14),0xfe	# no longer in SIE
@@ -291,11 +287,9 @@ ENTRY(system_call)
 .Lsysc_per:
 	STBEAR	__LC_LAST_BREAK
 	lctlg	%c1,%c1,__LC_KERNEL_ASCE
-	lg	%r12,__LC_CURRENT
 	lg	%r15,__LC_KERNEL_STACK
 	xc	__SF_BACKCHAIN(8,%r15),__SF_BACKCHAIN(%r15)
 	stmg	%r0,%r7,STACK_FRAME_OVERHEAD+__PT_R0(%r15)
-	BPENTER __TI_flags(%r12),_TIF_ISOLATE_BP
 	# clear user controlled register to prevent speculative use
 	xgr	%r0,%r0
 	xgr	%r1,%r1
@@ -312,9 +306,10 @@ ENTRY(system_call)
 	MBEAR	%r2
 	lgr	%r3,%r14
 	brasl	%r14,__do_syscall
+	STACKLEAK_ERASE
 	lctlg	%c1,%c1,__LC_USER_ASCE
 	mvc	__LC_RETURN_PSW(16),STACK_FRAME_OVERHEAD+__PT_PSW(%r15)
-	BPEXIT __TI_flags(%r12),_TIF_ISOLATE_BP
+	BPON
 	LBEAR	STACK_FRAME_OVERHEAD+__PT_LAST_BREAK(%r15)
 	lmg	%r0,%r15,STACK_FRAME_OVERHEAD+__PT_R0(%r15)
 	stpt	__LC_EXIT_TIMER
@@ -327,9 +322,10 @@ ENDPROC(system_call)
 ENTRY(ret_from_fork)
 	lgr	%r3,%r11
 	brasl	%r14,__ret_from_fork
+	STACKLEAK_ERASE
 	lctlg	%c1,%c1,__LC_USER_ASCE
 	mvc	__LC_RETURN_PSW(16),STACK_FRAME_OVERHEAD+__PT_PSW(%r15)
-	BPEXIT __TI_flags(%r12),_TIF_ISOLATE_BP
+	BPON
 	LBEAR	STACK_FRAME_OVERHEAD+__PT_LAST_BREAK(%r15)
 	lmg	%r0,%r15,STACK_FRAME_OVERHEAD+__PT_R0(%r15)
 	stpt	__LC_EXIT_TIMER
@@ -344,7 +340,6 @@ ENTRY(pgm_check_handler)
 	stpt	__LC_SYS_ENTER_TIMER
 	BPOFF
 	stmg	%r8,%r15,__LC_SAVE_AREA_SYNC
-	lg	%r12,__LC_CURRENT
 	lghi	%r10,0
 	lmg	%r8,%r9,__LC_PGM_OLD_PSW
 	tmhh	%r8,0x0001		# coming from user space?
@@ -355,6 +350,7 @@ ENTRY(pgm_check_handler)
 #if IS_ENABLED(CONFIG_KVM)
 	# cleanup critical section for program checks in __sie64a
 	OUTSIDE	%r9,.Lsie_gmap,.Lsie_done,1f
+	BPENTER	__SF_SIE_FLAGS(%r15),_TIF_ISOLATE_BP_GUEST
 	SIEEXIT
 	lghi	%r10,_PIF_GUEST_FAULT
 #endif
@@ -366,8 +362,7 @@ ENTRY(pgm_check_handler)
 	aghi	%r15,-(STACK_FRAME_OVERHEAD + __PT_SIZE)
 	# CHECK_VMAP_STACK branches to stack_overflow or 4f
 	CHECK_VMAP_STACK __LC_SAVE_AREA_SYNC,4f
-3:	BPENTER __TI_flags(%r12),_TIF_ISOLATE_BP
-	lg	%r15,__LC_KERNEL_STACK
+3:	lg	%r15,__LC_KERNEL_STACK
 4:	la	%r11,STACK_FRAME_OVERHEAD(%r15)
 	stg	%r10,__PT_FLAGS(%r11)
 	xc	__SF_BACKCHAIN(8,%r15),__SF_BACKCHAIN(%r15)
@@ -388,8 +383,9 @@ ENTRY(pgm_check_handler)
 	brasl	%r14,__do_pgm_check
 	tmhh	%r8,0x0001		# returning to user space?
 	jno	.Lpgm_exit_kernel
+	STACKLEAK_ERASE
 	lctlg	%c1,%c1,__LC_USER_ASCE
-	BPEXIT __TI_flags(%r12),_TIF_ISOLATE_BP
+	BPON
 	stpt	__LC_EXIT_TIMER
 .Lpgm_exit_kernel:
 	mvc	__LC_RETURN_PSW(16),STACK_FRAME_OVERHEAD+__PT_PSW(%r15)
@@ -419,20 +415,18 @@ ENTRY(\name)
 	STBEAR	__LC_LAST_BREAK
 	BPOFF
 	stmg	%r8,%r15,__LC_SAVE_AREA_ASYNC
-	lg	%r12,__LC_CURRENT
 	lmg	%r8,%r9,\lc_old_psw
 	tmhh	%r8,0x0001			# interrupting from user ?
 	jnz	1f
 #if IS_ENABLED(CONFIG_KVM)
 	OUTSIDE	%r9,.Lsie_gmap,.Lsie_done,0f
-	BPENTER	__SF_SIE_FLAGS(%r15),(_TIF_ISOLATE_BP|_TIF_ISOLATE_BP_GUEST)
+	BPENTER	__SF_SIE_FLAGS(%r15),_TIF_ISOLATE_BP_GUEST
 	SIEEXIT
 #endif
 0:	CHECK_STACK __LC_SAVE_AREA_ASYNC
 	aghi	%r15,-(STACK_FRAME_OVERHEAD + __PT_SIZE)
 	j	2f
-1:	BPENTER __TI_flags(%r12),_TIF_ISOLATE_BP
-	lctlg	%c1,%c1,__LC_KERNEL_ASCE
+1:	lctlg	%c1,%c1,__LC_KERNEL_ASCE
 	lg	%r15,__LC_KERNEL_STACK
 2:	xc	__SF_BACKCHAIN(8,%r15),__SF_BACKCHAIN(%r15)
 	la	%r11,STACK_FRAME_OVERHEAD(%r15)
@@ -455,8 +449,9 @@ ENTRY(\name)
 	mvc	__LC_RETURN_PSW(16),__PT_PSW(%r11)
 	tmhh	%r8,0x0001		# returning to user ?
 	jno	2f
+	STACKLEAK_ERASE
 	lctlg	%c1,%c1,__LC_USER_ASCE
-	BPEXIT	__TI_flags(%r12),_TIF_ISOLATE_BP
+	BPON
 	stpt	__LC_EXIT_TIMER
 2:	LBEAR	__PT_LAST_BREAK(%r11)
 	lmg	%r0,%r15,__PT_R0(%r11)
@@ -500,15 +495,13 @@ ENTRY(mcck_int_handler)
 	la	%r1,4095		# validate r1
 	spt	__LC_CPU_TIMER_SAVE_AREA-4095(%r1)	# validate cpu timer
 	LBEAR	__LC_LAST_BREAK_SAVE_AREA-4095(%r1)		# validate bear
-	lmg	%r0,%r15,__LC_GPREGS_SAVE_AREA-4095(%r1)# validate gprs
-	lg	%r12,__LC_CURRENT
+	lmg	%r0,%r15,__LC_GPREGS_SAVE_AREA		# validate gprs
 	lmg	%r8,%r9,__LC_MCK_OLD_PSW
 	TSTMSK	__LC_MCCK_CODE,MCCK_CODE_SYSTEM_DAMAGE
 	jo	.Lmcck_panic		# yes -> rest of mcck code invalid
 	TSTMSK	__LC_MCCK_CODE,MCCK_CODE_CR_VALID
 	jno	.Lmcck_panic		# control registers invalid -> panic
-	la	%r14,4095
-	lctlg	%c0,%c15,__LC_CREGS_SAVE_AREA-4095(%r14) # validate ctl regs
+	lctlg	%c0,%c15,__LC_CREGS_SAVE_AREA		# validate ctl regs
 	ptlb
 	lghi	%r14,__LC_CPU_TIMER_SAVE_AREA
 	mvc	__LC_MCCK_ENTER_TIMER(8),0(%r14)
@@ -530,16 +523,13 @@ ENTRY(mcck_int_handler)
 	TSTMSK	__LC_MCCK_CODE,MCCK_CODE_PSW_IA_VALID
 	jno	.Lmcck_panic
 #if IS_ENABLED(CONFIG_KVM)
-	OUTSIDE	%r9,.Lsie_gmap,.Lsie_done,.Lmcck_stack
+	OUTSIDE	%r9,.Lsie_gmap,.Lsie_done,.Lmcck_user
 	OUTSIDE	%r9,.Lsie_entry,.Lsie_leave,4f
 	oi	__LC_CPU_FLAGS+7, _CIF_MCCK_GUEST
-4:	BPENTER	__SF_SIE_FLAGS(%r15),(_TIF_ISOLATE_BP|_TIF_ISOLATE_BP_GUEST)
+4:	BPENTER	__SF_SIE_FLAGS(%r15),_TIF_ISOLATE_BP_GUEST
 	SIEEXIT
-	j	.Lmcck_stack
 #endif
 .Lmcck_user:
-	BPENTER __TI_flags(%r12),_TIF_ISOLATE_BP
-.Lmcck_stack:
 	lg	%r15,__LC_MCCK_STACK
 	la	%r11,STACK_FRAME_OVERHEAD(%r15)
 	stctg	%c1,%c1,__PT_CR1(%r11)
@@ -567,7 +557,7 @@ ENTRY(mcck_int_handler)
 	mvc	__LC_RETURN_MCCK_PSW(16),__PT_PSW(%r11) # move return PSW
 	tm	__LC_RETURN_MCCK_PSW+1,0x01 # returning to user ?
 	jno	0f
-	BPEXIT	__TI_flags(%r12),_TIF_ISOLATE_BP
+	BPON
 	stpt	__LC_EXIT_TIMER
 0:	ALTERNATIVE "nop", __stringify(lghi %r12,__LC_LAST_BREAK_SAVE_AREA),193
 	LBEAR	0(%r12)
@@ -609,8 +599,7 @@ ENTRY(restart_int_handler)
 	stg	%r15,__LC_SAVE_AREA_RESTART
 	TSTMSK	__LC_RESTART_FLAGS,RESTART_FLAG_CTLREGS,4
 	jz	0f
-	la	%r15,4095
-	lctlg	%c0,%c15,__LC_CREGS_SAVE_AREA-4095(%r15)
+	lctlg	%c0,%c15,__LC_CREGS_SAVE_AREA
 0:	larl	%r15,.Lstosm_tmp
 	stosm	0(%r15),0x04			# turn dat on, keep irqs off
 	lg	%r15,__LC_RESTART_STACK
