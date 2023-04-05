@@ -27,19 +27,13 @@ static int io_sqe_buffer_register(struct io_ring_ctx *ctx, struct iovec *iov,
 				  struct io_mapped_ubuf **pimu,
 				  struct page **last_hpage);
 
-#define IO_RSRC_REF_BATCH	100
-
 /* only define max */
 #define IORING_MAX_FIXED_FILES	(1U << 20)
 #define IORING_MAX_REG_BUFFERS	(1U << 14)
 
-void io_rsrc_refs_drop(struct io_ring_ctx *ctx)
-	__must_hold(&ctx->uring_lock)
+static inline bool io_put_rsrc_data_ref(struct io_rsrc_data *rsrc_data)
 {
-	if (ctx->rsrc_cached_refs) {
-		io_rsrc_put_node(ctx->rsrc_node, ctx->rsrc_cached_refs);
-		ctx->rsrc_cached_refs = 0;
-	}
+	return !--rsrc_data->refs;
 }
 
 int __io_account_mem(struct user_struct *user, unsigned long nr_pages)
@@ -151,132 +145,84 @@ static void io_buffer_unmap(struct io_ring_ctx *ctx, struct io_mapped_ubuf **slo
 	*slot = NULL;
 }
 
-void io_rsrc_refs_refill(struct io_ring_ctx *ctx)
-	__must_hold(&ctx->uring_lock)
+static void io_rsrc_put_work_one(struct io_rsrc_data *rsrc_data,
+				 struct io_rsrc_put *prsrc)
 {
-	ctx->rsrc_cached_refs += IO_RSRC_REF_BATCH;
-	percpu_ref_get_many(&ctx->rsrc_node->refs, IO_RSRC_REF_BATCH);
+	struct io_ring_ctx *ctx = rsrc_data->ctx;
+
+	if (prsrc->tag)
+		io_post_aux_cqe(ctx, prsrc->tag, 0, 0);
+	rsrc_data->do_put(ctx, prsrc);
 }
 
 static void __io_rsrc_put_work(struct io_rsrc_node *ref_node)
 {
 	struct io_rsrc_data *rsrc_data = ref_node->rsrc_data;
-	struct io_ring_ctx *ctx = rsrc_data->ctx;
 	struct io_rsrc_put *prsrc, *tmp;
 
-	list_for_each_entry_safe(prsrc, tmp, &ref_node->rsrc_list, list) {
+	if (ref_node->inline_items)
+		io_rsrc_put_work_one(rsrc_data, &ref_node->item);
+
+	list_for_each_entry_safe(prsrc, tmp, &ref_node->item_list, list) {
 		list_del(&prsrc->list);
-
-		if (prsrc->tag) {
-			if (ctx->flags & IORING_SETUP_IOPOLL) {
-				mutex_lock(&ctx->uring_lock);
-				io_post_aux_cqe(ctx, prsrc->tag, 0, 0);
-				mutex_unlock(&ctx->uring_lock);
-			} else {
-				io_post_aux_cqe(ctx, prsrc->tag, 0, 0);
-			}
-		}
-
-		rsrc_data->do_put(ctx, prsrc);
+		io_rsrc_put_work_one(rsrc_data, prsrc);
 		kfree(prsrc);
 	}
 
-	io_rsrc_node_destroy(ref_node);
-	if (atomic_dec_and_test(&rsrc_data->refs))
+	io_rsrc_node_destroy(rsrc_data->ctx, ref_node);
+	if (io_put_rsrc_data_ref(rsrc_data))
 		complete(&rsrc_data->done);
-}
-
-void io_rsrc_put_work(struct work_struct *work)
-{
-	struct io_ring_ctx *ctx;
-	struct llist_node *node;
-
-	ctx = container_of(work, struct io_ring_ctx, rsrc_put_work.work);
-	node = llist_del_all(&ctx->rsrc_put_llist);
-
-	while (node) {
-		struct io_rsrc_node *ref_node;
-		struct llist_node *next = node->next;
-
-		ref_node = llist_entry(node, struct io_rsrc_node, llist);
-		__io_rsrc_put_work(ref_node);
-		node = next;
-	}
-}
-
-void io_rsrc_put_tw(struct callback_head *cb)
-{
-	struct io_ring_ctx *ctx = container_of(cb, struct io_ring_ctx,
-					       rsrc_put_tw);
-
-	io_rsrc_put_work(&ctx->rsrc_put_work.work);
 }
 
 void io_wait_rsrc_data(struct io_rsrc_data *data)
 {
-	if (data && !atomic_dec_and_test(&data->refs))
+	if (data && !io_put_rsrc_data_ref(data))
 		wait_for_completion(&data->done);
 }
 
-void io_rsrc_node_destroy(struct io_rsrc_node *ref_node)
+void io_rsrc_node_destroy(struct io_ring_ctx *ctx, struct io_rsrc_node *node)
 {
-	percpu_ref_exit(&ref_node->refs);
-	kfree(ref_node);
+	if (!io_alloc_cache_put(&ctx->rsrc_node_cache, &node->cache))
+		kfree(node);
 }
 
-static __cold void io_rsrc_node_ref_zero(struct percpu_ref *ref)
+void io_rsrc_node_ref_zero(struct io_rsrc_node *node)
+	__must_hold(&node->rsrc_data->ctx->uring_lock)
 {
-	struct io_rsrc_node *node = container_of(ref, struct io_rsrc_node, refs);
 	struct io_ring_ctx *ctx = node->rsrc_data->ctx;
-	unsigned long flags;
-	bool first_add = false;
-	unsigned long delay = HZ;
 
-	spin_lock_irqsave(&ctx->rsrc_ref_lock, flags);
 	node->done = true;
-
-	/* if we are mid-quiesce then do not delay */
-	if (node->rsrc_data->quiesce)
-		delay = 0;
-
 	while (!list_empty(&ctx->rsrc_ref_list)) {
 		node = list_first_entry(&ctx->rsrc_ref_list,
 					    struct io_rsrc_node, node);
 		/* recycle ref nodes in order */
 		if (!node->done)
 			break;
+
 		list_del(&node->node);
-		first_add |= llist_add(&node->llist, &ctx->rsrc_put_llist);
+		__io_rsrc_put_work(node);
 	}
-	spin_unlock_irqrestore(&ctx->rsrc_ref_lock, flags);
-
-	if (!first_add)
-		return;
-
-	if (ctx->submitter_task) {
-		if (!task_work_add(ctx->submitter_task, &ctx->rsrc_put_tw,
-				   ctx->notify_method))
-			return;
-	}
-	mod_delayed_work(system_wq, &ctx->rsrc_put_work, delay);
 }
 
-static struct io_rsrc_node *io_rsrc_node_alloc(void)
+static struct io_rsrc_node *io_rsrc_node_alloc(struct io_ring_ctx *ctx)
 {
 	struct io_rsrc_node *ref_node;
+	struct io_cache_entry *entry;
 
-	ref_node = kzalloc(sizeof(*ref_node), GFP_KERNEL);
-	if (!ref_node)
-		return NULL;
-
-	if (percpu_ref_init(&ref_node->refs, io_rsrc_node_ref_zero,
-			    0, GFP_KERNEL)) {
-		kfree(ref_node);
-		return NULL;
+	entry = io_alloc_cache_get(&ctx->rsrc_node_cache);
+	if (entry) {
+		ref_node = container_of(entry, struct io_rsrc_node, cache);
+	} else {
+		ref_node = kzalloc(sizeof(*ref_node), GFP_KERNEL);
+		if (!ref_node)
+			return NULL;
 	}
+
+	ref_node->refs = 1;
 	INIT_LIST_HEAD(&ref_node->node);
-	INIT_LIST_HEAD(&ref_node->rsrc_list);
+	INIT_LIST_HEAD(&ref_node->item_list);
 	ref_node->done = false;
+	ref_node->inline_items = 0;
 	return ref_node;
 }
 
@@ -287,18 +233,15 @@ void io_rsrc_node_switch(struct io_ring_ctx *ctx,
 	WARN_ON_ONCE(!ctx->rsrc_backup_node);
 	WARN_ON_ONCE(data_to_kill && !ctx->rsrc_node);
 
-	io_rsrc_refs_drop(ctx);
-
 	if (data_to_kill) {
 		struct io_rsrc_node *rsrc_node = ctx->rsrc_node;
 
 		rsrc_node->rsrc_data = data_to_kill;
-		spin_lock_irq(&ctx->rsrc_ref_lock);
 		list_add_tail(&rsrc_node->node, &ctx->rsrc_ref_list);
-		spin_unlock_irq(&ctx->rsrc_ref_lock);
 
-		atomic_inc(&data_to_kill->refs);
-		percpu_ref_kill(&rsrc_node->refs);
+		data_to_kill->refs++;
+		/* put master ref */
+		io_put_rsrc_node(ctx, rsrc_node);
 		ctx->rsrc_node = NULL;
 	}
 
@@ -312,7 +255,7 @@ int io_rsrc_node_switch_start(struct io_ring_ctx *ctx)
 {
 	if (ctx->rsrc_backup_node)
 		return 0;
-	ctx->rsrc_backup_node = io_rsrc_node_alloc();
+	ctx->rsrc_backup_node = io_rsrc_node_alloc(ctx);
 	return ctx->rsrc_backup_node ? 0 : -ENOMEM;
 }
 
@@ -329,8 +272,8 @@ __cold static int io_rsrc_ref_quiesce(struct io_rsrc_data *data,
 		return ret;
 	io_rsrc_node_switch(ctx, data);
 
-	/* kill initial ref, already quiesced if zero */
-	if (atomic_dec_and_test(&data->refs))
+	/* kill initial ref */
+	if (io_put_rsrc_data_ref(data))
 		return 0;
 
 	data->quiesce = true;
@@ -338,19 +281,19 @@ __cold static int io_rsrc_ref_quiesce(struct io_rsrc_data *data,
 	do {
 		ret = io_run_task_work_sig(ctx);
 		if (ret < 0) {
-			atomic_inc(&data->refs);
-			/* wait for all works potentially completing data->done */
-			flush_delayed_work(&ctx->rsrc_put_work);
-			reinit_completion(&data->done);
 			mutex_lock(&ctx->uring_lock);
+			if (!data->refs) {
+				ret = 0;
+			} else {
+				/* restore the master reference */
+				data->refs++;
+			}
 			break;
 		}
-
-		flush_delayed_work(&ctx->rsrc_put_work);
 		ret = wait_for_completion_interruptible(&data->done);
 		if (!ret) {
 			mutex_lock(&ctx->uring_lock);
-			if (atomic_read(&data->refs) <= 0)
+			if (!data->refs)
 				break;
 			/*
 			 * it has been revived by another thread while
@@ -425,6 +368,7 @@ __cold static int io_rsrc_data_alloc(struct io_ring_ctx *ctx,
 	data->nr = nr;
 	data->ctx = ctx;
 	data->do_put = do_put;
+	data->refs = 1;
 	if (utags) {
 		ret = -EFAULT;
 		for (i = 0; i < nr; i++) {
@@ -435,8 +379,6 @@ __cold static int io_rsrc_data_alloc(struct io_ring_ctx *ctx,
 				goto fail;
 		}
 	}
-
-	atomic_set(&data->refs, 1);
 	init_completion(&data->done);
 	*pdata = data;
 	return 0;
@@ -758,15 +700,23 @@ int io_queue_rsrc_removal(struct io_rsrc_data *data, unsigned idx,
 {
 	u64 *tag_slot = io_get_tag_slot(data, idx);
 	struct io_rsrc_put *prsrc;
+	bool inline_item = true;
 
-	prsrc = kzalloc(sizeof(*prsrc), GFP_KERNEL);
-	if (!prsrc)
-		return -ENOMEM;
+	if (!node->inline_items) {
+		prsrc = &node->item;
+		node->inline_items++;
+	} else {
+		prsrc = kzalloc(sizeof(*prsrc), GFP_KERNEL);
+		if (!prsrc)
+			return -ENOMEM;
+		inline_item = false;
+	}
 
 	prsrc->tag = *tag_slot;
 	*tag_slot = 0;
 	prsrc->rsrc = rsrc;
-	list_add(&prsrc->list, &node->rsrc_list);
+	if (!inline_item)
+		list_add(&prsrc->list, &node->item_list);
 	return 0;
 }
 

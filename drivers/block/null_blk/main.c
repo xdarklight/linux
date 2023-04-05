@@ -1030,8 +1030,8 @@ static int null_flush_cache_page(struct nullb *nullb, struct nullb_page *c_page)
 	if (!t_page)
 		return -ENOMEM;
 
-	src = kmap_atomic(c_page->page);
-	dst = kmap_atomic(t_page->page);
+	src = kmap_local_page(c_page->page);
+	dst = kmap_local_page(t_page->page);
 
 	for (i = 0; i < PAGE_SECTORS;
 			i += (nullb->dev->blocksize >> SECTOR_SHIFT)) {
@@ -1043,8 +1043,8 @@ static int null_flush_cache_page(struct nullb *nullb, struct nullb_page *c_page)
 		}
 	}
 
-	kunmap_atomic(dst);
-	kunmap_atomic(src);
+	kunmap_local(dst);
+	kunmap_local(src);
 
 	ret = radix_tree_delete_item(&nullb->dev->cache, idx, c_page);
 	null_free_page(ret);
@@ -1112,7 +1112,6 @@ static int copy_to_nullb(struct nullb *nullb, struct page *source,
 	size_t temp, count = 0;
 	unsigned int offset;
 	struct nullb_page *t_page;
-	void *dst, *src;
 
 	while (count < n) {
 		temp = min_t(size_t, nullb->dev->blocksize, n - count);
@@ -1126,11 +1125,7 @@ static int copy_to_nullb(struct nullb *nullb, struct page *source,
 		if (!t_page)
 			return -ENOSPC;
 
-		src = kmap_atomic(source);
-		dst = kmap_atomic(t_page->page);
-		memcpy(dst + offset, src + off + count, temp);
-		kunmap_atomic(dst);
-		kunmap_atomic(src);
+		memcpy_page(t_page->page, offset, source, off + count, temp);
 
 		__set_bit(sector & SECTOR_MASK, t_page->bitmap);
 
@@ -1149,7 +1144,6 @@ static int copy_from_nullb(struct nullb *nullb, struct page *dest,
 	size_t temp, count = 0;
 	unsigned int offset;
 	struct nullb_page *t_page;
-	void *dst, *src;
 
 	while (count < n) {
 		temp = min_t(size_t, nullb->dev->blocksize, n - count);
@@ -1158,16 +1152,11 @@ static int copy_from_nullb(struct nullb *nullb, struct page *dest,
 		t_page = null_lookup_page(nullb, sector, false,
 			!null_cache_active(nullb));
 
-		dst = kmap_atomic(dest);
-		if (!t_page) {
-			memset(dst + off + count, 0, temp);
-			goto next;
-		}
-		src = kmap_atomic(t_page->page);
-		memcpy(dst + off + count, src + offset, temp);
-		kunmap_atomic(src);
-next:
-		kunmap_atomic(dst);
+		if (t_page)
+			memcpy_page(dest, off + count, t_page->page, offset,
+				    temp);
+		else
+			zero_user(dest, off + count, temp);
 
 		count += temp;
 		sector += temp >> SECTOR_SHIFT;
@@ -1178,11 +1167,7 @@ next:
 static void nullb_fill_pattern(struct nullb *nullb, struct page *page,
 			       unsigned int len, unsigned int off)
 {
-	void *dst;
-
-	dst = kmap_atomic(page);
-	memset(dst + off, 0xFF, len);
-	kunmap_atomic(dst);
+	memset_page(page, off, 0xff, len);
 }
 
 blk_status_t null_handle_discard(struct nullb_device *dev,
