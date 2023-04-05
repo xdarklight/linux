@@ -429,7 +429,7 @@ static inline sector_t logdev_last_sector(struct log_writes_c *lc)
 
 static int log_writes_kthread(void *arg)
 {
-	struct log_writes_c *lc = (struct log_writes_c *)arg;
+	struct log_writes_c *lc = arg;
 	sector_t sector = 0;
 
 	while (!kthread_should_stop()) {
@@ -940,12 +940,7 @@ static struct target_type log_writes_target = {
 
 static int __init dm_log_writes_init(void)
 {
-	int r = dm_register_target(&log_writes_target);
-
-	if (r < 0)
-		DMERR("register failed %d", r);
-
-	return r;
+	return dm_register_target(&log_writes_target);
 }
 
 static void __exit dm_log_writes_exit(void)
