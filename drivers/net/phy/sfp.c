@@ -255,6 +255,8 @@ struct sfp {
 	unsigned int module_power_mW;
 	unsigned int module_t_start_up;
 	unsigned int module_t_wait;
+
+	bool have_a2;
 	bool tx_fault_ignore;
 
 	const struct sfp_quirk *quirk;
@@ -358,6 +360,23 @@ static void sfp_quirk_2500basex(const struct sfp_eeprom_id *id,
 	__set_bit(PHY_INTERFACE_MODE_2500BASEX, interfaces);
 }
 
+static void sfp_quirk_disable_autoneg(const struct sfp_eeprom_id *id,
+				      unsigned long *modes,
+				      unsigned long *interfaces)
+{
+	linkmode_clear_bit(ETHTOOL_LINK_MODE_Autoneg_BIT, modes);
+}
+
+static void sfp_quirk_oem_2_5g(const struct sfp_eeprom_id *id,
+			       unsigned long *modes,
+			       unsigned long *interfaces)
+{
+	/* Copper 2.5G SFP */
+	linkmode_set_bit(ETHTOOL_LINK_MODE_2500baseT_Full_BIT, modes);
+	__set_bit(PHY_INTERFACE_MODE_2500BASEX, interfaces);
+	sfp_quirk_disable_autoneg(id, modes, interfaces);
+}
+
 static void sfp_quirk_ubnt_uf_instant(const struct sfp_eeprom_id *id,
 				      unsigned long *modes,
 				      unsigned long *interfaces)
@@ -403,6 +422,7 @@ static const struct sfp_quirk sfp_quirks[] = {
 	SFP_QUIRK_M("UBNT", "UF-INSTANT", sfp_quirk_ubnt_uf_instant),
 
 	SFP_QUIRK_F("OEM", "SFP-10G-T", sfp_fixup_rollball_cc),
+	SFP_QUIRK_M("OEM", "SFP-2.5G-T", sfp_quirk_oem_2_5g),
 	SFP_QUIRK_F("OEM", "RTSFP-10", sfp_fixup_rollball_cc),
 	SFP_QUIRK_F("OEM", "RTSFP-10G", sfp_fixup_rollball_cc),
 	SFP_QUIRK_F("Turris", "RTSFP-10", sfp_fixup_rollball),
@@ -1457,20 +1477,10 @@ static void sfp_hwmon_probe(struct work_struct *work)
 
 static int sfp_hwmon_insert(struct sfp *sfp)
 {
-	if (sfp->id.ext.sff8472_compliance == SFP_SFF8472_COMPLIANCE_NONE)
-		return 0;
-
-	if (!(sfp->id.ext.diagmon & SFP_DIAGMON_DDM))
-		return 0;
-
-	if (sfp->id.ext.diagmon & SFP_DIAGMON_ADDRMODE)
-		/* This driver in general does not support address
-		 * change.
-		 */
-		return 0;
-
-	mod_delayed_work(system_wq, &sfp->hwmon_probe, 1);
-	sfp->hwmon_tries = R_PROBE_RETRY_SLOW;
+	if (sfp->have_a2 && sfp->id.ext.diagmon & SFP_DIAGMON_DDM) {
+		mod_delayed_work(system_wq, &sfp->hwmon_probe, 1);
+		sfp->hwmon_tries = R_PROBE_RETRY_SLOW;
+	}
 
 	return 0;
 }
@@ -1920,6 +1930,18 @@ static int sfp_cotsworks_fixup_check(struct sfp *sfp, struct sfp_eeprom_id *id)
 	return 0;
 }
 
+static int sfp_module_parse_sff8472(struct sfp *sfp)
+{
+	/* If the module requires address swap mode, warn about it */
+	if (sfp->id.ext.diagmon & SFP_DIAGMON_ADDRMODE)
+		dev_warn(sfp->dev,
+			 "module address swap to access page 0xA2 is not supported.\n");
+	else
+		sfp->have_a2 = true;
+
+	return 0;
+}
+
 static int sfp_sm_mod_probe(struct sfp *sfp, bool report)
 {
 	/* SFP module inserted - read I2C data */
@@ -2057,10 +2079,11 @@ static int sfp_sm_mod_probe(struct sfp *sfp, bool report)
 		return -EINVAL;
 	}
 
-	/* If the module requires address swap mode, warn about it */
-	if (sfp->id.ext.diagmon & SFP_DIAGMON_ADDRMODE)
-		dev_warn(sfp->dev,
-			 "module address swap to access page 0xA2 is not supported.\n");
+	if (sfp->id.ext.sff8472_compliance != SFP_SFF8472_COMPLIANCE_NONE) {
+		ret = sfp_module_parse_sff8472(sfp);
+		if (ret < 0)
+			return ret;
+	}
 
 	/* Parse the module power requirement */
 	ret = sfp_module_parse_power(sfp);
@@ -2107,6 +2130,7 @@ static void sfp_sm_mod_remove(struct sfp *sfp)
 
 	memset(&sfp->id, 0, sizeof(sfp->id));
 	sfp->module_power_mW = 0;
+	sfp->have_a2 = false;
 
 	dev_info(sfp->dev, "module removed\n");
 }
@@ -2287,7 +2311,11 @@ static void sfp_sm_main(struct sfp *sfp, unsigned int event)
 		    sfp->sm_dev_state != SFP_DEV_UP)
 			break;
 
-		if (!(sfp->id.ext.diagmon & SFP_DIAGMON_ADDRMODE))
+		/* Only use the soft state bits if we have access to the A2h
+		 * memory, which implies that we have some level of SFF-8472
+		 * compliance.
+		 */
+		if (sfp->have_a2)
 			sfp_soft_start_poll(sfp);
 
 		sfp_module_tx_enable(sfp);

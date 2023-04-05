@@ -48,7 +48,6 @@
 #include <linux/prefetch.h>
 #include <linux/cache.h>
 #include <linux/log2.h>
-#include <linux/aer.h>
 #include <linux/bitmap.h>
 #include <linux/cpu_rmap.h>
 #include <linux/cpumask.h>
@@ -7770,7 +7769,7 @@ static int __bnxt_hwrm_func_qcaps(struct bnxt *bp)
 		if (flags & FUNC_QCAPS_RESP_FLAGS_WOL_MAGICPKT_SUPPORTED)
 			bp->flags |= BNXT_FLAG_WOL_CAP;
 		if (flags & FUNC_QCAPS_RESP_FLAGS_PTP_SUPPORTED) {
-			__bnxt_hwrm_ptp_qcfg(bp);
+			bp->fw_cap |= BNXT_FW_CAP_PTP;
 		} else {
 			bnxt_ptp_clear(bp);
 			kfree(bp->ptp_cfg);
@@ -12299,6 +12298,8 @@ static int bnxt_fw_init_one_p2(struct bnxt *bp)
 	bnxt_hwrm_vnic_qcaps(bp);
 	bnxt_hwrm_port_led_qcaps(bp);
 	bnxt_ethtool_init(bp);
+	if (bp->fw_cap & BNXT_FW_CAP_PTP)
+		__bnxt_hwrm_ptp_qcfg(bp);
 	bnxt_dcb_init(bp);
 	return 0;
 }
@@ -12704,8 +12705,6 @@ static int bnxt_init_board(struct pci_dev *pdev, struct net_device *dev)
 		rc = -ENOMEM;
 		goto init_err_release;
 	}
-
-	pci_enable_pcie_error_reporting(pdev);
 
 	INIT_WORK(&bp->sp_task, bnxt_sp_task);
 	INIT_DELAYED_WORK(&bp->fw_reset_task, bnxt_fw_reset_task);
@@ -13186,7 +13185,6 @@ static void bnxt_remove_one(struct pci_dev *pdev)
 	bnxt_rdma_aux_device_uninit(bp);
 
 	bnxt_ptp_clear(bp);
-	pci_disable_pcie_error_reporting(pdev);
 	unregister_netdev(dev);
 	clear_bit(BNXT_STATE_IN_FW_RESET, &bp->state);
 	/* Flush any pending tasks */
