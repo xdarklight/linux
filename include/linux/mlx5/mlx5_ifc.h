@@ -1077,7 +1077,9 @@ struct mlx5_ifc_roce_cap_bits {
 	u8         sw_r_roce_src_udp_port[0x1];
 	u8         fl_rc_qp_when_roce_disabled[0x1];
 	u8         fl_rc_qp_when_roce_enabled[0x1];
-	u8         reserved_at_7[0x17];
+	u8         reserved_at_7[0x1];
+	u8	   qp_ooo_transmit_default[0x1];
+	u8         reserved_at_9[0x15];
 	u8	   qp_ts_format[0x2];
 
 	u8         reserved_at_20[0x60];
@@ -1493,7 +1495,8 @@ struct mlx5_ifc_cmd_hca_cap_bits {
 	u8         reserved_at_b0[0x1];
 	u8         uplink_follow[0x1];
 	u8         ts_cqe_to_dest_cqn[0x1];
-	u8         reserved_at_b3[0x7];
+	u8         reserved_at_b3[0x6];
+	u8         go_back_n[0x1];
 	u8         shampo[0x1];
 	u8         reserved_at_bb[0x5];
 
@@ -1726,7 +1729,9 @@ struct mlx5_ifc_cmd_hca_cap_bits {
 	u8         log_max_transport_domain[0x5];
 	u8         reserved_at_328[0x3];
 	u8         log_max_pd[0x5];
-	u8         reserved_at_330[0xb];
+	u8         reserved_at_330[0x9];
+	u8         q_counter_aggregation[0x1];
+	u8         q_counter_other_vport[0x1];
 	u8         log_max_xrcd[0x5];
 
 	u8         nic_receive_steering_discard[0x1];
@@ -3261,7 +3266,8 @@ struct mlx5_ifc_qpc_bits {
 	u8         log_rq_stride[0x3];
 	u8         no_sq[0x1];
 	u8         log_sq_size[0x4];
-	u8         reserved_at_55[0x3];
+	u8         reserved_at_55[0x1];
+	u8	   retry_mode[0x2];
 	u8	   ts_format[0x2];
 	u8         reserved_at_5a[0x1];
 	u8         rlky[0x1];
@@ -5599,10 +5605,15 @@ struct mlx5_ifc_query_q_counter_in_bits {
 	u8         reserved_at_20[0x10];
 	u8         op_mod[0x10];
 
-	u8         reserved_at_40[0x80];
+	u8         other_vport[0x1];
+	u8         reserved_at_41[0xf];
+	u8         vport_number[0x10];
+
+	u8         reserved_at_60[0x60];
 
 	u8         clear[0x1];
-	u8         reserved_at_c1[0x1f];
+	u8         aggregate[0x1];
+	u8         reserved_at_c2[0x1e];
 
 	u8         reserved_at_e0[0x18];
 	u8         counter_set_id[0x8];
