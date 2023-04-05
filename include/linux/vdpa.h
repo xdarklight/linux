@@ -10,13 +10,19 @@
 #include <linux/if_ether.h>
 
 /**
- * struct vdpa_calllback - vDPA callback definition.
+ * struct vdpa_callback - vDPA callback definition.
  * @callback: interrupt callback function
  * @private: the data passed to the callback function
+ * @trigger: the eventfd for the callback (Optional).
+ *           When it is set, the vDPA driver must guarantee that
+ *           signaling it is functional equivalent to triggering
+ *           the callback. Then vDPA parent can signal it directly
+ *           instead of triggering the callback.
  */
 struct vdpa_callback {
 	irqreturn_t (*callback)(void *data);
 	void *private;
+	struct eventfd_ctx *trigger;
 };
 
 /**
@@ -114,7 +120,7 @@ struct vdpa_dev_set_config {
 };
 
 /**
- * Corresponding file area for device memory mapping
+ * struct vdpa_map_file - file area for device memory mapping
  * @file: vma->vm_file for the mapping
  * @offset: mapping offset in the vm_file
  */
@@ -165,10 +171,16 @@ struct vdpa_map_file {
  *				@vdev: vdpa device
  *				@idx: virtqueue index
  *				@state: pointer to returned state (last_avail_idx)
+ * @get_vendor_vq_stats:	Get the vendor statistics of a device.
+ *				@vdev: vdpa device
+ *				@idx: virtqueue index
+ *				@msg: socket buffer holding stats message
+ *				@extack: extack for reporting error messages
+ *				Returns integer: success (0) or error (< 0)
  * @get_vq_notification:	Get the notification area for a virtqueue (optional)
  *				@vdev: vdpa device
  *				@idx: virtqueue index
- *				Returns the notifcation area
+ *				Returns the notification area
  * @get_vq_irq:			Get the irq number of a virtqueue (optional,
  *				but must implemented if require vq irq offloading)
  *				@vdev: vdpa device
@@ -250,6 +262,15 @@ struct vdpa_map_file {
  *				@vdev: vdpa device
  *				Returns the iova range supported by
  *				the device.
+ * @set_vq_affinity:		Set the affinity of virtqueue (optional)
+ *				@vdev: vdpa device
+ *				@idx: virtqueue index
+ *				@cpu_mask: the affinity mask
+ *				Returns integer: success (0) or error (< 0)
+ * @get_vq_affinity:		Get the affinity of virtqueue (optional)
+ *				@vdev: vdpa device
+ *				@idx: virtqueue index
+ *				Returns the affinity mask
  * @set_group_asid:		Set address space identifier for a
  *				virtqueue group (optional)
  *				@vdev: vdpa device
@@ -290,6 +311,14 @@ struct vdpa_map_file {
  *				@vdev: vdpa device
  *				@idx: virtqueue index
  *				Returns pointer to structure device or error (NULL)
+ * @bind_mm:			Bind the device to a specific address space
+ *				so the vDPA framework can use VA when this
+ *				callback is implemented. (optional)
+ *				@vdev: vdpa device
+ *				@mm: address space to bind
+ * @unbind_mm:			Unbind the device from the address space
+ *				bound using the bind_mm callback. (optional)
+ *				@vdev: vdpa device
  * @free:			Free resources that belongs to vDPA (optional)
  *				@vdev: vdpa device
  */
@@ -340,6 +369,10 @@ struct vdpa_config_ops {
 			   const void *buf, unsigned int len);
 	u32 (*get_generation)(struct vdpa_device *vdev);
 	struct vdpa_iova_range (*get_iova_range)(struct vdpa_device *vdev);
+	int (*set_vq_affinity)(struct vdpa_device *vdev, u16 idx,
+			       const struct cpumask *cpu_mask);
+	const struct cpumask *(*get_vq_affinity)(struct vdpa_device *vdev,
+						 u16 idx);
 
 	/* DMA ops */
 	int (*set_map)(struct vdpa_device *vdev, unsigned int asid,
@@ -351,6 +384,8 @@ struct vdpa_config_ops {
 	int (*set_group_asid)(struct vdpa_device *vdev, unsigned int group,
 			      unsigned int asid);
 	struct device *(*get_vq_dma_dev)(struct vdpa_device *vdev, u16 idx);
+	int (*bind_mm)(struct vdpa_device *vdev, struct mm_struct *mm);
+	void (*unbind_mm)(struct vdpa_device *vdev);
 
 	/* Free device resources */
 	void (*free)(struct vdpa_device *vdev);
@@ -506,6 +541,8 @@ struct vdpa_mgmtdev_ops {
  * @config_attr_mask: bit mask of attributes of type enum vdpa_attr that
  *		      management device support during dev_add callback
  * @list: list entry
+ * @supported_features: features supported by device
+ * @max_supported_vqs: maximum number of virtqueues supported by device
  */
 struct vdpa_mgmt_dev {
 	struct device *device;
