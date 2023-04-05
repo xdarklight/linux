@@ -28,6 +28,7 @@
 #include <linux/printk.h>
 #include <linux/rculist.h>
 #include <linux/refcount.h>
+#include <linux/mod_devicetable.h>
 
 
 #define ALI_DRW_PMU_COMMON_MAX_COUNTERS			16
