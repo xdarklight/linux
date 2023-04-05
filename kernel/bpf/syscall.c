@@ -520,14 +520,14 @@ static int btf_field_cmp(const void *a, const void *b)
 }
 
 struct btf_field *btf_record_find(const struct btf_record *rec, u32 offset,
-				  enum btf_field_type type)
+				  u32 field_mask)
 {
 	struct btf_field *field;
 
-	if (IS_ERR_OR_NULL(rec) || !(rec->field_mask & type))
+	if (IS_ERR_OR_NULL(rec) || !(rec->field_mask & field_mask))
 		return NULL;
 	field = bsearch(&offset, rec->fields, rec->cnt, sizeof(rec->fields[0]), btf_field_cmp);
-	if (!field || !(field->type & type))
+	if (!field || !(field->type & field_mask))
 		return NULL;
 	return field;
 }
@@ -650,6 +650,8 @@ void bpf_obj_free_timer(const struct btf_record *rec, void *obj)
 	bpf_timer_cancel_and_free(obj + rec->timer_off);
 }
 
+extern void __bpf_obj_drop_impl(void *p, const struct btf_record *rec);
+
 void bpf_obj_free_fields(const struct btf_record *rec, void *obj)
 {
 	const struct btf_field *fields;
@@ -659,8 +661,10 @@ void bpf_obj_free_fields(const struct btf_record *rec, void *obj)
 		return;
 	fields = rec->fields;
 	for (i = 0; i < rec->cnt; i++) {
+		struct btf_struct_meta *pointee_struct_meta;
 		const struct btf_field *field = &fields[i];
 		void *field_ptr = obj + field->offset;
+		void *xchgd_field;
 
 		switch (fields[i].type) {
 		case BPF_SPIN_LOCK:
@@ -672,7 +676,22 @@ void bpf_obj_free_fields(const struct btf_record *rec, void *obj)
 			WRITE_ONCE(*(u64 *)field_ptr, 0);
 			break;
 		case BPF_KPTR_REF:
-			field->kptr.dtor((void *)xchg((unsigned long *)field_ptr, 0));
+			xchgd_field = (void *)xchg((unsigned long *)field_ptr, 0);
+			if (!xchgd_field)
+				break;
+
+			if (!btf_is_kernel(field->kptr.btf)) {
+				pointee_struct_meta = btf_find_struct_meta(field->kptr.btf,
+									   field->kptr.btf_id);
+				WARN_ON_ONCE(!pointee_struct_meta);
+				migrate_disable();
+				__bpf_obj_drop_impl(xchgd_field, pointee_struct_meta ?
+								 pointee_struct_meta->record :
+								 NULL);
+				migrate_enable();
+			} else {
+				field->kptr.dtor(xchgd_field);
+			}
 			break;
 		case BPF_LIST_HEAD:
 			if (WARN_ON_ONCE(rec->spin_lock_off < 0))
@@ -1287,8 +1306,10 @@ struct bpf_map *bpf_map_get_with_uref(u32 ufd)
 	return map;
 }
 
-/* map_idr_lock should have been held */
-static struct bpf_map *__bpf_map_inc_not_zero(struct bpf_map *map, bool uref)
+/* map_idr_lock should have been held or the map should have been
+ * protected by rcu read lock.
+ */
+struct bpf_map *__bpf_map_inc_not_zero(struct bpf_map *map, bool uref)
 {
 	int refold;
 
@@ -2051,6 +2072,7 @@ static void __bpf_prog_put_noref(struct bpf_prog *prog, bool deferred)
 {
 	bpf_prog_kallsyms_del_all(prog);
 	btf_put(prog->aux->btf);
+	module_put(prog->aux->mod);
 	kvfree(prog->aux->jited_linfo);
 	kvfree(prog->aux->linfo);
 	kfree(prog->aux->kfunc_tab);
@@ -2806,16 +2828,19 @@ static void bpf_link_show_fdinfo(struct seq_file *m, struct file *filp)
 	const struct bpf_prog *prog = link->prog;
 	char prog_tag[sizeof(prog->tag) * 2 + 1] = { };
 
-	bin2hex(prog_tag, prog->tag, sizeof(prog->tag));
 	seq_printf(m,
 		   "link_type:\t%s\n"
-		   "link_id:\t%u\n"
-		   "prog_tag:\t%s\n"
-		   "prog_id:\t%u\n",
+		   "link_id:\t%u\n",
 		   bpf_link_type_strs[link->type],
-		   link->id,
-		   prog_tag,
-		   prog->aux->id);
+		   link->id);
+	if (prog) {
+		bin2hex(prog_tag, prog->tag, sizeof(prog->tag));
+		seq_printf(m,
+			   "prog_tag:\t%s\n"
+			   "prog_id:\t%u\n",
+			   prog_tag,
+			   prog->aux->id);
+	}
 	if (link->ops->show_fdinfo)
 		link->ops->show_fdinfo(link, m);
 }
@@ -3096,6 +3121,11 @@ static int bpf_tracing_prog_attach(struct bpf_prog *prog,
 					      &tgt_info);
 		if (err)
 			goto out_unlock;
+
+		if (tgt_info.tgt_mod) {
+			module_put(prog->aux->mod);
+			prog->aux->mod = tgt_info.tgt_mod;
+		}
 
 		tr = bpf_trampoline_get(key, &tgt_info);
 		if (!tr) {
@@ -4290,7 +4320,8 @@ static int bpf_link_get_info_by_fd(struct file *file,
 
 	info.type = link->type;
 	info.id = link->id;
-	info.prog_id = link->prog->aux->id;
+	if (link->prog)
+		info.prog_id = link->prog->aux->id;
 
 	if (link->ops->fill_link_info) {
 		err = link->ops->fill_link_info(link, &info);
@@ -4553,6 +4584,9 @@ static int link_create(union bpf_attr *attr, bpfptr_t uattr)
 	if (CHECK_ATTR(BPF_LINK_CREATE))
 		return -EINVAL;
 
+	if (attr->link_create.attach_type == BPF_STRUCT_OPS)
+		return bpf_struct_ops_link_create(attr);
+
 	prog = bpf_prog_get(attr->link_create.prog_fd);
 	if (IS_ERR(prog))
 		return PTR_ERR(prog);
@@ -4651,6 +4685,35 @@ out:
 	return ret;
 }
 
+static int link_update_map(struct bpf_link *link, union bpf_attr *attr)
+{
+	struct bpf_map *new_map, *old_map = NULL;
+	int ret;
+
+	new_map = bpf_map_get(attr->link_update.new_map_fd);
+	if (IS_ERR(new_map))
+		return PTR_ERR(new_map);
+
+	if (attr->link_update.flags & BPF_F_REPLACE) {
+		old_map = bpf_map_get(attr->link_update.old_map_fd);
+		if (IS_ERR(old_map)) {
+			ret = PTR_ERR(old_map);
+			goto out_put;
+		}
+	} else if (attr->link_update.old_map_fd) {
+		ret = -EINVAL;
+		goto out_put;
+	}
+
+	ret = link->ops->update_map(link, new_map, old_map);
+
+	if (old_map)
+		bpf_map_put(old_map);
+out_put:
+	bpf_map_put(new_map);
+	return ret;
+}
+
 #define BPF_LINK_UPDATE_LAST_FIELD link_update.old_prog_fd
 
 static int link_update(union bpf_attr *attr)
@@ -4670,6 +4733,11 @@ static int link_update(union bpf_attr *attr)
 	link = bpf_link_get_from_fd(attr->link_update.link_fd);
 	if (IS_ERR(link))
 		return PTR_ERR(link);
+
+	if (link->ops->update_map) {
+		ret = link_update_map(link, attr);
+		goto out_put_link;
+	}
 
 	new_prog = bpf_prog_get(attr->link_update.new_prog_fd);
 	if (IS_ERR(new_prog)) {
