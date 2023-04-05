@@ -222,6 +222,7 @@
 			cache-size = <131072>;
 			cache-line-size = <64>;
 			cache-sets = <512>;
+			cache-level = <2>;
 			next-level-cache = <&l3_cache>;
 		};
 
@@ -230,6 +231,7 @@
 			cache-size = <131072>;
 			cache-line-size = <64>;
 			cache-sets = <512>;
+			cache-level = <2>;
 			next-level-cache = <&l3_cache>;
 		};
 
@@ -238,6 +240,7 @@
 			cache-size = <131072>;
 			cache-line-size = <64>;
 			cache-sets = <512>;
+			cache-level = <2>;
 			next-level-cache = <&l3_cache>;
 		};
 
@@ -246,6 +249,7 @@
 			cache-size = <131072>;
 			cache-line-size = <64>;
 			cache-sets = <512>;
+			cache-level = <2>;
 			next-level-cache = <&l3_cache>;
 		};
 
@@ -254,6 +258,7 @@
 			cache-size = <524288>;
 			cache-line-size = <64>;
 			cache-sets = <1024>;
+			cache-level = <2>;
 			next-level-cache = <&l3_cache>;
 		};
 
@@ -262,6 +267,7 @@
 			cache-size = <524288>;
 			cache-line-size = <64>;
 			cache-sets = <1024>;
+			cache-level = <2>;
 			next-level-cache = <&l3_cache>;
 		};
 
@@ -270,6 +276,7 @@
 			cache-size = <524288>;
 			cache-line-size = <64>;
 			cache-sets = <1024>;
+			cache-level = <2>;
 			next-level-cache = <&l3_cache>;
 		};
 
@@ -278,6 +285,7 @@
 			cache-size = <524288>;
 			cache-line-size = <64>;
 			cache-sets = <1024>;
+			cache-level = <2>;
 			next-level-cache = <&l3_cache>;
 		};
 
@@ -286,6 +294,7 @@
 			cache-size = <3145728>;
 			cache-line-size = <64>;
 			cache-sets = <4096>;
+			cache-level = <3>;
 		};
 	};
 
@@ -1099,6 +1108,21 @@
 		};
 	};
 
+	sdmmc: mmc@fe2c0000 {
+		compatible = "rockchip,rk3588-dw-mshc", "rockchip,rk3288-dw-mshc";
+		reg = <0x0 0xfe2c0000 0x0 0x4000>;
+		interrupts = <GIC_SPI 203 IRQ_TYPE_LEVEL_HIGH 0>;
+		clocks = <&scmi_clk SCMI_HCLK_SD>, <&scmi_clk SCMI_CCLK_SD>,
+			 <&cru SCLK_SDMMC_DRV>, <&cru SCLK_SDMMC_SAMPLE>;
+		clock-names = "biu", "ciu", "ciu-drive", "ciu-sample";
+		fifo-depth = <0x100>;
+		max-frequency = <200000000>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&sdmmc_clk &sdmmc_cmd &sdmmc_det &sdmmc_bus4>;
+		power-domains = <&power RK3588_PD_SDMMC>;
+		status = "disabled";
+	};
+
 	sdhci: mmc@fe2e0000 {
 		compatible = "rockchip,rk3588-dwcmshc";
 		reg = <0x0 0xfe2e0000 0x0 0x10000>;
@@ -1224,6 +1248,14 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 		status = "disabled";
+	};
+
+	wdt: watchdog@feaf0000 {
+		compatible = "rockchip,rk3588-wdt", "snps,dw-wdt";
+		reg = <0x0 0xfeaf0000 0x0 0x100>;
+		clocks = <&cru TCLK_WDT0>, <&cru PCLK_WDT0>;
+		clock-names = "tclk", "pclk";
+		interrupts = <GIC_SPI 315 IRQ_TYPE_LEVEL_HIGH 0>;
 	};
 
 	spi0: spi@feb00000 {
