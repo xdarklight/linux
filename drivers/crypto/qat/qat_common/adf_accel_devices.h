@@ -21,6 +21,8 @@
 #define ADF_4XXXIOV_PCI_DEVICE_ID 0x4941
 #define ADF_401XX_PCI_DEVICE_ID 0x4942
 #define ADF_401XXIOV_PCI_DEVICE_ID 0x4943
+#define ADF_402XX_PCI_DEVICE_ID 0x4944
+#define ADF_402XXIOV_PCI_DEVICE_ID 0x4945
 #define ADF_DEVICE_FUSECTL_OFFSET 0x40
 #define ADF_DEVICE_LEGFUSE_OFFSET 0x4C
 #define ADF_DEVICE_FUSECTL_MASK 0x80000000
@@ -188,7 +190,7 @@ struct adf_hw_device_data {
 	int (*send_admin_init)(struct adf_accel_dev *accel_dev);
 	int (*init_arb)(struct adf_accel_dev *accel_dev);
 	void (*exit_arb)(struct adf_accel_dev *accel_dev);
-	const u32 *(*get_arb_mapping)(void);
+	const u32 *(*get_arb_mapping)(struct adf_accel_dev *accel_dev);
 	int (*init_device)(struct adf_accel_dev *accel_dev);
 	int (*enable_pm)(struct adf_accel_dev *accel_dev);
 	bool (*handle_pm_interrupt)(struct adf_accel_dev *accel_dev);
@@ -310,6 +312,7 @@ struct adf_accel_dev {
 			u8 pf_compat_ver;
 		} vf;
 	};
+	struct mutex state_lock; /* protect state of the device */
 	bool is_vf;
 	u32 accel_id;
 };
