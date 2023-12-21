@@ -157,7 +157,12 @@ static int pwm_regulator_get_voltage(struct regulator_dev *rdev)
 
 	pwm_get_state(drvdata->pwm, &pstate);
 
-	voltage = pwm_get_relative_duty_cycle(&pstate, duty_unit);
+	if (pstate.enabled)
+		voltage = pwm_get_relative_duty_cycle(&pstate, duty_unit);
+	else if (max_uV_duty < min_uV_duty)
+		voltage = max_uV_duty;
+	else
+		voltage = min_uV_duty;
 
 	/*
 	 * The dutycycle for min_uV might be greater than the one for max_uV.
