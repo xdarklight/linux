@@ -99,15 +99,16 @@
 #define MESON_MX_SDIO_RESPONSE_CRC16_BITS			(16 - 1)
 #define MESON_MX_SDIO_MAX_SLOTS					3
 
+struct meson_mx_mmc_host_clock_data {
+	struct clk_fixed_factor		fixed_factor;
+	struct clk_divider		cfg_div;
+};
+
 struct meson_mx_mmc_host {
 	struct device			*controller_dev;
 
-	struct clk			*parent_clk;
 	struct clk			*core_clk;
-	struct clk_divider		cfg_div;
 	struct clk			*cfg_div_clk;
-	struct clk_fixed_factor		fixed_factor;
-	struct clk			*fixed_factor_clk;
 
 	struct regmap			*regmap;
 	int				irq;
@@ -555,8 +556,7 @@ static int meson_mx_mmc_add_host(struct meson_mx_mmc_host *host)
 
 	/* Get the min and max supported clock rates */
 	mmc->f_min = clk_round_rate(host->cfg_div_clk, 1);
-	mmc->f_max = clk_round_rate(host->cfg_div_clk,
-				    clk_get_rate(host->parent_clk));
+	mmc->f_max = clk_round_rate(host->cfg_div_clk, ULONG_MAX);
 
 	mmc->caps |= MMC_CAP_CMD23 | MMC_CAP_WAIT_WHILE_BUSY;
 	mmc->ops = &meson_mx_mmc_ops;
@@ -575,49 +575,69 @@ static int meson_mx_mmc_add_host(struct meson_mx_mmc_host *host)
 static int meson_mx_mmc_register_clks(struct meson_mx_mmc_host *host,
 				      void __iomem *base)
 {
-	struct clk_init_data init;
-	const char *clk_div_parent, *clk_fixed_factor_parent;
+	struct meson_mx_mmc_host_clock_data *host_clk_data;
+	const struct clk_parent_data fixed_factor_parent_data = {
+		.fw_name = "clkin",
+	};
+	struct clk_init_data fixed_factor_init = {
+		.ops = &clk_fixed_factor_ops,
+		.parent_data = &fixed_factor_parent_data,
+		.num_parents = 1,
+	};
+	struct clk_parent_data div_parent_data = { };
+	struct clk_init_data div_init = {
+		.ops = &clk_divider_ops,
+		.parent_data = &div_parent_data,
+		.num_parents = 1,
+	};
+	int ret;
 
-	clk_fixed_factor_parent = __clk_get_name(host->parent_clk);
-	init.name = devm_kasprintf(host->controller_dev, GFP_KERNEL,
-				   "%s#fixed_factor",
-				   dev_name(host->controller_dev));
-	if (!init.name)
+	host_clk_data = devm_kzalloc(host->controller_dev,
+				     sizeof(*host_clk_data), GFP_KERNEL);
+	if (!host_clk_data)
 		return -ENOMEM;
 
-	init.ops = &clk_fixed_factor_ops;
-	init.flags = 0;
-	init.parent_names = &clk_fixed_factor_parent;
-	init.num_parents = 1;
-	host->fixed_factor.div = 2;
-	host->fixed_factor.mult = 1;
-	host->fixed_factor.hw.init = &init;
-
-	host->fixed_factor_clk = devm_clk_register(host->controller_dev,
-						 &host->fixed_factor.hw);
-	if (WARN_ON(IS_ERR(host->fixed_factor_clk)))
-		return PTR_ERR(host->fixed_factor_clk);
-
-	clk_div_parent = __clk_get_name(host->fixed_factor_clk);
-	init.name = devm_kasprintf(host->controller_dev, GFP_KERNEL,
-				   "%s#div", dev_name(host->controller_dev));
-	if (!init.name)
+	fixed_factor_init.name = devm_kasprintf(host->controller_dev, GFP_KERNEL,
+						"%s#fixed_factor",
+						dev_name(host->controller_dev));
+	if (!fixed_factor_init.name)
 		return -ENOMEM;
 
-	init.ops = &clk_divider_ops;
-	init.flags = CLK_SET_RATE_PARENT;
-	init.parent_names = &clk_div_parent;
-	init.num_parents = 1;
-	host->cfg_div.reg = base + MESON_MX_SDIO_CONF;
-	host->cfg_div.shift = MESON_MX_SDIO_CONF_CMD_CLK_DIV_SHIFT;
-	host->cfg_div.width = MESON_MX_SDIO_CONF_CMD_CLK_DIV_WIDTH;
-	host->cfg_div.hw.init = &init;
-	host->cfg_div.flags = CLK_DIVIDER_ALLOW_ZERO;
+	host_clk_data->fixed_factor.div = 2;
+	host_clk_data->fixed_factor.mult = 1;
+	host_clk_data->fixed_factor.hw.init = &fixed_factor_init;
+	ret = devm_clk_hw_register(host->controller_dev,
+				   &host_clk_data->fixed_factor.hw);
+	if (ret)
+		return dev_err_probe(host->controller_dev, ret,
+				     "Failed to register %s clock\n",
+				     fixed_factor_init.name);
 
-	host->cfg_div_clk = devm_clk_register(host->controller_dev,
-					      &host->cfg_div.hw);
-	if (WARN_ON(IS_ERR(host->cfg_div_clk)))
-		return PTR_ERR(host->cfg_div_clk);
+	div_init.name = devm_kasprintf(host->controller_dev, GFP_KERNEL,
+				       "%s#div", dev_name(host->controller_dev));
+	if (!div_init.name)
+		return -ENOMEM;
+
+	div_parent_data.hw = &host_clk_data->fixed_factor.hw;
+	host_clk_data->cfg_div.reg = base + MESON_MX_SDIO_CONF;
+	host_clk_data->cfg_div.shift = MESON_MX_SDIO_CONF_CMD_CLK_DIV_SHIFT;
+	host_clk_data->cfg_div.width = MESON_MX_SDIO_CONF_CMD_CLK_DIV_WIDTH;
+	host_clk_data->cfg_div.hw.init = &div_init;
+	host_clk_data->cfg_div.flags = CLK_DIVIDER_ALLOW_ZERO;
+	ret = devm_clk_hw_register(host->controller_dev,
+				   &host_clk_data->cfg_div.hw);
+	if (ret)
+		return dev_err_probe(host->controller_dev, ret,
+				     "Failed to register %s clock\n",
+				     div_init.name);
+
+	host->cfg_div_clk = devm_clk_hw_get_clk(host->controller_dev,
+						&host_clk_data->cfg_div.hw,
+						"cfg_div");
+	if (IS_ERR(host->cfg_div_clk))
+		return dev_err_probe(host->controller_dev,
+				     PTR_ERR(host->cfg_div_clk),
+				     "Failed to get the cfg_div clock\n");
 
 	return 0;
 }
@@ -686,12 +706,6 @@ static int meson_mx_mmc_probe(struct platform_device *pdev)
 	host->core_clk = devm_clk_get_enabled(host->controller_dev, "core");
 	if (IS_ERR(host->core_clk)) {
 		ret = PTR_ERR(host->core_clk);
-		goto del_cmd_timer;
-	}
-
-	host->parent_clk = devm_clk_get(host->controller_dev, "clkin");
-	if (IS_ERR(host->parent_clk)) {
-		ret = PTR_ERR(host->parent_clk);
 		goto del_cmd_timer;
 	}
 
