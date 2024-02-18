@@ -568,6 +568,13 @@
 					#power-domain-cells = <1>;
 					amlogic,ao-sysctrl = <&sysctrl_AO>;
 				};
+
+				cvbs_dac: video-dac@2f4 {
+					compatible = "amlogic,meson-cvbs-dac";
+					reg = <0x2f4 0x8>;
+					#phy-cells = <0>;
+					status = "disabled";
+				};
 			};
 
 			mailbox: mailbox@404 {
@@ -632,6 +639,8 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 			amlogic,canvas = <&canvas>;
+			phys = <&cvbs_dac>;
+			phy-names = "cvbs-dac";
 
 			/* CVBS VDAC output port */
 			cvbs_vdac_port: port@0 {

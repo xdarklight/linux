@@ -287,6 +287,12 @@
 	clock-names = "xtal", "mpeg-clk";
 };
 
+&cvbs_dac {
+	compatible = "amlogic,meson-gxl-cvbs-dac", "amlogic,meson-cvbs-dac";
+	clocks = <&clkc CLKID_CTS_VDAC>;
+	status = "okay";
+};
+
 &efuse {
 	clocks = <&clkc CLKID_EFUSE>;
 };
