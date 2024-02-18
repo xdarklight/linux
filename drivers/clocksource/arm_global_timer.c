@@ -340,9 +340,22 @@ static int gt_clk_rate_change_cb(struct notifier_block *nb,
 struct gt_prescaler_config {
 	const char *compatible;
 	unsigned long prescaler;
+	unsigned long target_rate;
 };
 
 static const struct gt_prescaler_config gt_prescaler_configs[] = {
+	/*
+	 * On Amlogic Meson8/8b/8m2 SoCs the global timer clock is derived
+	 * from the CPU clock, which runs at 24MHz (slowest) to 1992MHz
+	 * (highest). It uses a fixed pre-divider of 8 because it allows
+	 * running the ARM Global Timer at 3MHz which can be evenly divided
+	 * by all supported CPU frequencies while not overflowing the 8-bit
+	 * prescaler in the ARM Global Timer registers. We don't know the
+	 * CPU clock chosen by the bootloader.
+	 */
+	{ .compatible = "amlogic,meson8", .target_rate = 3 * 1000 * 1000 },
+	{ .compatible = "amlogic,meson8b", .target_rate = 3 * 1000 * 1000 },
+	{ .compatible = "amlogic,meson8m2", .target_rate = 3 * 1000 * 1000 },
 	/*
 	 * On am43 the global timer clock is a child of the clock used for CPU
 	 * OPPs, so the initial prescaler has to be compatible with all OPPs
@@ -355,7 +368,7 @@ static const struct gt_prescaler_config gt_prescaler_configs[] = {
 	{ .compatible = NULL }
 };
 
-static unsigned long gt_get_initial_prescaler_value(struct device_node *np)
+static unsigned long gt_get_initial_prescaler_value(unsigned long gt_clk_rate)
 {
 	const struct gt_prescaler_config *config;
 
@@ -363,8 +376,18 @@ static unsigned long gt_get_initial_prescaler_value(struct device_node *np)
 		return CONFIG_ARM_GT_INITIAL_PRESCALER_VAL;
 
 	for (config = gt_prescaler_configs; config->compatible; config++) {
-		if (of_machine_is_compatible(config->compatible))
-			return config->prescaler;
+		if (!of_machine_is_compatible(config->compatible))
+			continue;
+
+		if (config->target_rate) {
+			if (gt_clk_rate % config->target_rate)
+				pr_warn("global-timer: targeted rate %luHz is not cleanly achievable on a %luHz clock\n",
+					config->target_rate, gt_clk_rate);
+
+			return (gt_clk_rate / config->target_rate) - 1;
+		}
+
+		return config->prescaler;
 	}
 
 	return 1;
@@ -411,8 +434,8 @@ static int __init global_timer_of_register(struct device_node *np)
 		goto out_unmap;
 	}
 
-	psv = gt_get_initial_prescaler_value(np);
 	gt_clk_rate = clk_get_rate(gt_clk);
+	psv = gt_get_initial_prescaler_value(gt_clk_rate);
 	gt_target_rate = gt_clk_rate / psv;
 	gt_clk_rate_change_nb.notifier_call =
 		gt_clk_rate_change_cb;
