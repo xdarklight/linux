@@ -1663,6 +1663,14 @@
 								       <250000000>,
 								       <0>; /* Do Nothing */
 					};
+
+					cvbs_dac: video-dac@2ec {
+						compatible = "amlogic,meson-g12a-cvbs-dac",
+							     "amlogic,meson-cvbs-dac";
+						reg = <0x2ec 0x8>;
+						#phy-cells = <0>;
+						clocks = <&clkc CLKID_CTS_VDAC>;
+					};
 				};
 			};
 
@@ -2138,6 +2146,8 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 			amlogic,canvas = <&canvas>;
+			phys = <&cvbs_dac>;
+			phy-names = "cvbs-dac";
 
 			/* CVBS VDAC output port */
 			cvbs_vdac_port: port@0 {
