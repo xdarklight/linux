@@ -433,6 +433,8 @@ out_unmap:
 	return err;
 }
 
+TIMER_OF_DECLARE(arm_gt_ca5, "arm,cortex-a5-global-timer",
+			global_timer_of_register);
 /* Only tested on r2p2 and r3p0  */
-TIMER_OF_DECLARE(arm_gt, "arm,cortex-a9-global-timer",
+TIMER_OF_DECLARE(arm_gt_ca9, "arm,cortex-a9-global-timer",
 			global_timer_of_register);
