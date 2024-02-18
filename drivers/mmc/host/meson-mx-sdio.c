@@ -683,7 +683,7 @@ static int meson_mx_mmc_probe(struct platform_device *pdev)
 	if (ret)
 		goto del_cmd_timer;
 
-	host->core_clk = devm_clk_get(host->controller_dev, "core");
+	host->core_clk = devm_clk_get_enabled(host->controller_dev, "core");
 	if (IS_ERR(host->core_clk)) {
 		ret = PTR_ERR(host->core_clk);
 		goto del_cmd_timer;
@@ -708,7 +708,7 @@ static int meson_mx_mmc_probe(struct platform_device *pdev)
 	ret = clk_prepare_enable(host->cfg_div_clk);
 	if (ret) {
 		dev_err(host->controller_dev, "Failed to enable MMC clock\n");
-		goto error_disable_core_clk;
+		goto del_cmd_timer;
 	}
 
 	conf = 0;
@@ -722,14 +722,12 @@ static int meson_mx_mmc_probe(struct platform_device *pdev)
 
 	ret = meson_mx_mmc_add_host(host);
 	if (ret)
-		goto error_disable_clks;
+		goto error_disable_div_clk;
 
 	return 0;
 
-error_disable_clks:
+error_disable_div_clk:
 	clk_disable_unprepare(host->cfg_div_clk);
-error_disable_core_clk:
-	clk_disable_unprepare(host->core_clk);
 del_cmd_timer:
 	timer_delete_sync(&host->cmd_timeout);
 error_unregister_slot_pdev:
@@ -747,7 +745,6 @@ static void meson_mx_mmc_remove(struct platform_device *pdev)
 	timer_delete_sync(&host->cmd_timeout);
 
 	clk_disable_unprepare(host->cfg_div_clk);
-	clk_disable_unprepare(host->core_clk);
 
 	of_platform_device_destroy(slot_dev, NULL);
 }
