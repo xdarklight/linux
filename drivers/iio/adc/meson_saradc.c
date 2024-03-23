@@ -229,6 +229,11 @@ enum meson_sar_adc_vref_sel {
 	VREF_VDDA = 1,
 };
 
+enum meson_sar_adc_vref_voltage {
+	VREF_VOLTAGE_0V9 = 0,
+	VREF_VOLTAGE_1V8 = 1,
+};
+
 enum meson_sar_adc_avg_mode {
 	NO_AVERAGING = 0x0,
 	MEAN_AVERAGING = 0x1,
@@ -325,13 +330,13 @@ struct meson_sar_adc_param {
 	u8					temperature_trimming_bits;
 	unsigned int				temperature_multiplier;
 	unsigned int				temperature_divider;
-	u8					disable_ring_counter;
+	bool					disable_ring_counter;
 	bool					has_vref_select;
-	u8					vref_select;
-	u8					cmv_select;
-	u8					adc_eoc;
-	enum meson_sar_adc_vref_sel		vref_voltage;
+	bool					cmv_select;
+	bool					adc_eoc;
 	bool					enable_mpll_clock_workaround;
+	enum meson_sar_adc_vref_sel		vref_select;
+	enum meson_sar_adc_vref_voltage		vref_voltage;
 };
 
 struct meson_sar_adc_data {
@@ -974,14 +979,16 @@ static int meson_sar_adc_init(struct iio_dev *indio_dev)
 				  MESON_SAR_ADC_DELTA_10_TS_REVE0);
 	}
 
-	regval = FIELD_PREP(MESON_SAR_ADC_REG3_CTRL_CONT_RING_COUNTER_EN,
-			    priv->param->disable_ring_counter);
+	if (priv->param->disable_ring_counter)
+		regval = MESON_SAR_ADC_REG3_CTRL_CONT_RING_COUNTER_EN;
+	else
+		regval = 0;
 	regmap_update_bits(priv->regmap, MESON_SAR_ADC_REG3,
 			   MESON_SAR_ADC_REG3_CTRL_CONT_RING_COUNTER_EN,
 			   regval);
 
 	if (priv->param->regmap_config->max_register >= MESON_SAR_ADC_REG11) {
-		regval = FIELD_PREP(MESON_SAR_ADC_REG11_EOC, priv->param->adc_eoc);
+		regval = priv->param->adc_eoc ? MESON_SAR_ADC_REG11_EOC : 0;
 		regmap_update_bits(priv->regmap, MESON_SAR_ADC_REG11,
 				   MESON_SAR_ADC_REG11_EOC, regval);
 
@@ -997,8 +1004,7 @@ static int meson_sar_adc_init(struct iio_dev *indio_dev)
 		regmap_update_bits(priv->regmap, MESON_SAR_ADC_REG11,
 				   MESON_SAR_ADC_REG11_VREF_VOLTAGE, regval);
 
-		regval = FIELD_PREP(MESON_SAR_ADC_REG11_CMV_SEL,
-				    priv->param->cmv_select);
+		regval = priv->param->cmv_select ? MESON_SAR_ADC_REG11_CMV_SEL : 0;
 		regmap_update_bits(priv->regmap, MESON_SAR_ADC_REG11,
 				   MESON_SAR_ADC_REG11_CMV_SEL, regval);
 
@@ -1220,8 +1226,8 @@ static const struct meson_sar_adc_param meson_sar_adc_gxbb_param = {
 	.clock_rate = 1200000,
 	.regmap_config = &meson_sar_adc_regmap_config_gxbb,
 	.resolution = 10,
-	.vref_voltage = 1,
-	.cmv_select = 1,
+	.vref_voltage = VREF_VOLTAGE_1V8,
+	.cmv_select = true,
 };
 
 static const struct meson_sar_adc_param meson_sar_adc_gxl_param = {
@@ -1230,8 +1236,8 @@ static const struct meson_sar_adc_param meson_sar_adc_gxl_param = {
 	.regmap_config = &meson_sar_adc_regmap_config_gxbb,
 	.resolution = 12,
 	.disable_ring_counter = 1,
-	.vref_voltage = 1,
-	.cmv_select = 1,
+	.vref_voltage = VREF_VOLTAGE_1V8,
+	.cmv_select = true,
 };
 
 static const struct meson_sar_adc_param meson_sar_adc_gxlx_param = {
@@ -1240,7 +1246,7 @@ static const struct meson_sar_adc_param meson_sar_adc_gxlx_param = {
 	.regmap_config = &meson_sar_adc_regmap_config_gxbb,
 	.resolution = 12,
 	.disable_ring_counter = 1,
-	.vref_voltage = 1,
+	.vref_voltage = VREF_VOLTAGE_1V8,
 	.cmv_select = true,
 	.enable_mpll_clock_workaround = true,
 };
@@ -1251,10 +1257,10 @@ static const struct meson_sar_adc_param meson_sar_adc_axg_param = {
 	.regmap_config = &meson_sar_adc_regmap_config_gxbb,
 	.resolution = 12,
 	.disable_ring_counter = 1,
-	.vref_voltage = 1,
+	.vref_voltage = VREF_VOLTAGE_1V8,
 	.has_vref_select = true,
 	.vref_select = VREF_VDDA,
-	.cmv_select = 1,
+	.cmv_select = true,
 };
 
 static const struct meson_sar_adc_param meson_sar_adc_g12a_param = {
@@ -1263,7 +1269,8 @@ static const struct meson_sar_adc_param meson_sar_adc_g12a_param = {
 	.regmap_config = &meson_sar_adc_regmap_config_gxbb,
 	.resolution = 12,
 	.disable_ring_counter = 1,
-	.adc_eoc = 1,
+	.vref_voltage = VREF_VOLTAGE_0V9,
+	.adc_eoc = true,
 	.has_vref_select = true,
 	.vref_select = VREF_VDDA,
 };
