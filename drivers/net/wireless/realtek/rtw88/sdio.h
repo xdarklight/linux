@@ -140,6 +140,7 @@ struct sdio_device_id;
 
 struct rtw_sdio_tx_data {
 	u8 sn;
+	u8 offset;
 };
 
 struct rtw_sdio_work_data {
