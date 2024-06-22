@@ -41,6 +41,8 @@ struct pwm_regulator_data {
 
 	/* Enable GPIO */
 	struct gpio_desc *enb_gpio;
+
+	struct pwm_state pwm_state;
 };
 
 struct pwm_voltages {
@@ -48,18 +50,33 @@ struct pwm_voltages {
 	unsigned int dutycycle;
 };
 
+static int pwm_regulator_apply_state(struct regulator_dev *rdev,
+				     struct pwm_state *new_state)
+{
+	struct pwm_regulator_data *drvdata = rdev_get_drvdata(rdev);
+	int ret;
+
+	ret = pwm_apply_might_sleep(drvdata->pwm, new_state);
+	if (ret) {
+		dev_err(&rdev->dev, "Failed to configure PWM: %d\n", ret);
+		return ret;
+	}
+
+	drvdata->pwm_state = *new_state;
+
+	return 0;
+}
+
 /*
  * Voltage table call-backs
  */
 static void pwm_regulator_init_state(struct regulator_dev *rdev)
 {
 	struct pwm_regulator_data *drvdata = rdev_get_drvdata(rdev);
-	struct pwm_state pwm_state;
 	unsigned int dutycycle;
 	int i;
 
-	pwm_get_state(drvdata->pwm, &pwm_state);
-	dutycycle = pwm_get_relative_duty_cycle(&pwm_state, 100);
+	dutycycle = pwm_get_relative_duty_cycle(&drvdata->pwm_state, 100);
 
 	for (i = 0; i < rdev->desc->n_voltages; i++) {
 		if (dutycycle == drvdata->duty_cycle_table[i].dutycycle) {
@@ -83,18 +100,15 @@ static int pwm_regulator_set_voltage_sel(struct regulator_dev *rdev,
 					 unsigned selector)
 {
 	struct pwm_regulator_data *drvdata = rdev_get_drvdata(rdev);
-	struct pwm_state pstate;
+	struct pwm_state pstate = drvdata->pwm_state;
 	int ret;
 
-	pwm_init_state(drvdata->pwm, &pstate);
 	pwm_set_relative_duty_cycle(&pstate,
 			drvdata->duty_cycle_table[selector].dutycycle, 100);
 
-	ret = pwm_apply_might_sleep(drvdata->pwm, &pstate);
-	if (ret) {
-		dev_err(&rdev->dev, "Failed to configure PWM: %d\n", ret);
+	ret = pwm_regulator_apply_state(rdev, &pstate);
+	if (ret)
 		return ret;
-	}
 
 	drvdata->state = selector;
 
@@ -115,17 +129,26 @@ static int pwm_regulator_list_voltage(struct regulator_dev *rdev,
 static int pwm_regulator_enable(struct regulator_dev *dev)
 {
 	struct pwm_regulator_data *drvdata = rdev_get_drvdata(dev);
+	struct pwm_state pstate = drvdata->pwm_state;
 
 	gpiod_set_value_cansleep(drvdata->enb_gpio, 1);
 
-	return pwm_enable(drvdata->pwm);
+	pstate.enabled = true;
+
+	return pwm_regulator_apply_state(dev, &pstate);
 }
 
 static int pwm_regulator_disable(struct regulator_dev *dev)
 {
 	struct pwm_regulator_data *drvdata = rdev_get_drvdata(dev);
+	struct pwm_state pstate = drvdata->pwm_state;
+	int ret;
 
-	pwm_disable(drvdata->pwm);
+	pstate.enabled = false;
+
+	ret = pwm_regulator_apply_state(dev, &pstate);
+	if (ret)
+		return ret;
 
 	gpiod_set_value_cansleep(drvdata->enb_gpio, 0);
 
@@ -139,7 +162,7 @@ static int pwm_regulator_is_enabled(struct regulator_dev *dev)
 	if (drvdata->enb_gpio && !gpiod_get_value_cansleep(drvdata->enb_gpio))
 		return false;
 
-	return pwm_is_enabled(drvdata->pwm);
+	return drvdata->pwm_state.enabled;
 }
 
 static int pwm_regulator_get_voltage(struct regulator_dev *rdev)
@@ -151,20 +174,10 @@ static int pwm_regulator_get_voltage(struct regulator_dev *rdev)
 	int min_uV = rdev->constraints->min_uV;
 	int max_uV = rdev->constraints->max_uV;
 	int diff_uV = max_uV - min_uV;
-	struct pwm_state pstate;
 	unsigned int diff_duty;
 	unsigned int voltage;
 
-	pwm_get_state(drvdata->pwm, &pstate);
-
-	if (!pstate.enabled) {
-		if (pstate.polarity == PWM_POLARITY_INVERSED)
-			pstate.duty_cycle = pstate.period;
-		else
-			pstate.duty_cycle = 0;
-	}
-
-	voltage = pwm_get_relative_duty_cycle(&pstate, duty_unit);
+	voltage = pwm_get_relative_duty_cycle(&drvdata->pwm_state, duty_unit);
 	if (voltage < min(max_uV_duty, min_uV_duty) ||
 	    voltage > max(max_uV_duty, min_uV_duty))
 		return -ENOTRECOVERABLE;
@@ -195,15 +208,12 @@ static int pwm_regulator_set_voltage(struct regulator_dev *rdev,
 	unsigned int min_uV_duty = drvdata->continuous.min_uV_dutycycle;
 	unsigned int max_uV_duty = drvdata->continuous.max_uV_dutycycle;
 	unsigned int duty_unit = drvdata->continuous.dutycycle_unit;
+	struct pwm_state pstate = drvdata->pwm_state;
 	int min_uV = rdev->constraints->min_uV;
 	int max_uV = rdev->constraints->max_uV;
 	int diff_uV = max_uV - min_uV;
-	struct pwm_state pstate;
 	unsigned int diff_duty;
 	unsigned int dutycycle;
-	int ret;
-
-	pwm_init_state(drvdata->pwm, &pstate);
 
 	/*
 	 * The dutycycle for min_uV might be greater than the one for max_uV.
@@ -226,13 +236,7 @@ static int pwm_regulator_set_voltage(struct regulator_dev *rdev,
 
 	pwm_set_relative_duty_cycle(&pstate, dutycycle, duty_unit);
 
-	ret = pwm_apply_might_sleep(drvdata->pwm, &pstate);
-	if (ret) {
-		dev_err(&rdev->dev, "Failed to configure PWM: %d\n", ret);
-		return ret;
-	}
-
-	return 0;
+	return pwm_regulator_apply_state(rdev, &pstate);
 }
 
 static const struct regulator_ops pwm_regulator_voltage_table_ops = {
@@ -321,32 +325,6 @@ static int pwm_regulator_init_continuous(struct platform_device *pdev,
 	return 0;
 }
 
-static int pwm_regulator_init_boot_on(struct platform_device *pdev,
-				      struct pwm_regulator_data *drvdata,
-				      const struct regulator_init_data *init_data)
-{
-	struct pwm_state pstate;
-
-	if (!init_data->constraints.boot_on || drvdata->enb_gpio)
-		return 0;
-
-	pwm_get_state(drvdata->pwm, &pstate);
-	if (pstate.enabled)
-		return 0;
-
-	/*
-	 * Update the duty cycle so the output does not change
-	 * when the regulator core enables the regulator (and
-	 * thus the PWM channel).
-	 */
-	if (pstate.polarity == PWM_POLARITY_INVERSED)
-		pstate.duty_cycle = pstate.period;
-	else
-		pstate.duty_cycle = 0;
-
-	return pwm_apply_might_sleep(drvdata->pwm, &pstate);
-}
-
 static int pwm_regulator_probe(struct platform_device *pdev)
 {
 	const struct regulator_init_data *init_data;
@@ -404,10 +382,23 @@ static int pwm_regulator_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-	ret = pwm_regulator_init_boot_on(pdev, drvdata, init_data);
-	if (ret)
-		return dev_err_probe(&pdev->dev, ret,
-				     "Failed to apply boot_on settings\n");
+	pwm_init_state(drvdata->pwm, &drvdata->pwm_state);
+
+	if (init_data->constraints.boot_on && !drvdata->enb_gpio &&
+	    !drvdata->pwm_state.enabled)
+		/*
+		* In general it's unknown what the output of a disabled PWM is.
+		* The only sane assumption here is it emits the inactive level
+		* which corresponds to duty_cycle = 0 (independent of the
+		* polarity).
+		*
+		* Update the duty cycle so the output does not change when the
+		* regulator core enables the regulator (and thus the PWM
+		* channel) and there's no change to the duty cycle because the
+		* voltage that is achieved with a disabled PWM is already the
+		* desired one.
+		*/
+		drvdata->pwm_state.duty_cycle = 0;
 
 	regulator = devm_regulator_register(&pdev->dev,
 					    &drvdata->desc, &config);
