@@ -931,19 +931,10 @@
 		clocks = <&clkc CLKID_PERIPH>;
 
 		/*
-		 * The ARM Global Timer can only change the prescaler at
-		 * runtime, which means that we need to find a pre-divider
-		 * which works together with the prescaler and can match
-		 * any CPU clock rate (from the slowest at 24MHz to the
-		 * highest at 1992MHz).
-		 * A pre-divider of 8 is a good compromise because it allows
-		 * running the ARM Global Timer at 3MHz which can be evenly
-		 * divided by all supported CPU frequencies from 24MHz to
-		 * 1992MHz while not overflowing the 8-bit prescaler in the
-		 * timer.
+		 * the arm_global_timer driver currently does not handle clock
+		 * rate changes. Keep it disabled for now.
 		 */
-		assigned-clocks = <&clkc CLKID_PERIPH_SEL>;
-		assigned-clock-parents = <&clkc CLKID_CPU_CLK_DIV8>;
+		status = "disabled";
 	};
 
 	timer@600 {
