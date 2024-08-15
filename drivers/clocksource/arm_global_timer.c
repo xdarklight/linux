@@ -268,8 +268,10 @@ static int __init gt_clocksource_init(void)
 	writel(0, gt_base + GT_CONTROL);
 	writel(0, gt_base + GT_COUNTER0);
 	writel(0, gt_base + GT_COUNTER1);
-	/* enable the timer on all the cores */
-	writel(GT_CONTROL_TIMER_ENABLE, gt_base + GT_CONTROL);
+	/* set prescaler and enable timer on all the cores */
+	writel(FIELD_PREP(GT_CONTROL_PRESCALER_MASK,
+			  CONFIG_ARM_GT_INITIAL_PRESCALER_VAL - 1) |
+	       GT_CONTROL_TIMER_ENABLE, gt_base + GT_CONTROL);
 
 #ifdef CONFIG_CLKSRC_ARM_GLOBAL_TIMER_SCHED_CLOCK
 	sched_clock_register(gt_sched_clock_read, 64, gt_target_rate);
@@ -339,8 +341,7 @@ static int gt_clk_rate_change_cb(struct notifier_block *nb,
 static int __init global_timer_of_register(struct device_node *np)
 {
 	struct clk *gt_clk;
-	unsigned long gt_clk_rate;
-	u32 prescaler;
+	static unsigned long gt_clk_rate;
 	int err;
 
 	/*
@@ -378,17 +379,7 @@ static int __init global_timer_of_register(struct device_node *np)
 	}
 
 	gt_clk_rate = clk_get_rate(gt_clk);
-
-	if (of_machine_is_compatible("amlogic,meson8") ||
-	    of_machine_is_compatible("amlogic,meson8b") ||
-	    of_machine_is_compatible("amlogic,meson8m2")) {
-		gt_target_rate = 3 * 1000 * 1000;
-		prescaler = gt_clk_rate / gt_target_rate;
-	} else {
-		prescaler = CONFIG_ARM_GT_INITIAL_PRESCALER_VAL;
-		gt_target_rate = gt_clk_rate / prescaler;
-	}
-
+	gt_target_rate = gt_clk_rate / CONFIG_ARM_GT_INITIAL_PRESCALER_VAL;
 	gt_clk_rate_change_nb.notifier_call =
 		gt_clk_rate_change_cb;
 	err = clk_notifier_register(gt_clk, &gt_clk_rate_change_nb);
@@ -413,7 +404,6 @@ static int __init global_timer_of_register(struct device_node *np)
 	}
 
 	/* Register and immediately configure the timer on the boot CPU */
-	gt_write_presc(prescaler - 1);
 	err = gt_clocksource_init();
 	if (err)
 		goto out_irq;
