@@ -956,7 +956,8 @@ static void rtw_sdio_rxfifo_recv(struct rtw_dev *rtwdev, u32 rx_len)
 
 	skb_put(skb, rx_len);
 
-	rtw_rx_skb(rtwdev, skb, RTW_SDIO_DATA_PTR_ALIGN);
+	skb_queue_tail(&rtwsdio->rx_queue, skb);
+	queue_work(rtwsdio->rxwq, &rtwsdio->rx_work);
 }
 
 static void rtw_sdio_rx_isr(struct rtw_dev *rtwdev)
@@ -1194,6 +1195,21 @@ static void rtw_sdio_tx_handler(struct work_struct *work)
 	}
 }
 
+static void rtw_sdio_rx_handler(struct work_struct *work)
+{
+	struct rtw_sdio *rtwsdio = container_of(work, struct rtw_sdio, rx_work);
+	struct sk_buff *skb;
+	int limit;
+
+	for (limit = 0; limit < 1000; limit++) {
+		skb = skb_dequeue(&rtwsdio->rx_queue);
+		if (!skb)
+			break;
+
+		rtw_rx_skb(rtwsdio->rtwdev, skb, RTW_SDIO_DATA_PTR_ALIGN);
+	}
+}
+
 static void rtw_sdio_free_irq(struct rtw_dev *rtwdev,
 			      struct sdio_func *sdio_func)
 {
@@ -1231,6 +1247,33 @@ static void rtw_sdio_deinit_tx(struct rtw_dev *rtwdev)
 
 	for (i = 0; i < RTK_MAX_TX_QUEUE_NUM; i++)
 		ieee80211_purge_tx_queue(rtwdev->hw, &rtwsdio->tx_queue[i]);
+}
+
+static int rtw_sdio_init_rx(struct rtw_dev *rtwdev)
+{
+	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+
+	rtwsdio->rxwq = create_singlethread_workqueue("rtw88_sdio: rx wq");
+	if (!rtwsdio->txwq) {
+		rtw_err(rtwdev, "failed to create RX work queue\n");
+		return -ENOMEM;
+	}
+
+	skb_queue_head_init(&rtwsdio->rx_queue);
+
+	INIT_WORK(&rtwsdio->rx_work, rtw_sdio_rx_handler);
+
+	return 0;
+}
+
+static void rtw_sdio_deinit_rx(struct rtw_dev *rtwdev)
+{
+	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
+
+	flush_workqueue(rtwsdio->rxwq);
+	destroy_workqueue(rtwsdio->rxwq);
+
+	skb_queue_purge(&rtwsdio->rx_queue);
 }
 
 int rtw_sdio_probe(struct sdio_func *sdio_func,
@@ -1277,15 +1320,21 @@ int rtw_sdio_probe(struct sdio_func *sdio_func,
 		goto err_sdio_declaim;
 	}
 
+	ret = rtw_sdio_init_rx(rtwdev);
+	if (ret) {
+		rtw_err(rtwdev, "failed to init SDIO TX queue\n");
+		goto err_destroy_txwq;
+	}
+
 	ret = rtw_chip_info_setup(rtwdev);
 	if (ret) {
 		rtw_err(rtwdev, "failed to setup chip information");
-		goto err_destroy_txwq;
+		goto err_destory_rxwq;
 	}
 
 	ret = rtw_sdio_request_irq(rtwdev, sdio_func);
 	if (ret)
-		goto err_destroy_txwq;
+		goto err_destory_rxwq;
 
 	ret = rtw_register_hw(rtwdev, hw);
 	if (ret) {
@@ -1297,6 +1346,8 @@ int rtw_sdio_probe(struct sdio_func *sdio_func,
 
 err_free_irq:
 	rtw_sdio_free_irq(rtwdev, sdio_func);
+err_destory_rxwq:
+	rtw_sdio_deinit_rx(rtwdev);
 err_destroy_txwq:
 	rtw_sdio_deinit_tx(rtwdev);
 err_sdio_declaim:
@@ -1324,6 +1375,7 @@ void rtw_sdio_remove(struct sdio_func *sdio_func)
 	rtw_sdio_disable_interrupt(rtwdev);
 	rtw_sdio_free_irq(rtwdev, sdio_func);
 	rtw_sdio_declaim(rtwdev, sdio_func);
+	rtw_sdio_deinit_rx(rtwdev);
 	rtw_sdio_deinit_tx(rtwdev);
 	rtw_core_deinit(rtwdev);
 	ieee80211_free_hw(hw);
