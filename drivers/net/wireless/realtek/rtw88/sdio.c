@@ -671,6 +671,7 @@ static void rtw_sdio_init(struct rtw_dev *rtwdev)
 {
 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
 
+	rtwsdio->rtwdev = rtwdev;
 	rtwsdio->irq_mask = REG_SDIO_HIMR_RX_REQUEST | REG_SDIO_HIMR_CPWM1;
 }
 
@@ -809,7 +810,7 @@ static void rtw_sdio_tx_kick_off(struct rtw_dev *rtwdev)
 {
 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
 
-	queue_work(rtwsdio->txwq, &rtwsdio->tx_handler_data->work);
+	queue_work(rtwsdio->txwq, &rtwsdio->tx_work);
 }
 
 static void rtw_sdio_link_ps(struct rtw_dev *rtwdev, bool enter)
@@ -1241,14 +1242,9 @@ static void rtw_sdio_process_tx_queue(struct rtw_dev *rtwdev,
 
 static void rtw_sdio_tx_handler(struct work_struct *work)
 {
-	struct rtw_sdio_work_data *work_data =
-		container_of(work, struct rtw_sdio_work_data, work);
-	struct rtw_sdio *rtwsdio;
-	struct rtw_dev *rtwdev;
+	struct rtw_sdio *rtwsdio = container_of(work, struct rtw_sdio, tx_work);
+	struct rtw_dev *rtwdev = rtwsdio->rtwdev;
 	int limit, queue;
-
-	rtwdev = work_data->rtwdev;
-	rtwsdio = (struct rtw_sdio *)rtwdev->priv;
 
 	if (!rtw_fw_feature_check(&rtwdev->fw, FW_FEATURE_TX_WAKE))
 		rtw_sdio_deep_ps_leave(rtwdev);
@@ -1282,21 +1278,12 @@ static int rtw_sdio_init_tx(struct rtw_dev *rtwdev)
 		return -ENOMEM;
 	}
 
-	for (i = 0; i < RTK_MAX_TX_QUEUE_NUM; i++)
+	for (i = 0; i < ARRAY_SIZE(rtwsdio->tx_queue); i++)
 		skb_queue_head_init(&rtwsdio->tx_queue[i]);
-	rtwsdio->tx_handler_data = kmalloc(sizeof(*rtwsdio->tx_handler_data),
-					   GFP_KERNEL);
-	if (!rtwsdio->tx_handler_data)
-		goto err_destroy_wq;
 
-	rtwsdio->tx_handler_data->rtwdev = rtwdev;
-	INIT_WORK(&rtwsdio->tx_handler_data->work, rtw_sdio_tx_handler);
+	INIT_WORK(&rtwsdio->tx_work, rtw_sdio_tx_handler);
 
 	return 0;
-
-err_destroy_wq:
-	destroy_workqueue(rtwsdio->txwq);
-	return -ENOMEM;
 }
 
 static void rtw_sdio_deinit_tx(struct rtw_dev *rtwdev)
@@ -1305,7 +1292,6 @@ static void rtw_sdio_deinit_tx(struct rtw_dev *rtwdev)
 	int i;
 
 	destroy_workqueue(rtwsdio->txwq);
-	kfree(rtwsdio->tx_handler_data);
 
 	for (i = 0; i < RTK_MAX_TX_QUEUE_NUM; i++)
 		ieee80211_purge_tx_queue(rtwdev->hw, &rtwsdio->tx_queue[i]);
