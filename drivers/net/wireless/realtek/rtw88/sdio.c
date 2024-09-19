@@ -934,38 +934,11 @@ static void rtw_sdio_tx_err_isr(struct rtw_dev *rtwdev)
 	rtw_write32(rtwdev, REG_TXDMA_STATUS, val);
 }
 
-static void rtw_sdio_rx_skb(struct rtw_dev *rtwdev, struct sk_buff *skb,
-			    u32 pkt_offset, struct rtw_rx_pkt_stat *pkt_stat,
-			    struct ieee80211_rx_status *rx_status)
-{
-	*IEEE80211_SKB_RXCB(skb) = *rx_status;
-
-	if (pkt_stat->is_c2h) {
-		skb_put(skb, pkt_stat->pkt_len + pkt_offset);
-		rtw_fw_c2h_cmd_rx_irqsafe(rtwdev, pkt_offset, skb);
-		return;
-	}
-
-	skb_put(skb, pkt_stat->pkt_len);
-	skb_reserve(skb, pkt_offset);
-
-	rtw_update_rx_freq_for_invalid(rtwdev, skb, rx_status, pkt_stat);
-	rtw_rx_stats(rtwdev, pkt_stat->vif, skb);
-
-	ieee80211_rx_irqsafe(rtwdev->hw, skb);
-}
-
 static void rtw_sdio_rxfifo_recv(struct rtw_dev *rtwdev, u32 rx_len)
 {
 	struct rtw_sdio *rtwsdio = (struct rtw_sdio *)rtwdev->priv;
-	const struct rtw_chip_info *chip = rtwdev->chip;
-	u32 pkt_desc_sz = chip->rx_pkt_desc_sz;
-	struct ieee80211_rx_status rx_status;
-	struct rtw_rx_pkt_stat pkt_stat;
-	struct sk_buff *skb, *split_skb;
-	u32 pkt_offset, curr_pkt_len;
+	struct sk_buff *skb;
 	size_t bufsz;
-	u8 *rx_desc;
 	int ret;
 
 	bufsz = sdio_align_size(rtwsdio->sdio_func, rx_len);
@@ -980,42 +953,9 @@ static void rtw_sdio_rxfifo_recv(struct rtw_dev *rtwdev, u32 rx_len)
 		return;
 	}
 
-	while (true) {
-		rx_desc = skb->data;
-		rtw_rx_query_rx_desc(rtwdev, rx_desc, &pkt_stat, &rx_status);
-		pkt_offset = pkt_desc_sz + pkt_stat.drv_info_sz +
-			     pkt_stat.shift;
+	skb_put(skb, rx_len);
 
-		curr_pkt_len = ALIGN(pkt_offset + pkt_stat.pkt_len,
-				     RTW_SDIO_DATA_PTR_ALIGN);
-
-		if ((curr_pkt_len + pkt_desc_sz) >= rx_len) {
-			/* Use the original skb (with it's adjusted offset)
-			 * when processing the last (or even the only) entry to
-			 * have it's memory freed automatically.
-			 */
-			rtw_sdio_rx_skb(rtwdev, skb, pkt_offset, &pkt_stat,
-					&rx_status);
-			break;
-		}
-
-		split_skb = dev_alloc_skb(curr_pkt_len);
-		if (!split_skb) {
-			rtw_sdio_rx_skb(rtwdev, skb, pkt_offset, &pkt_stat,
-					&rx_status);
-			break;
-		}
-
-		skb_copy_header(split_skb, skb);
-		memcpy(split_skb->data, skb->data, curr_pkt_len);
-
-		rtw_sdio_rx_skb(rtwdev, split_skb, pkt_offset, &pkt_stat,
-				&rx_status);
-
-		/* Move to the start of the next RX descriptor */
-		skb_reserve(skb, curr_pkt_len);
-		rx_len -= curr_pkt_len;
-	}
+	rtw_rx_skb(rtwdev, skb, RTW_SDIO_DATA_PTR_ALIGN);
 }
 
 static void rtw_sdio_rx_isr(struct rtw_dev *rtwdev)
