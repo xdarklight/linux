@@ -51,6 +51,7 @@ void rtw_rx_query_rx_desc(struct rtw_dev *rtwdev, void *rx_desc8,
 void rtw_update_rx_freq_from_ie(struct rtw_dev *rtwdev, struct sk_buff *skb,
 				struct ieee80211_rx_status *rx_status,
 				struct rtw_rx_pkt_stat *pkt_stat);
+void rtw_rx_skb(struct rtw_dev *rtwdev, struct sk_buff *skb, u8 pkt_alignment);
 
 static inline
 void rtw_update_rx_freq_for_invalid(struct rtw_dev *rtwdev, struct sk_buff *skb,
