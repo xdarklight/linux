@@ -157,6 +157,10 @@ struct rtw_sdio {
 	struct workqueue_struct *txwq;
 	struct work_struct tx_work;
 	struct sk_buff_head tx_queue[RTK_MAX_TX_QUEUE_NUM];
+
+	struct workqueue_struct *rxwq;
+	struct work_struct rx_work;
+	struct sk_buff_head rx_queue;
 };
 
 extern const struct dev_pm_ops rtw_sdio_pm_ops;
