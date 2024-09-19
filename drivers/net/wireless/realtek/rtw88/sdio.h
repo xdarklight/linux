@@ -143,12 +143,9 @@ struct rtw_sdio_tx_data {
 	u8 offset;
 };
 
-struct rtw_sdio_work_data {
-	struct work_struct work;
-	struct rtw_dev *rtwdev;
-};
-
 struct rtw_sdio {
+	struct rtw_dev *rtwdev;
+
 	struct sdio_func *sdio_func;
 
 	u32 irq_mask;
@@ -158,7 +155,7 @@ struct rtw_sdio {
 	void *irq_thread;
 
 	struct workqueue_struct *txwq;
-	struct rtw_sdio_work_data *tx_handler_data;
+	struct work_struct tx_work;
 	struct sk_buff_head tx_queue[RTK_MAX_TX_QUEUE_NUM];
 };
 
