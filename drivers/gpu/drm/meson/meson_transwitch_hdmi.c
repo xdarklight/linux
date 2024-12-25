@@ -17,6 +17,7 @@
 #include <linux/regmap.h>
 
 #include <drm/display/drm_hdmi_helper.h>
+#include <drm/display/drm_hdmi_state_helper.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_bridge.h>
 #include <drm/drm_connector.h>
@@ -110,40 +111,6 @@ static const struct regmap_config meson_txc_hdmi_regmap_config = {
 	.fast_io = true,
 };
 
-static void meson_txc_hdmi_write_infoframe(struct regmap *regmap,
-					   unsigned int tx_pkt_reg, u8 *buf,
-					   unsigned int len, bool enable)
-{
-	unsigned int i;
-
-	/* Write the data bytes by starting at register offset 1 */
-	for (i = HDMI_INFOFRAME_HEADER_SIZE; i < len; i++)
-		regmap_write(regmap,
-			     tx_pkt_reg + i - HDMI_INFOFRAME_HEADER_SIZE + 1,
-			     buf[i]);
-
-	/* Zero all remaining data bytes */
-	for (; i < 0x1c; i++)
-		regmap_write(regmap, tx_pkt_reg + i, 0x00);
-
-	/* Write the header (which we skipped above) */
-	regmap_write(regmap, tx_pkt_reg + 0x00, buf[3]);
-	regmap_write(regmap, tx_pkt_reg + 0x1c, buf[0]);
-	regmap_write(regmap, tx_pkt_reg + 0x1d, buf[1]);
-	regmap_write(regmap, tx_pkt_reg + 0x1e, buf[2]);
-
-	regmap_write(regmap, tx_pkt_reg + 0x1f, enable ? 0xff : 0x00);
-}
-
-static void meson_txc_hdmi_disable_infoframe(struct meson_txc_hdmi *priv,
-					     unsigned int tx_pkt_reg)
-{
-	u8 buf[HDMI_INFOFRAME_HEADER_SIZE] = { 0 };
-
-	meson_txc_hdmi_write_infoframe(priv->regmap, tx_pkt_reg, buf,
-				       HDMI_INFOFRAME_HEADER_SIZE, false);
-}
-
 static void meson_txc_hdmi_sys5_reset_assert(struct meson_txc_hdmi *priv)
 {
 	/* A comment in the vendor driver says: bit5,6 is converted */
@@ -204,98 +171,111 @@ static void meson_txc_hdmi_config_hdcp_registers(struct meson_txc_hdmi *priv)
 	regmap_write(priv->regmap, TX_HDCP_MODE, TX_HDCP_MODE_ESS_CONFIG);
 }
 
-static u8 meson_txc_hdmi_bus_fmt_to_color_depth(unsigned int bus_format)
-{
-	switch (bus_format) {
-	case MEDIA_BUS_FMT_RGB888_1X24:
-	case MEDIA_BUS_FMT_YUV8_1X24:
-	case MEDIA_BUS_FMT_UYVY8_1X16:
-		/* 8 bit */
-		return 0x0;
-
-	case MEDIA_BUS_FMT_RGB101010_1X30:
-	case MEDIA_BUS_FMT_YUV10_1X30:
-	case MEDIA_BUS_FMT_UYVY10_1X20:
-		/* 10 bit */
-		return 0x1;
-
-	case MEDIA_BUS_FMT_RGB121212_1X36:
-	case MEDIA_BUS_FMT_YUV12_1X36:
-	case MEDIA_BUS_FMT_UYVY12_1X24:
-		/* 12 bit */
-		return 0x2;
-
-	case MEDIA_BUS_FMT_RGB161616_1X48:
-	case MEDIA_BUS_FMT_YUV16_1X48:
-		/* 16 bit */
-		return 0x3;
-
-	default:
-		/* unknown, default to 8 bit */
-		return 0x0;
-	}
-}
-
-static u8 meson_txc_hdmi_bus_fmt_to_color_format(unsigned int bus_format)
-{
-	switch (bus_format) {
-	case MEDIA_BUS_FMT_YUV8_1X24:
-	case MEDIA_BUS_FMT_YUV10_1X30:
-	case MEDIA_BUS_FMT_YUV12_1X36:
-	case MEDIA_BUS_FMT_YUV16_1X48:
-		/* Documented as YCbCr444 */
-		return 0x1;
-
-	case MEDIA_BUS_FMT_UYVY8_1X16:
-	case MEDIA_BUS_FMT_UYVY10_1X20:
-	case MEDIA_BUS_FMT_UYVY12_1X24:
-		/* Documented as YCbCr422 */
-		return 0x3;
-
-	case MEDIA_BUS_FMT_RGB888_1X24:
-	case MEDIA_BUS_FMT_RGB101010_1X30:
-	case MEDIA_BUS_FMT_RGB121212_1X36:
-	case MEDIA_BUS_FMT_RGB161616_1X48:
-	default:
-		/* Documented as RGB444 */
-		return 0x0;
-	}
-}
-
 static void meson_txc_hdmi_config_color_space(struct meson_txc_hdmi *priv,
 					      unsigned int input_bus_format,
-					      unsigned int output_bus_format,
-					      enum hdmi_quantization_range quant_range,
+					      struct drm_connector_hdmi_state *hdmi,
 					      enum hdmi_colorimetry colorimetry)
 {
-	unsigned int regval;
+	unsigned int input_color_format, input_color_depth;
+	unsigned int output_color_format, output_color_depth, output_color_range;
+
+	switch (input_bus_format) {
+	case MEDIA_BUS_FMT_UYVY12_1X24:
+	case MEDIA_BUS_FMT_UYVY10_1X20:
+	case MEDIA_BUS_FMT_UYVY8_1X16:
+		input_color_format = TX_VIDEO_DTV_OPTION_L_COLOR_FORMAT_YCBCR422;
+		break;
+	case MEDIA_BUS_FMT_YUV16_1X48:
+	case MEDIA_BUS_FMT_YUV12_1X36:
+	case MEDIA_BUS_FMT_YUV10_1X30:
+	case MEDIA_BUS_FMT_YUV8_1X24:
+		input_color_format = TX_VIDEO_DTV_OPTION_L_COLOR_FORMAT_YCBCR444;
+		break;
+	case MEDIA_BUS_FMT_RGB161616_1X48:
+	case MEDIA_BUS_FMT_RGB121212_1X36:
+	case MEDIA_BUS_FMT_RGB101010_1X30:
+	case MEDIA_BUS_FMT_RGB888_1X24:
+	default:
+		input_color_format = TX_VIDEO_DTV_OPTION_L_COLOR_FORMAT_RGB444;
+		break;
+	}
+
+	switch (input_bus_format) {
+	case MEDIA_BUS_FMT_YUV16_1X48:
+	case MEDIA_BUS_FMT_RGB161616_1X48:
+		input_color_depth = TX_VIDEO_DTV_OPTION_L_COLOR_DEPTH_48_BIT;
+		break;
+	case MEDIA_BUS_FMT_UYVY12_1X24:
+	case MEDIA_BUS_FMT_YUV12_1X36:
+	case MEDIA_BUS_FMT_RGB121212_1X36:
+		input_color_depth = TX_VIDEO_DTV_OPTION_L_COLOR_DEPTH_36_BIT;
+		break;
+	case MEDIA_BUS_FMT_UYVY10_1X20:
+	case MEDIA_BUS_FMT_YUV10_1X30:
+	case MEDIA_BUS_FMT_RGB101010_1X30:
+		input_color_depth = TX_VIDEO_DTV_OPTION_L_COLOR_DEPTH_30_BIT;
+		break;
+	case MEDIA_BUS_FMT_UYVY8_1X16:
+	case MEDIA_BUS_FMT_YUV8_1X24:
+	case MEDIA_BUS_FMT_RGB888_1X24:
+	default:
+		input_color_depth = TX_VIDEO_DTV_OPTION_L_COLOR_DEPTH_24_BIT;
+		break;
+	}
+
+	switch (hdmi->output_format) {
+	case HDMI_COLORSPACE_YUV422:
+		output_color_format = TX_VIDEO_DTV_OPTION_L_COLOR_FORMAT_YCBCR422;
+		break;
+	case HDMI_COLORSPACE_YUV444:
+		output_color_format = TX_VIDEO_DTV_OPTION_L_COLOR_FORMAT_YCBCR444;
+		break;
+	case HDMI_COLORSPACE_RGB:
+	default:
+		output_color_format = TX_VIDEO_DTV_OPTION_L_COLOR_FORMAT_RGB444;
+		break;
+	}
+
+	switch (hdmi->output_bpc) {
+	case 10:
+		output_color_depth = TX_VIDEO_DTV_OPTION_L_COLOR_DEPTH_30_BIT;
+		break;
+	case 12:
+		output_color_depth = TX_VIDEO_DTV_OPTION_L_COLOR_DEPTH_36_BIT;
+		break;
+	case 16:
+		output_color_depth = TX_VIDEO_DTV_OPTION_L_COLOR_DEPTH_48_BIT;
+		break;
+	case 8:
+	default:
+		output_color_depth = TX_VIDEO_DTV_OPTION_L_COLOR_DEPTH_24_BIT;
+		break;
+	}
 
 	regmap_write(priv->regmap, TX_VIDEO_DTV_MODE,
 		     FIELD_PREP(TX_VIDEO_DTV_MODE_COLOR_DEPTH,
-				meson_txc_hdmi_bus_fmt_to_color_depth(output_bus_format)));
+				output_color_depth));
 
 	regmap_write(priv->regmap, TX_VIDEO_DTV_OPTION_L,
 		     FIELD_PREP(TX_VIDEO_DTV_OPTION_L_OUTPUT_COLOR_FORMAT,
-				meson_txc_hdmi_bus_fmt_to_color_format(output_bus_format)) |
+				output_color_format) |
 		     FIELD_PREP(TX_VIDEO_DTV_OPTION_L_INPUT_COLOR_FORMAT,
-				meson_txc_hdmi_bus_fmt_to_color_format(input_bus_format)) |
+				input_color_format) |
 		     FIELD_PREP(TX_VIDEO_DTV_OPTION_L_OUTPUT_COLOR_DEPTH,
-				meson_txc_hdmi_bus_fmt_to_color_depth(output_bus_format)) |
+				output_color_depth) |
 		     FIELD_PREP(TX_VIDEO_DTV_OPTION_L_INPUT_COLOR_DEPTH,
-				meson_txc_hdmi_bus_fmt_to_color_depth(input_bus_format)));
+				input_color_depth));
 
-	if (quant_range == HDMI_QUANTIZATION_RANGE_LIMITED)
-		regval = FIELD_PREP(TX_VIDEO_DTV_OPTION_H_OUTPUT_COLOR_RANGE,
-				    TX_VIDEO_DTV_OPTION_H_COLOR_RANGE_16_235) |
-			 FIELD_PREP(TX_VIDEO_DTV_OPTION_H_INPUT_COLOR_RANGE,
-				    TX_VIDEO_DTV_OPTION_H_COLOR_RANGE_16_235);
+	if (hdmi->is_limited_range)
+		output_color_range = TX_VIDEO_DTV_OPTION_H_COLOR_RANGE_16_235;
 	else
-		regval = FIELD_PREP(TX_VIDEO_DTV_OPTION_H_OUTPUT_COLOR_RANGE,
-				    TX_VIDEO_DTV_OPTION_H_COLOR_RANGE_0_255) |
-			 FIELD_PREP(TX_VIDEO_DTV_OPTION_H_INPUT_COLOR_RANGE,
-				    TX_VIDEO_DTV_OPTION_H_COLOR_RANGE_0_255);
+		output_color_range = TX_VIDEO_DTV_OPTION_H_COLOR_RANGE_0_255;
 
-	regmap_write(priv->regmap, TX_VIDEO_DTV_OPTION_H, regval);
+	regmap_write(priv->regmap, TX_VIDEO_DTV_OPTION_H,
+		     FIELD_PREP(TX_VIDEO_DTV_OPTION_H_OUTPUT_COLOR_RANGE,
+				output_color_range) |
+		     FIELD_PREP(TX_VIDEO_DTV_OPTION_H_INPUT_COLOR_RANGE,
+				TX_VIDEO_DTV_OPTION_H_COLOR_RANGE_0_255));
 
 	if (colorimetry == HDMI_COLORIMETRY_ITU_601) {
 		regmap_write(priv->regmap, TX_VIDEO_CSC_COEFF_B0, 0x2f);
@@ -407,126 +387,6 @@ static void meson_txc_hdmi_reconfig_packet_setting(struct meson_txc_hdmi *priv,
 			   TX_PACKET_CONTROL_1_FORCE_PACKET_TIMING);
 }
 
-static void meson_txc_hdmi_set_avi_infoframe(struct meson_txc_hdmi *priv,
-					     struct drm_connector *conn,
-					     const struct drm_display_mode *mode,
-					     const struct drm_connector_state *conn_state,
-					     unsigned int output_bus_format,
-					     enum hdmi_quantization_range quant_range,
-					     enum hdmi_colorimetry colorimetry)
-{
-	u8 buf[HDMI_INFOFRAME_SIZE(AVI)], *video_code;
-	struct hdmi_avi_infoframe frame;
-	int ret;
-
-	ret = drm_hdmi_avi_infoframe_from_display_mode(&frame, conn, mode);
-	if (ret < 0) {
-		drm_err(priv->bridge.dev,
-			"Failed to setup AVI infoframe: %d\n", ret);
-		return;
-	}
-
-	switch (output_bus_format) {
-	case MEDIA_BUS_FMT_YUV8_1X24:
-	case MEDIA_BUS_FMT_YUV10_1X30:
-	case MEDIA_BUS_FMT_YUV12_1X36:
-	case MEDIA_BUS_FMT_YUV16_1X48:
-		frame.colorspace = HDMI_COLORSPACE_YUV444;
-		break;
-
-	case MEDIA_BUS_FMT_UYVY8_1X16:
-	case MEDIA_BUS_FMT_UYVY10_1X20:
-	case MEDIA_BUS_FMT_UYVY12_1X24:
-		frame.colorspace = HDMI_COLORSPACE_YUV422;
-		break;
-
-	case MEDIA_BUS_FMT_RGB888_1X24:
-	case MEDIA_BUS_FMT_RGB101010_1X30:
-	case MEDIA_BUS_FMT_RGB121212_1X36:
-	case MEDIA_BUS_FMT_RGB161616_1X48:
-	default:
-		frame.colorspace = HDMI_COLORSPACE_RGB;
-		break;
-	}
-
-	drm_hdmi_avi_infoframe_colorimetry(&frame, conn_state);
-	drm_hdmi_avi_infoframe_quant_range(&frame, conn, mode, quant_range);
-	drm_hdmi_avi_infoframe_bars(&frame, conn_state);
-
-	ret = hdmi_avi_infoframe_pack(&frame, buf, sizeof(buf));
-	if (ret < 0) {
-		drm_err(priv->bridge.dev,
-			"Failed to pack AVI infoframe: %d\n", ret);
-		return;
-	}
-
-	video_code = &buf[HDMI_INFOFRAME_HEADER_SIZE + 3];
-	if (*video_code > 108) {
-		regmap_write(priv->regmap, TX_PKT_REG_EXCEPT0_BASE_ADDR,
-			     *video_code);
-		*video_code = 0x00;
-	} else {
-		regmap_write(priv->regmap, TX_PKT_REG_EXCEPT0_BASE_ADDR,
-			     0x00);
-	}
-
-	meson_txc_hdmi_write_infoframe(priv->regmap,
-				       TX_PKT_REG_AVI_INFO_BASE_ADDR, buf,
-				       sizeof(buf), true);
-}
-
-static void meson_txc_hdmi_set_vendor_infoframe(struct meson_txc_hdmi *priv,
-						struct drm_connector *conn,
-						const struct drm_display_mode *mode)
-{
-	u8 buf[HDMI_INFOFRAME_HEADER_SIZE + 6];
-	struct hdmi_vendor_infoframe frame;
-	int ret;
-
-	ret = drm_hdmi_vendor_infoframe_from_display_mode(&frame, conn, mode);
-	if (ret) {
-		drm_dbg(priv->bridge.dev,
-			"Failed to setup vendor infoframe: %d\n", ret);
-		return;
-	}
-
-	ret = hdmi_vendor_infoframe_pack(&frame, buf, sizeof(buf));
-	if (ret < 0) {
-		drm_err(priv->bridge.dev,
-			"Failed to pack vendor infoframe: %d\n", ret);
-		return;
-	}
-
-	meson_txc_hdmi_write_infoframe(priv->regmap,
-				       TX_PKT_REG_VEND_INFO_BASE_ADDR, buf,
-				       sizeof(buf), true);
-}
-
-static void meson_txc_hdmi_set_spd_infoframe(struct meson_txc_hdmi *priv)
-{
-	u8 buf[HDMI_INFOFRAME_SIZE(SPD)];
-	struct hdmi_spd_infoframe frame;
-	int ret;
-
-	ret = hdmi_spd_infoframe_init(&frame, "Amlogic", "Meson TXC HDMI");
-	if (ret < 0) {
-		drm_err(priv->bridge.dev,
-			"Failed to setup SPD infoframe: %d\n", ret);
-		return;
-	}
-
-	ret = hdmi_spd_infoframe_pack(&frame, buf, sizeof(buf));
-	if (ret < 0) {
-		drm_err(priv->bridge.dev,
-			"Failed to pack SDP infoframe: %d\n", ret);
-		return;
-	}
-
-	meson_txc_hdmi_write_infoframe(priv->regmap,
-				       TX_PKT_REG_SPD_INFO_BASE_ADDR, buf,
-				       sizeof(buf), true);
-}
-
 static void meson_txc_hdmi_handle_plugged_change(struct meson_txc_hdmi *priv)
 {
 	bool plugged;
@@ -552,6 +412,15 @@ static int meson_txc_hdmi_bridge_attach(struct drm_bridge *bridge,
 				 flags);
 }
 
+static int meson_txc_hdmi_bridge_atomic_check(struct drm_bridge *bridge,
+					      struct drm_bridge_state *bridge_state,
+					      struct drm_crtc_state *crtc_state,
+					      struct drm_connector_state *conn_state)
+{
+	return drm_atomic_helper_connector_hdmi_check(conn_state->connector,
+						      conn_state->state);
+}
+
 /* Can return a maximum of 11 possible output formats for a mode/connector */
 #define MAX_OUTPUT_SEL_FORMATS	11
 
@@ -575,8 +444,9 @@ meson_txc_hdmi_bridge_atomic_get_output_bus_fmts(struct drm_bridge *bridge,
 	if (!output_fmts)
 		return NULL;
 
-	/* If we are the only bridge, avoid negotiating with ourselves */
-	if (list_is_singular(&bridge->encoder->bridge_chain)) {
+	/* Avoid negotiating with ourselves if we're the first or only bridge */
+	if (list_is_singular(&bridge->encoder->bridge_chain) ||
+	    list_is_first(&bridge->chain_node, &bridge->encoder->bridge_chain)) {
 		*num_output_fmts = 1;
 		output_fmts[0] = MEDIA_BUS_FMT_FIXED;
 
@@ -587,6 +457,9 @@ meson_txc_hdmi_bridge_atomic_get_output_bus_fmts(struct drm_bridge *bridge,
 	 * Order bus formats from 16bit to 8bit and from YUV422 to RGB
 	 * if supported. In any case the default RGB888 format is added
 	 */
+
+	/* Default 8bit RGB fallback */
+	output_fmts[i++] = MEDIA_BUS_FMT_RGB888_1X24;
 
 	if (max_bpc >= 16 && info->bpc == 16) {
 		if (info->color_formats & DRM_COLOR_FORMAT_YCBCR444)
@@ -620,9 +493,6 @@ meson_txc_hdmi_bridge_atomic_get_output_bus_fmts(struct drm_bridge *bridge,
 
 	if (info->color_formats & DRM_COLOR_FORMAT_YCBCR444)
 		output_fmts[i++] = MEDIA_BUS_FMT_YUV8_1X24;
-
-	/* Default 8bit RGB fallback */
-	output_fmts[i++] = MEDIA_BUS_FMT_RGB888_1X24;
 
 	*num_output_fmts = i;
 
@@ -733,7 +603,6 @@ static void meson_txc_hdmi_bridge_atomic_enable(struct drm_bridge *bridge,
 {
 	struct meson_txc_hdmi *priv = bridge_to_meson_txc_hdmi(bridge);
 	struct drm_atomic_state *state = old_bridge_state->base.state;
-	enum hdmi_quantization_range quant_range;
 	struct drm_connector_state *conn_state;
 	struct drm_bridge_state *bridge_state;
 	const struct drm_display_mode *mode;
@@ -765,8 +634,6 @@ static void meson_txc_hdmi_bridge_atomic_enable(struct drm_bridge *bridge,
 	cea_mode = drm_match_cea_mode(mode);
 
 	if (connector->display_info.is_hdmi) {
-		quant_range = drm_default_rgb_quant_range(mode);
-
 		switch (cea_mode) {
 		case 2 ... 3:
 		case 6 ... 7:
@@ -779,17 +646,11 @@ static void meson_txc_hdmi_bridge_atomic_enable(struct drm_bridge *bridge,
 			colorimetry = HDMI_COLORIMETRY_ITU_709;
 			break;
 		}
-
-		meson_txc_hdmi_set_avi_infoframe(priv, connector, mode,
-						 conn_state,
-						 bridge_state->output_bus_cfg.format,
-						 quant_range, colorimetry);
-		meson_txc_hdmi_set_vendor_infoframe(priv, connector, mode);
-		meson_txc_hdmi_set_spd_infoframe(priv);
 	} else {
-		quant_range = HDMI_QUANTIZATION_RANGE_FULL;
 		colorimetry = HDMI_COLORIMETRY_NONE;
 	}
+
+	drm_atomic_helper_connector_hdmi_update_infoframes(connector, state);
 
 	meson_txc_hdmi_sys5_reset_assert(priv);
 
@@ -834,8 +695,8 @@ static void meson_txc_hdmi_bridge_atomic_enable(struct drm_bridge *bridge,
 
 	meson_txc_hdmi_config_color_space(priv,
 					  bridge_state->input_bus_cfg.format,
-					  bridge_state->output_bus_cfg.format,
-					  quant_range, colorimetry);
+					  &conn_state->hdmi,
+					  colorimetry);
 
 	meson_txc_hdmi_sys5_reset_deassert(priv);
 
@@ -895,11 +756,6 @@ static void meson_txc_hdmi_bridge_atomic_disable(struct drm_bridge *bridge,
 		else
 			priv->phy_is_on = false;
 	}
-
-	meson_txc_hdmi_disable_infoframe(priv, TX_PKT_REG_AUDIO_INFO_BASE_ADDR);
-	meson_txc_hdmi_disable_infoframe(priv, TX_PKT_REG_AVI_INFO_BASE_ADDR);
-	meson_txc_hdmi_disable_infoframe(priv, TX_PKT_REG_EXCEPT0_BASE_ADDR);
-	meson_txc_hdmi_disable_infoframe(priv, TX_PKT_REG_VEND_INFO_BASE_ADDR);
 }
 
 static enum drm_mode_status
@@ -907,7 +763,16 @@ meson_txc_hdmi_bridge_mode_valid(struct drm_bridge *bridge,
 				 const struct drm_display_info *info,
 				 const struct drm_display_mode *mode)
 {
-	return MODE_OK;
+	unsigned long long rate;
+
+	if (mode->hdisplay > 3840)
+		return MODE_BAD_HVALUE;
+
+	rate = drm_hdmi_compute_mode_clock(mode, 8, HDMI_COLORSPACE_RGB);
+	if (rate == 0)
+		return MODE_NOCLOCK;
+
+	return bridge->funcs->hdmi_tmds_char_rate_valid(bridge, mode, rate);
 }
 
 static enum drm_connector_status meson_txc_hdmi_bridge_detect(struct drm_bridge *bridge)
@@ -983,11 +848,90 @@ static const struct drm_edid *meson_txc_hdmi_bridge_edid_read(struct drm_bridge 
 	return drm_edid;
 }
 
+static enum drm_mode_status
+meson_txc_hdmi_tmds_char_rate_valid(const struct drm_bridge *bridge,
+				    const struct drm_display_mode *mode,
+				    unsigned long long tmds_rate)
+{
+	/* 297 MHz for 4k@30 mode (HDMI 1.4) */
+	if (tmds_rate > 297000000)
+		return MODE_CLOCK_HIGH;
+
+	return MODE_OK;
+}
+
+static void meson_txc_hdmi_infoframe_set(struct drm_bridge *bridge,
+					 enum hdmi_infoframe_type type,
+					 const u8 *buffer, size_t len,
+					 bool enable)
+{
+	struct meson_txc_hdmi *priv = bridge_to_meson_txc_hdmi(bridge);
+	unsigned int i, tx_pkt_reg;
+
+	switch (type) {
+	case HDMI_INFOFRAME_TYPE_VENDOR:
+		tx_pkt_reg = TX_PKT_REG_VEND_INFO_BASE_ADDR;
+		break;
+	case HDMI_INFOFRAME_TYPE_AVI:
+		tx_pkt_reg = TX_PKT_REG_AVI_INFO_BASE_ADDR;
+		break;
+	case HDMI_INFOFRAME_TYPE_SPD:
+		tx_pkt_reg = TX_PKT_REG_SPD_INFO_BASE_ADDR;
+		break;
+	case HDMI_INFOFRAME_TYPE_AUDIO:
+		tx_pkt_reg = TX_PKT_REG_AUDIO_INFO_BASE_ADDR;
+		break;
+	default:
+		drm_dbg_driver(bridge->dev, "Unsupported HDMI InfoFrame %x\n",
+			       type);
+		return;
+	}
+
+	/* Write the data bytes by starting at register offset 1 */
+	for (i = HDMI_INFOFRAME_HEADER_SIZE; i < len; i++)
+		regmap_write(priv->regmap,
+			     tx_pkt_reg + i - HDMI_INFOFRAME_HEADER_SIZE + 1,
+			     buffer[i]);
+
+	/* Zero all remaining data bytes */
+	for (; i < 0x1c; i++)
+		regmap_write(priv->regmap, tx_pkt_reg + i, 0x00);
+
+	/* Write the header (which we skipped above) */
+	regmap_write(priv->regmap, tx_pkt_reg + 0x00, buffer[3]);
+	regmap_write(priv->regmap, tx_pkt_reg + 0x1c, buffer[0]);
+	regmap_write(priv->regmap, tx_pkt_reg + 0x1d, buffer[1]);
+	regmap_write(priv->regmap, tx_pkt_reg + 0x1e, buffer[2]);
+
+	regmap_write(priv->regmap, tx_pkt_reg + 0x1f, enable ? 0xff : 0x00);
+}
+
+static int meson_txc_hdmi_clear_infoframe(struct drm_bridge *bridge,
+					  enum hdmi_infoframe_type type)
+{
+	u8 buffer[HDMI_INFOFRAME_HEADER_SIZE] = { 0 };
+
+	meson_txc_hdmi_infoframe_set(bridge, type, buffer,
+				     HDMI_INFOFRAME_HEADER_SIZE, false);
+
+	return 0;
+}
+
+static int meson_txc_hdmi_write_infoframe(struct drm_bridge *bridge,
+					  enum hdmi_infoframe_type type,
+					  const u8 *buffer, size_t len)
+{
+	meson_txc_hdmi_infoframe_set(bridge, type, buffer, len, true);
+
+	return 0;
+}
+
 static const struct drm_bridge_funcs meson_txc_hdmi_bridge_funcs = {
 	.atomic_duplicate_state = drm_atomic_helper_bridge_duplicate_state,
 	.atomic_destroy_state = drm_atomic_helper_bridge_destroy_state,
 	.atomic_reset = drm_atomic_helper_bridge_reset,
 	.attach = meson_txc_hdmi_bridge_attach,
+	.atomic_check = meson_txc_hdmi_bridge_atomic_check, // TODO: drop with 6.14
 	.atomic_get_output_bus_fmts = meson_txc_hdmi_bridge_atomic_get_output_bus_fmts,
 	.atomic_get_input_bus_fmts = meson_txc_hdmi_bridge_atomic_get_input_bus_fmts,
 	.atomic_enable = meson_txc_hdmi_bridge_atomic_enable,
@@ -995,6 +939,9 @@ static const struct drm_bridge_funcs meson_txc_hdmi_bridge_funcs = {
 	.mode_valid = meson_txc_hdmi_bridge_mode_valid,
 	.detect = meson_txc_hdmi_bridge_detect,
 	.edid_read = meson_txc_hdmi_bridge_edid_read,
+	.hdmi_tmds_char_rate_valid = meson_txc_hdmi_tmds_char_rate_valid,
+	.hdmi_write_infoframe = meson_txc_hdmi_write_infoframe,
+	.hdmi_clear_infoframe = meson_txc_hdmi_clear_infoframe,
 };
 
 static int meson_txc_hdmi_hw_init(struct meson_txc_hdmi *priv)
@@ -1245,10 +1192,6 @@ static int meson_txc_hdmi_hdmi_codec_hw_params(struct device *dev, void *data,
 	if (len < 0)
 		return len;
 
-	meson_txc_hdmi_write_infoframe(priv->regmap,
-				       TX_PKT_REG_AUDIO_INFO_BASE_ADDR,
-				       buf, len, true);
-
 	for (i = 0; i < ARRAY_SIZE(hparms->iec.status); i++) {
 		unsigned char sub1, sub2;
 
@@ -1303,8 +1246,6 @@ static void meson_txc_hdmi_hdmi_codec_audio_shutdown(struct device *dev,
 						     void *data)
 {
 	struct meson_txc_hdmi *priv = dev_get_drvdata(dev);
-
-	meson_txc_hdmi_disable_infoframe(priv, TX_PKT_REG_AUDIO_INFO_BASE_ADDR);
 
 	regmap_write(priv->regmap, TX_AUDIO_CONTROL_MORE, 0x0);
 	regmap_update_bits(priv->regmap, HDMI_OTHER_CTRL1,
@@ -1392,6 +1333,8 @@ static const struct hdmi_codec_pdata meson_txc_hdmi_codec_pdata = {
 	.i2s			= 1,
 	.spdif			= 1,
 	.max_i2s_channels	= 8,
+	.no_i2s_capture		= 1,
+	.no_spdif_capture	= 1,
 };
 
 static int meson_txc_hdmi_codec_init(struct meson_txc_hdmi *priv)
@@ -1485,11 +1428,19 @@ static int meson_txc_hdmi_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_hw_exit;
 
+	priv->bridge.of_node = dev->of_node;
 	priv->bridge.driver_private = priv;
 	priv->bridge.funcs = &meson_txc_hdmi_bridge_funcs;
-	priv->bridge.ops = DRM_BRIDGE_OP_DETECT | DRM_BRIDGE_OP_EDID;
-	priv->bridge.of_node = dev->of_node;
+	priv->bridge.ops = DRM_BRIDGE_OP_DETECT | DRM_BRIDGE_OP_EDID |
+			   DRM_BRIDGE_OP_HDMI;
+	priv->bridge.type = DRM_MODE_CONNECTOR_HDMIA;
 	priv->bridge.interlace_allowed = true;
+	priv->bridge.max_bpc = 12;
+	priv->bridge.supported_formats = BIT(HDMI_COLORSPACE_RGB) |
+					 BIT(HDMI_COLORSPACE_YUV422) |
+					 BIT(HDMI_COLORSPACE_YUV444);
+	priv->bridge.vendor = "Amlogic";
+	priv->bridge.product = "TranSwitch-HDMI";
 
 	drm_bridge_add(&priv->bridge);
 
