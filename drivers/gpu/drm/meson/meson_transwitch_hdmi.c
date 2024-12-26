@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright (C) 2021 Martin Blumenstingl <martin.blumenstingl@googlemail.com>
+ * Copyright (C) 2021-2025 Martin Blumenstingl <martin.blumenstingl@googlemail.com>
  *
  * All registers and magic values are taken from Amlogic's GPL kernel sources:
  *   Copyright (C) 2010 Amlogic, Inc.
@@ -11,7 +11,6 @@
 #include <linux/err.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
-#include <linux/mutex.h>
 #include <linux/phy/phy.h>
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
@@ -38,24 +37,12 @@
 	#define HDMI_CTRL_PORT_APB3_ERR_EN		BIT(15)
 
 struct meson_txc_hdmi {
-	struct device			*dev;
-
 	struct regmap			*regmap;
 
-	struct clk			*pclk;
 	struct clk			*sys_clk;
 
 	struct phy			*phy;
 	bool				phy_is_on;
-
-	struct mutex			codec_mutex;
-	enum drm_connector_status	last_connector_status;
-	hdmi_codec_plugged_cb		codec_plugged_cb;
-	struct device			*codec_dev;
-
-	struct platform_device		*hdmi_codec_pdev;
-
-	struct drm_connector		*current_connector;
 
 	struct drm_bridge		bridge;
 	struct drm_bridge		*next_bridge;
@@ -237,14 +224,14 @@ static void meson_txc_hdmi_config_color_space(struct meson_txc_hdmi *priv,
 	}
 
 	switch (hdmi->output_bpc) {
-	case 10:
-		output_color_depth = TX_VIDEO_DTV_OPTION_L_COLOR_DEPTH_30_BIT;
+	case 16:
+		output_color_depth = TX_VIDEO_DTV_OPTION_L_COLOR_DEPTH_48_BIT;
 		break;
 	case 12:
 		output_color_depth = TX_VIDEO_DTV_OPTION_L_COLOR_DEPTH_36_BIT;
 		break;
-	case 16:
-		output_color_depth = TX_VIDEO_DTV_OPTION_L_COLOR_DEPTH_48_BIT;
+	case 10:
+		output_color_depth = TX_VIDEO_DTV_OPTION_L_COLOR_DEPTH_30_BIT;
 		break;
 	case 8:
 	default:
@@ -382,19 +369,8 @@ static void meson_txc_hdmi_reconfig_packet_setting(struct meson_txc_hdmi *priv,
 	regmap_write(priv->regmap, TX_CORE_ALLOC_VSYNC_2, 0x0a);
 	regmap_write(priv->regmap, TX_PACKET_ALLOC_SOF_1, alloc_sof1);
 	regmap_write(priv->regmap, TX_PACKET_ALLOC_SOF_2, alloc_sof2);
-	regmap_update_bits(priv->regmap, TX_PACKET_CONTROL_1,
-			   TX_PACKET_CONTROL_1_FORCE_PACKET_TIMING,
-			   TX_PACKET_CONTROL_1_FORCE_PACKET_TIMING);
-}
-
-static void meson_txc_hdmi_handle_plugged_change(struct meson_txc_hdmi *priv)
-{
-	bool plugged;
-
-	plugged = priv->last_connector_status == connector_status_connected;
-
-	if (priv->codec_dev && priv->codec_plugged_cb)
-		priv->codec_plugged_cb(priv->codec_dev, plugged);
+	regmap_set_bits(priv->regmap, TX_PACKET_CONTROL_1,
+			TX_PACKET_CONTROL_1_FORCE_PACKET_TIMING);
 }
 
 static int meson_txc_hdmi_bridge_attach(struct drm_bridge *bridge,
@@ -410,15 +386,6 @@ static int meson_txc_hdmi_bridge_attach(struct drm_bridge *bridge,
 
 	return drm_bridge_attach(bridge->encoder, priv->next_bridge, bridge,
 				 flags);
-}
-
-static int meson_txc_hdmi_bridge_atomic_check(struct drm_bridge *bridge,
-					      struct drm_bridge_state *bridge_state,
-					      struct drm_crtc_state *crtc_state,
-					      struct drm_connector_state *conn_state)
-{
-	return drm_atomic_helper_connector_hdmi_check(conn_state->connector,
-						      conn_state->state);
 }
 
 /* Can return a maximum of 11 possible output formats for a mode/connector */
@@ -627,8 +594,6 @@ static void meson_txc_hdmi_bridge_atomic_enable(struct drm_bridge *bridge,
 	if (WARN_ON(!crtc_state))
 		return;
 
-	priv->current_connector = connector;
-
 	mode = &crtc_state->adjusted_mode;
 
 	cea_mode = drm_match_cea_mode(mode);
@@ -745,8 +710,6 @@ static void meson_txc_hdmi_bridge_atomic_disable(struct drm_bridge *bridge,
 {
 	struct meson_txc_hdmi *priv = bridge_to_meson_txc_hdmi(bridge);
 
-	priv->current_connector = NULL;
-
 	if (priv->phy_is_on) {
 		int ret;
 
@@ -778,23 +741,12 @@ meson_txc_hdmi_bridge_mode_valid(struct drm_bridge *bridge,
 static enum drm_connector_status meson_txc_hdmi_bridge_detect(struct drm_bridge *bridge)
 {
 	struct meson_txc_hdmi *priv = bridge_to_meson_txc_hdmi(bridge);
-	enum drm_connector_status status;
-	unsigned int val;
 
-	regmap_read(priv->regmap, TX_HDCP_ST_EDID_STATUS, &val);
-	if (val & TX_HDCP_ST_EDID_STATUS_HPD_STATUS)
-		status = connector_status_connected;
-	else
-		status = connector_status_disconnected;
+	if (regmap_test_bits(priv->regmap, TX_HDCP_ST_EDID_STATUS,
+			     TX_HDCP_ST_EDID_STATUS_HPD_STATUS) > 0)
+		return connector_status_connected;
 
-	mutex_lock(&priv->codec_mutex);
-	if (priv->last_connector_status != status) {
-		priv->last_connector_status = status;
-		meson_txc_hdmi_handle_plugged_change(priv);
-	}
-	mutex_unlock(&priv->codec_mutex);
-
-	return status;
+	return connector_status_disconnected;
 }
 
 static int meson_txc_hdmi_get_edid_block(void *data, u8 *buf, unsigned int block,
@@ -805,11 +757,10 @@ static int meson_txc_hdmi_get_edid_block(void *data, u8 *buf, unsigned int block
 	int ret;
 
 	/* Start the DDC transaction */
-	regmap_update_bits(priv->regmap, TX_HDCP_EDID_CONFIG,
-			   TX_HDCP_EDID_CONFIG_SYS_TRIGGER_CONFIG, 0);
-	regmap_update_bits(priv->regmap, TX_HDCP_EDID_CONFIG,
-			   TX_HDCP_EDID_CONFIG_SYS_TRIGGER_CONFIG,
-			   TX_HDCP_EDID_CONFIG_SYS_TRIGGER_CONFIG);
+	regmap_clear_bits(priv->regmap, TX_HDCP_EDID_CONFIG,
+			  TX_HDCP_EDID_CONFIG_SYS_TRIGGER_CONFIG);
+	regmap_set_bits(priv->regmap, TX_HDCP_EDID_CONFIG,
+			TX_HDCP_EDID_CONFIG_SYS_TRIGGER_CONFIG);
 
 	ret = regmap_read_poll_timeout(priv->regmap,
 				       TX_HDCP_ST_EDID_STATUS,
@@ -817,8 +768,8 @@ static int meson_txc_hdmi_get_edid_block(void *data, u8 *buf, unsigned int block
 				       (regval & TX_HDCP_ST_EDID_STATUS_EDID_DATA_READY),
 				       1000, 200000);
 
-	regmap_update_bits(priv->regmap, TX_HDCP_EDID_CONFIG,
-			   TX_HDCP_EDID_CONFIG_SYS_TRIGGER_CONFIG, 0);
+	regmap_clear_bits(priv->regmap, TX_HDCP_EDID_CONFIG,
+			  TX_HDCP_EDID_CONFIG_SYS_TRIGGER_CONFIG);
 
 	if (ret)
 		return ret;
@@ -926,130 +877,6 @@ static int meson_txc_hdmi_write_infoframe(struct drm_bridge *bridge,
 	return 0;
 }
 
-static const struct drm_bridge_funcs meson_txc_hdmi_bridge_funcs = {
-	.atomic_duplicate_state = drm_atomic_helper_bridge_duplicate_state,
-	.atomic_destroy_state = drm_atomic_helper_bridge_destroy_state,
-	.atomic_reset = drm_atomic_helper_bridge_reset,
-	.attach = meson_txc_hdmi_bridge_attach,
-	.atomic_check = meson_txc_hdmi_bridge_atomic_check, // TODO: drop with 6.14
-	.atomic_get_output_bus_fmts = meson_txc_hdmi_bridge_atomic_get_output_bus_fmts,
-	.atomic_get_input_bus_fmts = meson_txc_hdmi_bridge_atomic_get_input_bus_fmts,
-	.atomic_enable = meson_txc_hdmi_bridge_atomic_enable,
-	.atomic_disable = meson_txc_hdmi_bridge_atomic_disable,
-	.mode_valid = meson_txc_hdmi_bridge_mode_valid,
-	.detect = meson_txc_hdmi_bridge_detect,
-	.edid_read = meson_txc_hdmi_bridge_edid_read,
-	.hdmi_tmds_char_rate_valid = meson_txc_hdmi_tmds_char_rate_valid,
-	.hdmi_write_infoframe = meson_txc_hdmi_write_infoframe,
-	.hdmi_clear_infoframe = meson_txc_hdmi_clear_infoframe,
-};
-
-static int meson_txc_hdmi_hw_init(struct meson_txc_hdmi *priv)
-{
-	unsigned long ddc_i2c_bus_clk_hz = 500 * 1000;
-	unsigned long sys_clk_hz = 24 * 1000 * 1000;
-	int ret;
-
-	ret = phy_init(priv->phy);
-	if (ret) {
-		dev_err(priv->dev, "Failed to initialize the PHY: %d\n", ret);
-		return ret;
-	}
-
-	ret = clk_set_rate(priv->sys_clk, sys_clk_hz);
-	if (ret) {
-		dev_err(priv->dev, "Failed to set HDMI system clock to 24MHz\n");
-		goto err_phy_exit;
-	}
-
-	ret = clk_prepare_enable(priv->sys_clk);
-	if (ret) {
-		dev_err(priv->dev, "Failed to enable the sys clk\n");
-		goto err_phy_exit;
-	}
-
-	regmap_update_bits(priv->regmap, HDMI_OTHER_CTRL1,
-			   HDMI_OTHER_CTRL1_POWER_ON,
-			   HDMI_OTHER_CTRL1_POWER_ON);
-
-	regmap_write(priv->regmap, TX_HDMI_PHY_CONFIG0,
-		     TX_HDMI_PHY_CONFIG0_HDMI_COMMON_B7_B0);
-
-	regmap_write(priv->regmap, TX_HDCP_MODE, 0x40);
-
-	/*
-	 * The vendor driver comments that this is a setting for "Band-gap and
-	 * main-bias". 0x1d = power-up, 0x00 = power-down.
-	 */
-	regmap_write(priv->regmap, TX_SYS1_AFE_TEST, 0x1d);
-
-	meson_txc_hdmi_config_serializer_clock(priv, HDMI_COLORIMETRY_NONE);
-
-	/*
-	 * The vendor driver has a comment with the following information for
-	 * the magic value:
-	 * bit[2:0]=011: CK channel output TMDS CLOCK
-	 * bit[2:0]=101, ck channel output PHYCLCK
-	 */
-	regmap_write(priv->regmap, TX_SYS1_AFE_CONNECT, 0xfb);
-
-	/* Termination resistor calib value */
-	regmap_write(priv->regmap, TX_CORE_CALIB_VALUE, 0x0f);
-
-	/* HPD glitch filter */
-	regmap_write(priv->regmap, TX_HDCP_HPD_FILTER_L, 0xa0);
-	regmap_write(priv->regmap, TX_HDCP_HPD_FILTER_H, 0xa0);
-
-	/* Disable MEM power-down */
-	regmap_write(priv->regmap, TX_MEM_PD_REG0, 0x0);
-
-	regmap_write(priv->regmap, TX_HDCP_CONFIG3,
-		     FIELD_PREP(TX_HDCP_CONFIG3_DDC_I2C_BUS_CLOCK_TIME_DIVIDER,
-				(sys_clk_hz / ddc_i2c_bus_clk_hz) - 1));
-
-	/* Enable software controlled DDC transaction */
-	regmap_write(priv->regmap, TX_HDCP_EDID_CONFIG,
-		     TX_HDCP_EDID_CONFIG_FORCED_MEM_COPY_DONE |
-		     TX_HDCP_EDID_CONFIG_MEM_COPY_DONE_CONFIG);
-	regmap_write(priv->regmap, TX_CORE_EDID_CONFIG_MORE,
-		     TX_CORE_EDID_CONFIG_MORE_SYS_TRIGGER_CONFIG_SEMI_MANU);
-
-	/* mask (= disable) all interrupts */
-	regmap_write(priv->regmap, HDMI_OTHER_INTR_MASKN, 0x0);
-
-	/* clear any pending interrupt */
-	regmap_write(priv->regmap, HDMI_OTHER_INTR_STAT_CLR,
-		     HDMI_OTHER_INTR_STAT_CLR_EDID_RISING |
-		     HDMI_OTHER_INTR_STAT_CLR_HPD_FALLING |
-		     HDMI_OTHER_INTR_STAT_CLR_HPD_RISING);
-
-	return 0;
-
-err_phy_exit:
-	phy_exit(priv->phy);
-	return 0;
-}
-
-static void meson_txc_hdmi_hw_exit(struct meson_txc_hdmi *priv)
-{
-	int ret;
-
-	/* mask (= disable) all interrupts */
-	regmap_write(priv->regmap, HDMI_OTHER_INTR_MASKN,
-		     HDMI_OTHER_INTR_MASKN_TX_EDID_INT_RISE |
-		     HDMI_OTHER_INTR_MASKN_TX_HPD_INT_FALL |
-		     HDMI_OTHER_INTR_MASKN_TX_HPD_INT_RISE);
-
-	regmap_update_bits(priv->regmap, HDMI_OTHER_CTRL1,
-			   HDMI_OTHER_CTRL1_POWER_ON, 0);
-
-	clk_disable_unprepare(priv->sys_clk);
-
-	ret = phy_exit(priv->phy);
-	if (ret)
-		dev_err(priv->dev, "Failed to exit the PHY: %d\n", ret);
-}
-
 static u32 meson_txc_hdmi_hdmi_codec_calc_audio_n(struct hdmi_codec_params *hparms)
 {
 	u32 audio_n;
@@ -1080,15 +907,14 @@ static u8 meson_txc_hdmi_hdmi_codec_coding_type(struct hdmi_codec_params *hparms
 	}
 }
 
-static int meson_txc_hdmi_hdmi_codec_hw_params(struct device *dev, void *data,
-					       struct hdmi_codec_daifmt *fmt,
-					       struct hdmi_codec_params *hparms)
+static int meson_txc_hdmi_audio_prepare(struct drm_connector *connector,
+					struct drm_bridge *bridge,
+					struct hdmi_codec_daifmt *fmt,
+					struct hdmi_codec_params *hparms)
 {
-	struct meson_txc_hdmi *priv = dev_get_drvdata(dev);
-	u8 buf[HDMI_INFOFRAME_SIZE(AUDIO)];
-	u16 audio_tx_format;
-	u32 audio_n;
-	int len, i;
+	struct meson_txc_hdmi *priv = bridge_to_meson_txc_hdmi(bridge);
+	u16 audio_n, audio_tx_format;
+	unsigned int i;
 
 	if (hparms->cea.coding_type == HDMI_AUDIO_CODING_TYPE_MLP) {
 		/*
@@ -1120,9 +946,8 @@ static int meson_txc_hdmi_hdmi_codec_hw_params(struct device *dev, void *data,
 
 	switch (fmt->fmt) {
 	case HDMI_I2S:
-		regmap_update_bits(priv->regmap, HDMI_OTHER_CTRL1,
-				   HDMI_OTHER_CTRL1_HDMI_AUDIO_CLOCK_ON,
-				   HDMI_OTHER_CTRL1_HDMI_AUDIO_CLOCK_ON);
+		regmap_set_bits(priv->regmap, HDMI_OTHER_CTRL1,
+				HDMI_OTHER_CTRL1_HDMI_AUDIO_CLOCK_ON);
 
 		audio_tx_format |= TX_AUDIO_FORMAT_SPDIF_OR_I2S |
 				   TX_AUDIO_FORMAT_I2S_ONE_BIT_OR_I2S |
@@ -1138,8 +963,8 @@ static int meson_txc_hdmi_hdmi_codec_hw_params(struct device *dev, void *data,
 		break;
 
 	case HDMI_SPDIF:
-		regmap_update_bits(priv->regmap, HDMI_OTHER_CTRL1,
-				   HDMI_OTHER_CTRL1_HDMI_AUDIO_CLOCK_ON, 0x0);
+		regmap_clear_bits(priv->regmap, HDMI_OTHER_CTRL1,
+				  HDMI_OTHER_CTRL1_HDMI_AUDIO_CLOCK_ON);
 
 		if (hparms->cea.coding_type == HDMI_AUDIO_CODING_TYPE_STREAM)
 			audio_tx_format |= TX_AUDIO_FORMAT_SPDIF_CHANNEL_STATUS_FROM_DATA_OR_REG;
@@ -1188,10 +1013,6 @@ static int meson_txc_hdmi_hdmi_codec_hw_params(struct device *dev, void *data,
 				meson_txc_hdmi_hdmi_codec_coding_type(hparms)) |
 		     TX_AUDIO_CONTROL_AUDIO_SAMPLE_PACKET_FLAT);
 
-	len = hdmi_audio_infoframe_pack(&hparms->cea, buf, sizeof(buf));
-	if (len < 0)
-		return len;
-
 	for (i = 0; i < ARRAY_SIZE(hparms->iec.status); i++) {
 		unsigned char sub1, sub2;
 
@@ -1206,16 +1027,29 @@ static int meson_txc_hdmi_hdmi_codec_hw_params(struct device *dev, void *data,
 		regmap_write(priv->regmap, TX_IEC60958_SUB2_OFFSET + i, sub2);
 	}
 
+	return drm_atomic_helper_connector_hdmi_update_audio_infoframe(connector,
+								       &hparms->cea);
+}
+
+static int meson_txc_hdmi_audio_mute_stream(struct drm_connector *connector,
+					    struct drm_bridge *bridge,
+					    bool enable, int direction)
+{
+	struct meson_txc_hdmi *priv = bridge_to_meson_txc_hdmi(bridge);
+
+	regmap_write(priv->regmap, TX_AUDIO_PACK,
+		     enable ? 0 : TX_AUDIO_PACK_AUDIO_SAMPLE_PACKETS_ENABLE);
+
 	return 0;
 }
 
-static int meson_txc_hdmi_hdmi_codec_audio_startup(struct device *dev,
-						   void *data)
+static int meson_txc_hdmi_audio_startup(struct drm_connector *connector,
+					struct drm_bridge *bridge)
 {
-	struct meson_txc_hdmi *priv = dev_get_drvdata(dev);
+	struct meson_txc_hdmi *priv = bridge_to_meson_txc_hdmi(bridge);
 
-	regmap_update_bits(priv->regmap, TX_PACKET_CONTROL_2,
-			   TX_PACKET_CONTROL_2_AUDIO_REQUEST_DISABLE, 0x0);
+	regmap_clear_bits(priv->regmap, TX_PACKET_CONTROL_2,
+			  TX_PACKET_CONTROL_2_AUDIO_REQUEST_DISABLE);
 
 	/* reset audio master and sample */
 	regmap_write(priv->regmap, TX_SYS5_TX_SOFT_RESET_1,
@@ -1242,109 +1076,150 @@ static int meson_txc_hdmi_hdmi_codec_audio_startup(struct device *dev,
 	return 0;
 }
 
-static void meson_txc_hdmi_hdmi_codec_audio_shutdown(struct device *dev,
-						     void *data)
+static void meson_txc_hdmi_audio_shutdown(struct drm_connector *connector,
+					  struct drm_bridge *bridge)
 {
-	struct meson_txc_hdmi *priv = dev_get_drvdata(dev);
+	struct meson_txc_hdmi *priv = bridge_to_meson_txc_hdmi(bridge);
+
+	drm_atomic_helper_connector_hdmi_clear_audio_infoframe(connector);
 
 	regmap_write(priv->regmap, TX_AUDIO_CONTROL_MORE, 0x0);
-	regmap_update_bits(priv->regmap, HDMI_OTHER_CTRL1,
-			   HDMI_OTHER_CTRL1_HDMI_AUDIO_CLOCK_ON, 0x0);
+	regmap_clear_bits(priv->regmap, HDMI_OTHER_CTRL1,
+			  HDMI_OTHER_CTRL1_HDMI_AUDIO_CLOCK_ON);
 
-	regmap_update_bits(priv->regmap, TX_PACKET_CONTROL_2,
-			   TX_PACKET_CONTROL_2_AUDIO_REQUEST_DISABLE,
-			   TX_PACKET_CONTROL_2_AUDIO_REQUEST_DISABLE);
+	regmap_set_bits(priv->regmap, TX_PACKET_CONTROL_2,
+			TX_PACKET_CONTROL_2_AUDIO_REQUEST_DISABLE);
 }
 
-static int meson_txc_hdmi_hdmi_codec_mute_stream(struct device *dev,
-						 void *data, bool enable,
-						 int direction)
+static const struct drm_bridge_funcs meson_txc_hdmi_bridge_funcs = {
+	.atomic_duplicate_state = drm_atomic_helper_bridge_duplicate_state,
+	.atomic_destroy_state = drm_atomic_helper_bridge_destroy_state,
+	.atomic_reset = drm_atomic_helper_bridge_reset,
+	.attach = meson_txc_hdmi_bridge_attach,
+	.atomic_get_output_bus_fmts = meson_txc_hdmi_bridge_atomic_get_output_bus_fmts,
+	.atomic_get_input_bus_fmts = meson_txc_hdmi_bridge_atomic_get_input_bus_fmts,
+	.atomic_enable = meson_txc_hdmi_bridge_atomic_enable,
+	.atomic_disable = meson_txc_hdmi_bridge_atomic_disable,
+	.mode_valid = meson_txc_hdmi_bridge_mode_valid,
+	.detect = meson_txc_hdmi_bridge_detect,
+	.edid_read = meson_txc_hdmi_bridge_edid_read,
+	.hdmi_tmds_char_rate_valid = meson_txc_hdmi_tmds_char_rate_valid,
+	.hdmi_write_infoframe = meson_txc_hdmi_write_infoframe,
+	.hdmi_clear_infoframe = meson_txc_hdmi_clear_infoframe,
+	.hdmi_audio_prepare = meson_txc_hdmi_audio_prepare,
+	.hdmi_audio_mute_stream = meson_txc_hdmi_audio_mute_stream,
+	.hdmi_audio_startup = meson_txc_hdmi_audio_startup,
+	.hdmi_audio_shutdown = meson_txc_hdmi_audio_shutdown,
+};
+
+static int meson_txc_hdmi_hw_init(struct meson_txc_hdmi *priv,
+				  struct device *dev)
 {
-	struct meson_txc_hdmi *priv = dev_get_drvdata(dev);
-
-	regmap_write(priv->regmap, TX_AUDIO_PACK,
-		     enable ? 0 : TX_AUDIO_PACK_AUDIO_SAMPLE_PACKETS_ENABLE);
-
-	return 0;
-}
-
-static int meson_txc_hdmi_hdmi_codec_get_eld(struct device *dev, void *data,
-					     uint8_t *buf, size_t len)
-{
-	struct meson_txc_hdmi *priv = dev_get_drvdata(dev);
-
-	if (priv->current_connector)
-		memcpy(buf, priv->current_connector->eld,
-		       min_t(size_t, MAX_ELD_BYTES, len));
-	else
-		memset(buf, 0, len);
-
-	return 0;
-}
-
-static int meson_txc_hdmi_hdmi_codec_get_dai_id(struct snd_soc_component *component,
-						struct device_node *endpoint)
-{
-	struct of_endpoint of_ep;
+	unsigned long ddc_i2c_bus_clk_hz = 500 * 1000;
+	unsigned long sys_clk_hz = 24 * 1000 * 1000;
 	int ret;
 
-	ret = of_graph_parse_endpoint(endpoint, &of_ep);
-	if (ret < 0)
+	ret = phy_init(priv->phy);
+	if (ret) {
+		dev_err(dev, "Failed to initialize the PHY: %d\n", ret);
 		return ret;
+	}
+
+	ret = clk_set_rate(priv->sys_clk, sys_clk_hz);
+	if (ret) {
+		dev_err(dev, "Failed to set HDMI system clock to 24MHz\n");
+		goto err_phy_exit;
+	}
+
+	ret = clk_prepare_enable(priv->sys_clk);
+	if (ret) {
+		dev_err(dev, "Failed to enable the sys clk\n");
+		goto err_phy_exit;
+	}
+
+	regmap_set_bits(priv->regmap, HDMI_OTHER_CTRL1,
+			HDMI_OTHER_CTRL1_POWER_ON);
+
+	regmap_write(priv->regmap, TX_HDMI_PHY_CONFIG0,
+		     TX_HDMI_PHY_CONFIG0_HDMI_COMMON_B7_B0);
+
+	regmap_write(priv->regmap, TX_HDCP_MODE, TX_HDCP_MODE_ESS_CONFIG);
 
 	/*
-	 * HDMI sound should be located as reg = <2>
-	 * Then, it is sound port 0
+	 * The vendor driver comments that this is a setting for "Band-gap and
+	 * main-bias". 0x1d = power-up, 0x00 = power-down.
 	 */
-	if (of_ep.port == 2)
-		return 0;
+	regmap_write(priv->regmap, TX_SYS1_AFE_TEST, 0x1d);
 
-	return -EINVAL;
-}
+	meson_txc_hdmi_config_serializer_clock(priv, HDMI_COLORIMETRY_NONE);
 
-static int meson_txc_hdmi_hdmi_codec_hook_plugged_cb(struct device *dev,
-						     void *data,
-						     hdmi_codec_plugged_cb fn,
-						     struct device *codec_dev)
-{
-	struct meson_txc_hdmi *priv = dev_get_drvdata(dev);
+	/*
+	 * The vendor driver has a comment with the following information for
+	 * the magic value:
+	 * bit[2:0]=011: CK channel output TMDS CLOCK
+	 * bit[2:0]=101, ck channel output PHYCLCK
+	 */
+	regmap_write(priv->regmap, TX_SYS1_AFE_CONNECT, 0xfb);
 
-	mutex_lock(&priv->codec_mutex);
-	priv->codec_plugged_cb = fn;
-	priv->codec_dev = codec_dev;
-	meson_txc_hdmi_handle_plugged_change(priv);
-	mutex_unlock(&priv->codec_mutex);
+	/* Termination resistor calib value */
+	regmap_write(priv->regmap, TX_CORE_CALIB_VALUE, 0x0f);
 
+	/* HPD glitch filter */
+	regmap_write(priv->regmap, TX_HDCP_HPD_FILTER_L, 0xa0);
+	regmap_write(priv->regmap, TX_HDCP_HPD_FILTER_H, 0xa0);
+
+	/* Disable MEM power-down */
+	regmap_write(priv->regmap, TX_MEM_PD_REG0, 0x0);
+
+	regmap_write(priv->regmap, TX_HDCP_CONFIG3,
+		     FIELD_PREP(TX_HDCP_CONFIG3_DDC_I2C_BUS_CLOCK_TIME_DIVIDER,
+				(sys_clk_hz / ddc_i2c_bus_clk_hz) - 1));
+
+	/* Enable software controlled DDC transaction */
+	regmap_write(priv->regmap, TX_HDCP_EDID_CONFIG,
+		     TX_HDCP_EDID_CONFIG_FORCED_MEM_COPY_DONE |
+		     TX_HDCP_EDID_CONFIG_MEM_COPY_DONE_CONFIG);
+	regmap_write(priv->regmap, TX_CORE_EDID_CONFIG_MORE,
+		     TX_CORE_EDID_CONFIG_MORE_SYS_TRIGGER_CONFIG_SEMI_MANU);
+
+	/* mask (= disable) all interrupts */
+	regmap_write(priv->regmap, HDMI_OTHER_INTR_MASKN,
+		     HDMI_OTHER_INTR_MASKN_TX_EDID_INT_RISE |
+		     HDMI_OTHER_INTR_MASKN_TX_HPD_INT_FALL |
+		     HDMI_OTHER_INTR_MASKN_TX_HPD_INT_RISE);
+
+	/* clear any pending interrupt */
+	regmap_write(priv->regmap, HDMI_OTHER_INTR_STAT_CLR,
+		     HDMI_OTHER_INTR_STAT_CLR_EDID_RISING |
+		     HDMI_OTHER_INTR_STAT_CLR_HPD_FALLING |
+		     HDMI_OTHER_INTR_STAT_CLR_HPD_RISING);
+
+	return 0;
+
+err_phy_exit:
+	phy_exit(priv->phy);
 	return 0;
 }
 
-static struct hdmi_codec_ops meson_txc_hdmi_hdmi_codec_ops = {
-	.hw_params		= meson_txc_hdmi_hdmi_codec_hw_params,
-	.audio_startup		= meson_txc_hdmi_hdmi_codec_audio_startup,
-	.audio_shutdown		= meson_txc_hdmi_hdmi_codec_audio_shutdown,
-	.mute_stream		= meson_txc_hdmi_hdmi_codec_mute_stream,
-	.get_eld		= meson_txc_hdmi_hdmi_codec_get_eld,
-	.get_dai_id		= meson_txc_hdmi_hdmi_codec_get_dai_id,
-	.hook_plugged_cb	= meson_txc_hdmi_hdmi_codec_hook_plugged_cb,
-};
-
-static const struct hdmi_codec_pdata meson_txc_hdmi_codec_pdata = {
-	.ops			= &meson_txc_hdmi_hdmi_codec_ops,
-	.i2s			= 1,
-	.spdif			= 1,
-	.max_i2s_channels	= 8,
-	.no_i2s_capture		= 1,
-	.no_spdif_capture	= 1,
-};
-
-static int meson_txc_hdmi_codec_init(struct meson_txc_hdmi *priv)
+static void meson_txc_hdmi_hw_exit(struct meson_txc_hdmi *priv,
+				   struct device *dev)
 {
-	priv->hdmi_codec_pdev = platform_device_register_data(priv->dev,
-							      HDMI_CODEC_DRV_NAME,
-							      PLATFORM_DEVID_AUTO,
-							      &meson_txc_hdmi_codec_pdata,
-							      sizeof(meson_txc_hdmi_codec_pdata));
-	return PTR_ERR_OR_ZERO(priv->hdmi_codec_pdev);
+	int ret;
+
+	/* mask (= disable) all interrupts */
+	regmap_write(priv->regmap, HDMI_OTHER_INTR_MASKN,
+		     HDMI_OTHER_INTR_MASKN_TX_EDID_INT_RISE |
+		     HDMI_OTHER_INTR_MASKN_TX_HPD_INT_FALL |
+		     HDMI_OTHER_INTR_MASKN_TX_HPD_INT_RISE);
+
+	regmap_clear_bits(priv->regmap, HDMI_OTHER_CTRL1,
+			  HDMI_OTHER_CTRL1_POWER_ON);
+
+	clk_disable_unprepare(priv->sys_clk);
+
+	ret = phy_exit(priv->phy);
+	if (ret)
+		dev_err(dev, "Failed to exit the PHY: %d\n", ret);
 }
 
 static int meson_txc_hdmi_probe(struct platform_device *pdev)
@@ -1353,16 +1228,13 @@ static int meson_txc_hdmi_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct meson_txc_hdmi *priv;
 	void __iomem *base;
+	struct clk *pclk;
 	u32 regval;
 	int ret;
 
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
 		return -ENOMEM;
-
-	priv->dev = dev;
-
-	mutex_init(&priv->codec_mutex);
 
 	platform_set_drvdata(pdev, priv);
 
@@ -1374,11 +1246,6 @@ static int meson_txc_hdmi_probe(struct platform_device *pdev)
 					&meson_txc_hdmi_regmap_config);
 	if (IS_ERR(priv->regmap))
 		return PTR_ERR(priv->regmap);
-
-	priv->pclk = devm_clk_get(dev, "pclk");
-	if (IS_ERR(priv->pclk))
-		return dev_err_probe(dev, PTR_ERR(priv->pclk),
-				     "Failed to get the pclk\n");
 
 	priv->sys_clk = devm_clk_get(dev, "sys");
 	if (IS_ERR(priv->sys_clk))
@@ -1407,26 +1274,23 @@ static int meson_txc_hdmi_probe(struct platform_device *pdev)
 				     "port@1 remote device is disabled\n");
 	}
 
+	pclk = devm_clk_get_enabled(dev, "pclk");
+	if (IS_ERR(pclk))
+		return dev_err_probe(dev, PTR_ERR(pclk),
+				     "Failed to get and enable the pclk\n");
+
 	priv->next_bridge = of_drm_find_bridge(remote);
 	of_node_put(remote);
 	if (!priv->next_bridge)
 		return -EPROBE_DEFER;
 
-	ret = clk_prepare_enable(priv->pclk);
-	if (ret)
-		return dev_err_probe(dev, ret, "Failed to enable the pclk\n");
-
 	regval = readl(base + HDMI_CTRL_PORT);
 	regval |= HDMI_CTRL_PORT_APB3_ERR_EN;
 	writel(regval, base + HDMI_CTRL_PORT);
 
-	ret = meson_txc_hdmi_hw_init(priv);
+	ret = meson_txc_hdmi_hw_init(priv, dev);
 	if (ret)
-		goto err_disable_clk;
-
-	ret = meson_txc_hdmi_codec_init(priv);
-	if (ret)
-		goto err_hw_exit;
+		return ret;
 
 	priv->bridge.of_node = dev->of_node;
 	priv->bridge.driver_private = priv;
@@ -1441,29 +1305,23 @@ static int meson_txc_hdmi_probe(struct platform_device *pdev)
 					 BIT(HDMI_COLORSPACE_YUV444);
 	priv->bridge.vendor = "Amlogic";
 	priv->bridge.product = "TranSwitch-HDMI";
+	priv->bridge.hdmi_audio_dev = dev;
+	priv->bridge.hdmi_audio_max_i2s_playback_channels = 8;
+	priv->bridge.hdmi_audio_spdif_playback = 1;
+	priv->bridge.hdmi_audio_dai_port = 2;
 
 	drm_bridge_add(&priv->bridge);
 
 	return 0;
-
-err_hw_exit:
-	meson_txc_hdmi_hw_exit(priv);
-err_disable_clk:
-	clk_disable_unprepare(priv->pclk);
-	return ret;
 }
 
 static void meson_txc_hdmi_remove(struct platform_device *pdev)
 {
 	struct meson_txc_hdmi *priv = platform_get_drvdata(pdev);
 
-	platform_device_unregister(priv->hdmi_codec_pdev);
-
 	drm_bridge_remove(&priv->bridge);
 
-	meson_txc_hdmi_hw_exit(priv);
-
-	clk_disable_unprepare(priv->pclk);
+	meson_txc_hdmi_hw_exit(priv, &pdev->dev);
 }
 
 static const struct of_device_id meson_txc_hdmi_of_table[] = {
