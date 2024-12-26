@@ -12,6 +12,7 @@
 #include <linux/io.h>
 #include <linux/mod_devicetable.h>
 #include <linux/module.h>
+#include <linux/of_platform.h>
 #include <linux/property.h>
 #include <linux/regmap.h>
 #include <linux/reset.h>
@@ -311,6 +312,11 @@ static int phy_meson8b_usb2_probe(struct platform_device *pdev)
 		if (ret)
 			return ret;
 	}
+
+	ret = devm_of_platform_populate(&pdev->dev);
+	if (ret)
+		return dev_err_probe(&pdev->dev, ret,
+				     "Failed to create child devices/connectors\n");
 
 	phy = devm_phy_create(&pdev->dev, NULL, &phy_meson8b_usb2_ops);
 	if (IS_ERR(phy)) {
