@@ -287,21 +287,22 @@ static void meson_txc_hdmi_config_color_space(struct meson_txc_hdmi *priv,
 	}
 }
 
-static void meson_txc_hdmi_config_serializer_clock(struct meson_txc_hdmi *priv,
-						   enum hdmi_colorimetry colorimetry)
+static void meson_txc_hdmi_set_serializer_clock(struct meson_txc_hdmi *priv,
+						enum hdmi_colorimetry colorimetry,
+						u8 cea_mode,
+						unsigned int output_bpc)
 {
+	u8 ts_sys1_pll;
+
 	/* Serializer Internal clock setting */
 	if (colorimetry == HDMI_COLORIMETRY_ITU_601)
-		regmap_write(priv->regmap, TX_SYS1_PLL, 0x24);
+		ts_sys1_pll = 0x24;
+	else if (cea_mode == 16 && output_bpc == 10)
+		ts_sys1_pll = 0x12;
 	else
-		regmap_write(priv->regmap, TX_SYS1_PLL, 0x22);
+		ts_sys1_pll = 0x22;
 
-#if 0
-	// TODO: not ported yet
-	if ((param->VIC==HDMI_1080p60)&&(param->color_depth==COLOR_30BIT)&&(hdmi_rd_reg(0x018)==0x22)) {
-		regmap_write(priv->regmap, TX_SYS1_PLL, 0x12);
-	}
-#endif
+	regmap_write(priv->regmap, TX_SYS1_PLL, ts_sys1_pll);
 }
 
 static void meson_txc_hdmi_reconfig_packet_setting(struct meson_txc_hdmi *priv,
@@ -665,7 +666,8 @@ static void meson_txc_hdmi_bridge_atomic_enable(struct drm_bridge *bridge,
 
 	meson_txc_hdmi_sys5_reset_deassert(priv);
 
-	meson_txc_hdmi_config_serializer_clock(priv, colorimetry);
+	meson_txc_hdmi_set_serializer_clock(priv, colorimetry, cea_mode,
+					    conn_state->hdmi.output_bpc);
 	meson_txc_hdmi_reconfig_packet_setting(priv, cea_mode);
 
 	/* all resets need to be applied twice */
@@ -1150,7 +1152,7 @@ static int meson_txc_hdmi_hw_init(struct meson_txc_hdmi *priv,
 	 */
 	regmap_write(priv->regmap, TX_SYS1_AFE_TEST, 0x1d);
 
-	meson_txc_hdmi_config_serializer_clock(priv, HDMI_COLORIMETRY_NONE);
+	meson_txc_hdmi_set_serializer_clock(priv, HDMI_COLORIMETRY_NONE, 0, 8);
 
 	/*
 	 * The vendor driver has a comment with the following information for
