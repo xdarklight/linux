@@ -573,7 +573,6 @@ static void meson_txc_hdmi_bridge_atomic_enable(struct drm_bridge *bridge,
 	struct drm_atomic_state *state = old_bridge_state->base.state;
 	struct drm_connector_state *conn_state;
 	struct drm_bridge_state *bridge_state;
-	const struct drm_display_mode *mode;
 	enum hdmi_colorimetry colorimetry;
 	struct drm_crtc_state *crtc_state;
 	struct drm_connector *connector;
@@ -591,15 +590,14 @@ static void meson_txc_hdmi_bridge_atomic_enable(struct drm_bridge *bridge,
 	if (WARN_ON(!conn_state))
 		return;
 
-	crtc_state = drm_atomic_get_new_crtc_state(state, conn_state->crtc);
-	if (WARN_ON(!crtc_state))
-		return;
-
-	mode = &crtc_state->adjusted_mode;
-
-	cea_mode = drm_match_cea_mode(mode);
-
 	if (connector->display_info.is_hdmi) {
+		crtc_state = drm_atomic_get_new_crtc_state(state,
+							   conn_state->crtc);
+		if (WARN_ON(!crtc_state))
+			return;
+
+		cea_mode = drm_match_cea_mode(&crtc_state->adjusted_mode);
+
 		switch (cea_mode) {
 		case 2 ... 3:
 		case 6 ... 7:
@@ -613,6 +611,7 @@ static void meson_txc_hdmi_bridge_atomic_enable(struct drm_bridge *bridge,
 			break;
 		}
 	} else {
+		cea_mode = 0;
 		colorimetry = HDMI_COLORIMETRY_NONE;
 	}
 
@@ -1135,7 +1134,7 @@ static int meson_txc_hdmi_hw_init(struct meson_txc_hdmi *priv,
 
 	ret = clk_prepare_enable(priv->sys_clk);
 	if (ret) {
-		dev_err(dev, "Failed to enable the sys clk\n");
+		dev_err(dev, "Failed to enable the sys clk: %d\n", ret);
 		goto err_phy_exit;
 	}
 
@@ -1200,7 +1199,7 @@ static int meson_txc_hdmi_hw_init(struct meson_txc_hdmi *priv,
 
 err_phy_exit:
 	phy_exit(priv->phy);
-	return 0;
+	return ret;
 }
 
 static void meson_txc_hdmi_hw_exit(struct meson_txc_hdmi *priv,
