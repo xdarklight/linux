@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Copyright (C) 2016 BayLibre, SAS
- * Copyright (C) 2021 Martin Blumenstingl <martin.blumenstingl@googlemail.com>
+ * Copyright (C) 2021-2025 Martin Blumenstingl <martin.blumenstingl@googlemail.com>
  */
 
 #include <linux/clk.h>
@@ -18,10 +18,7 @@
 #include <linux/nvmem-consumer.h>
 
 #define HHI_VDAC_CNTL0_MESON8			0x2F4 /* 0xbd offset in data sheet */
-#define HHI_VDAC_CNTL1_MESON8			0x2F8 /* 0xbe offset in data sheet */
-
 #define HHI_VDAC_CNTL0_G12A			0x2EC /* 0xbd offset in data sheet */
-#define HHI_VDAC_CNTL1_G12A			0x2F0 /* 0xbe offset in data sheet */
 
 enum phy_meson_cvbs_dac_reg {
 	MESON_CDAC_CTRL_RESV1,
@@ -40,12 +37,12 @@ enum phy_meson_cvbs_dac_reg {
 };
 
 struct phy_meson_cvbs_dac_data {
-	const struct reg_field	*reg_fields;
-	u8			cdac_ctrl_resv2_enable_val;
-	u8			cdac_vref_adj_enable_val;
-	u8			cdac_rl_adj_enable_val;
-	u8			cdac_pwd_disable_val;
-	bool			needs_cvbs_trimming_nvmem_cell;
+	u32	reg_offset;
+	u8	cdac_ctrl_resv2_enable_val;
+	u8	cdac_vref_adj_enable_val;
+	u8	cdac_rl_adj_enable_val;
+	u8	cdac_pwd_disable_val;
+	bool	needs_cvbs_trimming_nvmem_cell;
 };
 
 struct phy_meson_cvbs_dac_priv {
@@ -54,38 +51,23 @@ struct phy_meson_cvbs_dac_priv {
 	u8					cdac_gsw_enable_val;
 };
 
-static const struct reg_field phy_meson8_cvbs_dac_reg_fields[] = {
-	[MESON_CDAC_CTRL_RESV1] =	REG_FIELD(HHI_VDAC_CNTL0_MESON8, 0, 7),
-	[MESON_CDAC_CTRL_RESV2] =	REG_FIELD(HHI_VDAC_CNTL0_MESON8, 8, 15),
-	[MESON_CDAC_VREF_ADJ] =		REG_FIELD(HHI_VDAC_CNTL0_MESON8, 16, 20),
-	[MESON_CDAC_RL_ADJ] =		REG_FIELD(HHI_VDAC_CNTL0_MESON8, 21, 23),
-	[MESON_CDAC_CLK_PHASE_SEL] =	REG_FIELD(HHI_VDAC_CNTL0_MESON8, 24, 24),
-	[MESON_CDAC_DRIVER_ADJ] =	REG_FIELD(HHI_VDAC_CNTL0_MESON8, 25, 25),
-	[MESON_CDAC_EXT_VREF_EN] =	REG_FIELD(HHI_VDAC_CNTL0_MESON8, 26, 26),
-	[MESON_CDAC_BIAS_C] =		REG_FIELD(HHI_VDAC_CNTL0_MESON8, 27, 27),
-	[MESON_VDAC_CNTL0_RESERVED] =	REG_FIELD(HHI_VDAC_CNTL0_MESON8, 28, 31),
-	[MESON_CDAC_GSW] =		REG_FIELD(HHI_VDAC_CNTL1_MESON8, 0, 2),
-	[MESON_CDAC_PWD] =		REG_FIELD(HHI_VDAC_CNTL1_MESON8, 3, 3),
-	[MESON_VDAC_CNTL1_RESERVED] =	REG_FIELD(HHI_VDAC_CNTL1_MESON8, 4, 31),
-};
-
-static const struct reg_field phy_meson_g12a_cvbs_dac_reg_fields[] = {
-	[MESON_CDAC_CTRL_RESV1] =	REG_FIELD(HHI_VDAC_CNTL0_G12A, 0, 7),
-	[MESON_CDAC_CTRL_RESV2] =	REG_FIELD(HHI_VDAC_CNTL0_G12A, 8, 15),
-	[MESON_CDAC_VREF_ADJ] =		REG_FIELD(HHI_VDAC_CNTL0_G12A, 16, 20),
-	[MESON_CDAC_RL_ADJ] =		REG_FIELD(HHI_VDAC_CNTL0_G12A, 21, 23),
-	[MESON_CDAC_CLK_PHASE_SEL] =	REG_FIELD(HHI_VDAC_CNTL0_G12A, 24, 24),
-	[MESON_CDAC_DRIVER_ADJ] =	REG_FIELD(HHI_VDAC_CNTL0_G12A, 25, 25),
-	[MESON_CDAC_EXT_VREF_EN] =	REG_FIELD(HHI_VDAC_CNTL0_G12A, 26, 26),
-	[MESON_CDAC_BIAS_C] =		REG_FIELD(HHI_VDAC_CNTL0_G12A, 27, 27),
-	[MESON_VDAC_CNTL0_RESERVED] =	REG_FIELD(HHI_VDAC_CNTL0_G12A, 28, 31),
-	[MESON_CDAC_GSW] =		REG_FIELD(HHI_VDAC_CNTL1_G12A, 0, 2),
-	[MESON_CDAC_PWD] =		REG_FIELD(HHI_VDAC_CNTL1_G12A, 3, 3),
-	[MESON_VDAC_CNTL1_RESERVED] =	REG_FIELD(HHI_VDAC_CNTL1_G12A, 4, 31),
+static const struct reg_field phy_meson_cvbs_dac_reg_fields[MESON_CVBS_DAC_NUM_REGS] = {
+	[MESON_CDAC_CTRL_RESV1] =	REG_FIELD(0x0, 0, 7),
+	[MESON_CDAC_CTRL_RESV2] =	REG_FIELD(0x0, 8, 15),
+	[MESON_CDAC_VREF_ADJ] =		REG_FIELD(0x0, 16, 20),
+	[MESON_CDAC_RL_ADJ] =		REG_FIELD(0x0, 21, 23),
+	[MESON_CDAC_CLK_PHASE_SEL] =	REG_FIELD(0x0, 24, 24),
+	[MESON_CDAC_DRIVER_ADJ] =	REG_FIELD(0x0, 25, 25),
+	[MESON_CDAC_EXT_VREF_EN] =	REG_FIELD(0x0, 26, 26),
+	[MESON_CDAC_BIAS_C] =		REG_FIELD(0x0, 27, 27),
+	[MESON_VDAC_CNTL0_RESERVED] =	REG_FIELD(0x0, 28, 31),
+	[MESON_CDAC_GSW] =		REG_FIELD(0x4, 0, 2),
+	[MESON_CDAC_PWD] =		REG_FIELD(0x4, 3, 3),
+	[MESON_VDAC_CNTL1_RESERVED] =	REG_FIELD(0x4, 4, 31),
 };
 
 static const struct phy_meson_cvbs_dac_data phy_meson8_cvbs_dac_data = {
-	.reg_fields			= phy_meson8_cvbs_dac_reg_fields,
+	.reg_offset			= HHI_VDAC_CNTL0_MESON8,
 	.cdac_ctrl_resv2_enable_val	= 0x0,
 	.cdac_vref_adj_enable_val	= 0x0,
 	.cdac_rl_adj_enable_val		= 0x0,
@@ -94,7 +76,7 @@ static const struct phy_meson_cvbs_dac_data phy_meson8_cvbs_dac_data = {
 };
 
 static const struct phy_meson_cvbs_dac_data phy_meson_gxbb_cvbs_dac_data = {
-	.reg_fields			= phy_meson8_cvbs_dac_reg_fields,
+	.reg_offset			= HHI_VDAC_CNTL0_MESON8,
 	.cdac_ctrl_resv2_enable_val	= 0x0,
 	.cdac_vref_adj_enable_val	= 0x0,
 	.cdac_rl_adj_enable_val		= 0x0,
@@ -103,7 +85,7 @@ static const struct phy_meson_cvbs_dac_data phy_meson_gxbb_cvbs_dac_data = {
 };
 
 static const struct phy_meson_cvbs_dac_data phy_meson_gxl_cvbs_dac_data = {
-	.reg_fields			= phy_meson8_cvbs_dac_reg_fields,
+	.reg_offset			= HHI_VDAC_CNTL0_MESON8,
 	.cdac_ctrl_resv2_enable_val	= 0x0,
 	.cdac_vref_adj_enable_val	= 0xf,
 	.cdac_rl_adj_enable_val		= 0x0,
@@ -112,7 +94,7 @@ static const struct phy_meson_cvbs_dac_data phy_meson_gxl_cvbs_dac_data = {
 };
 
 static const struct phy_meson_cvbs_dac_data phy_meson_g12a_cvbs_dac_data = {
-	.reg_fields			= phy_meson_g12a_cvbs_dac_reg_fields,
+	.reg_offset			= HHI_VDAC_CNTL0_G12A,
 	.cdac_ctrl_resv2_enable_val	= 0x60,
 	.cdac_vref_adj_enable_val	= 0x10,
 	.cdac_rl_adj_enable_val		= 0x4,
@@ -243,7 +225,9 @@ static int phy_meson_cvbs_dac_probe(struct platform_device *pdev)
 	struct phy_meson_cvbs_dac_priv *priv;
 	struct phy_provider *phy_provider;
 	struct device *dev = &pdev->dev;
+	struct reg_field *reg_fields;
 	struct regmap *hhi;
+	u32 i, reg_offset;
 	struct phy *phy;
 	int ret;
 
@@ -261,6 +245,8 @@ static int phy_meson_cvbs_dac_probe(struct platform_device *pdev)
 		if (IS_ERR(hhi))
 			return dev_err_probe(dev, PTR_ERR(hhi),
 					     "Failed to get the parent syscon\n");
+
+		reg_offset = priv->data->reg_offset;
 	} else {
 		const struct platform_device_id *pdev_id;
 
@@ -278,20 +264,33 @@ static int phy_meson_cvbs_dac_probe(struct platform_device *pdev)
 		if (IS_ERR(hhi))
 			return dev_err_probe(dev, PTR_ERR(hhi),
 					     "Failed to get the \"amlogic,meson-gx-hhi-sysctrl\" syscon\n");
+
+		ret = device_property_read_u32(dev, "reg", &reg_offset);
+		if (ret)
+			return dev_err_probe(dev, ret,
+					     "Failed to parse the \"reg\" property\n");
 	}
+
+	reg_fields = devm_kmemdup_array(dev, phy_meson_cvbs_dac_reg_fields,
+					MESON_CVBS_DAC_NUM_REGS,
+					sizeof(*reg_fields), GFP_KERNEL);
+	if (!reg_fields)
+		return -ENOMEM;
+
+	for (i = 0; i < MESON_CVBS_DAC_NUM_REGS; i++)
+		reg_fields[i].reg += reg_offset;
+
+	ret = devm_regmap_field_bulk_alloc(dev, hhi, priv->regs, reg_fields,
+					   MESON_CVBS_DAC_NUM_REGS);
+	if (ret)
+		return dev_err_probe(dev, ret,
+				     "Failed to create regmap fields\n");
 
 	if (priv->data->needs_cvbs_trimming_nvmem_cell) {
 		ret = phy_meson_cvbs_read_trimming(dev, priv);
 		if (ret)
 			return ret;
 	}
-
-	ret = devm_regmap_field_bulk_alloc(dev, hhi, priv->regs,
-					   priv->data->reg_fields,
-					   MESON_CVBS_DAC_NUM_REGS);
-	if (ret)
-		return dev_err_probe(dev, ret,
-				     "Failed to create regmap fields\n");
 
 	phy = devm_phy_create(dev, np, &phy_meson_cvbs_dac_ops);
 	if (IS_ERR(phy))
