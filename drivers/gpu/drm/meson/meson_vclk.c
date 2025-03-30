@@ -1042,12 +1042,12 @@ static void meson_vclk_set(struct meson_drm *priv,
 
 static int meson_vclk_set_rate_exclusive(struct meson_drm *priv,
 					 enum vpu_bulk_clk_id clk_id,
-					 unsigned int rate_khz)
+					 unsigned long long rate)
 {
 	struct clk *clk = priv->vid_clks[clk_id].clk;
 	int ret;
 
-	ret = clk_set_rate_exclusive(clk, rate_khz * 1000UL);
+	ret = clk_set_rate_exclusive(clk, rate);
 	if (ret)
 		return ret;
 
@@ -1080,9 +1080,10 @@ static void meson_vclk_disable_ccf(struct meson_drm *priv)
 	}
 }
 
-static int meson_vclk_enable_ccf(struct meson_drm *priv, unsigned int target,
-				 bool hdmi_use_enci, unsigned int phy_freq,
-				 unsigned int dac_freq, unsigned int venc_freq)
+static void meson_vclk_set_ccf(struct meson_drm *priv, unsigned int target,
+			       bool hdmi_use_enci, unsigned long long phy_freq,
+			       unsigned long long dac_freq,
+			       unsigned long long venc_freq)
 {
 	enum vpu_bulk_clk_id venc_clk_id, dac_clk_id;
 	int ret;
@@ -1104,9 +1105,9 @@ static int meson_vclk_enable_ccf(struct meson_drm *priv, unsigned int target,
 	 */
 	ret = meson_vclk_set_rate_exclusive(priv, VPU_VID_CLK_TMDS, phy_freq);
 	if (ret) {
-		dev_err(priv->dev, "Failed to set TMDS clock to %ukHz: %d\n",
+		dev_err(priv->dev, "Failed to set TMDS clock to %lluHz: %d\n",
 			phy_freq, ret);
-		goto out_enable_clocks;
+		return;
 	}
 
 	/*
@@ -1117,9 +1118,9 @@ static int meson_vclk_enable_ccf(struct meson_drm *priv, unsigned int target,
 	ret = meson_vclk_set_rate_exclusive(priv, venc_clk_id, venc_freq);
 	if (ret) {
 		dev_warn(priv->dev,
-			 "Failed to set VENC clock to %ukHz while TMDS clock is %ukHz: %d\n",
+			 "Failed to set VENC clock to %lluHz while TMDS clock is %lluHz: %d\n",
 			 venc_freq, phy_freq, ret);
-		goto out_enable_clocks;
+		return;
 	}
 
 	priv->clk_venc = priv->vid_clks[venc_clk_id].clk;
@@ -1135,31 +1136,33 @@ static int meson_vclk_enable_ccf(struct meson_drm *priv, unsigned int target,
 	ret = meson_vclk_set_rate_exclusive(priv, dac_clk_id, dac_freq);
 	if (ret) {
 		dev_warn(priv->dev,
-			 "Failed to set pixel clock to %ukHz while TMDS clock is %ukHz: %d\n",
+			 "Failed to set pixel clock to %lluHz while TMDS clock is %lluHz: %d\n",
 			 dac_freq, phy_freq, ret);
-		goto out_enable_clocks;
+		return;
 	}
 
 	priv->clk_dac = priv->vid_clks[dac_clk_id].clk;
+}
 
-out_enable_clocks:
+static void meson_vclk_enable_ccf(struct meson_drm *priv)
+{
+	int ret;
+
 	ret = clk_enable(priv->clk_venc);
 	if (ret)
 		dev_err(priv->dev,
-			"Failed to re-enable the VENC clock at %ukHz: %d\n",
-			venc_freq, ret);
+			"Failed to re-enable the VENC clock at %luHz: %d\n",
+			clk_get_rate(priv->clk_venc), ret);
 	else
 		priv->clk_venc_enabled = true;
 
 	ret = clk_enable(priv->clk_dac);
 	if (ret)
 		dev_err(priv->dev,
-			"Failed to re-enable the pixel clock at %ukHz: %d\n",
-			dac_freq, ret);
+			"Failed to re-enable the pixel clock at %luHz: %d\n",
+			clk_get_rate(priv->clk_dac), ret);
 	else
 		priv->clk_dac_enabled = true;
-
-	return ret;
 }
 
 void meson_vclk_setup(struct meson_drm *priv, unsigned int target,
@@ -1177,12 +1180,13 @@ void meson_vclk_setup(struct meson_drm *priv, unsigned int target,
 	    meson_vpu_is_compatible(priv, VPU_COMPATIBLE_M8M2)) {
 		/* CVBS video clocks are generated off a 1296MHz base clock */
 		if (target == MESON_VCLK_TARGET_CVBS)
-			phy_freq = 1296000;
+			phy_freq = 1296000000;
 
-		dev_err(priv->dev, "%s(target: %u, phy: %u, dac: %u, venc: %u, hdmi_use_enci: %u)\n", __func__, target, phy_freq, dac_freq, venc_freq, hdmi_use_enci);
+		dev_err(priv->dev, "%s(target: %u, phy: %llu, dac: %llu, venc: %llu, hdmi_use_enci: %u)\n", __func__, target, phy_freq, dac_freq, venc_freq, hdmi_use_enci);
 		meson_vclk_disable_ccf(priv);
-		meson_vclk_enable_ccf(priv, target, hdmi_use_enci, phy_freq,
-				      dac_freq, venc_freq);
+		meson_vclk_set_ccf(priv, target, hdmi_use_enci, phy_freq,
+				   dac_freq, venc_freq);
+		meson_vclk_enable_ccf(priv);
 		return;
 	}
 
