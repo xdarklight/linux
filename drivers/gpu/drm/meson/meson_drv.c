@@ -191,12 +191,11 @@ static int meson_video_clock_init(struct meson_drm *priv)
 
 static void meson_video_clock_exit(struct meson_drm *priv)
 {
-	unsigned int i;
+	if (priv->clk_dac_enabled)
+		clk_disable(priv->clk_dac);
 
-	for (i = 0; i < VPU_VID_CLK_NUM; i++) {
-		if (priv->vid_clk_enabled[i])
-			clk_disable(priv->vid_clks[i].clk);
-	}
+	if (priv->clk_venc_enabled)
+		clk_disable(priv->clk_venc);
 
 	clk_bulk_unprepare(priv->num_intr_clks, priv->intr_clks);
 	clk_bulk_unprepare(VPU_VID_CLK_NUM, priv->vid_clks);
