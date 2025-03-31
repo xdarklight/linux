@@ -95,11 +95,8 @@ struct meson_drm {
 	unsigned int num_intr_clks;
 	bool intr_clks_enabled;
 	struct clk_bulk_data vid_clks[VPU_VID_CLK_NUM];
+	bool vid_clk_enabled[VPU_VID_CLK_NUM];
 	bool vid_clk_rate_exclusive[VPU_VID_CLK_NUM];
-	struct clk *clk_venc;
-	bool clk_venc_enabled;
-	struct clk *clk_dac;
-	bool clk_dac_enabled;
 	struct reset_control_bulk_data vid_pll_resets[VPU_RESET_VID_PLL_NUM];
 
 	/* Components Data */
