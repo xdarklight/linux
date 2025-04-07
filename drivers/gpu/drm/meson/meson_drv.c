@@ -314,35 +314,35 @@ static int meson_drv_bind_master(struct device *dev, bool has_components)
 			dev_err(drm->dev, "Couldn't bind all components\n");
 			/* Do not try to unbind */
 			has_components = false;
-			goto exit_afbcd;
+			goto cvbs_encoder_remove;
 		}
 	}
 
 	ret = meson_encoder_hdmi_probe(priv);
 	if (ret)
-		goto exit_afbcd;
+		goto unbind_components;
 
 	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A)) {
 		ret = meson_encoder_dsi_probe(priv);
 		if (ret)
-			goto exit_afbcd;
+			goto hdmi_encoder_remove;
 	}
 
 	ret = meson_plane_create(priv);
 	if (ret)
-		goto exit_afbcd;
+		goto dsi_encoder_remove;
 
 	ret = meson_overlay_create(priv);
 	if (ret)
-		goto exit_afbcd;
+		goto dsi_encoder_remove;
 
 	ret = meson_crtc_create(priv);
 	if (ret)
-		goto exit_afbcd;
+		goto dsi_encoder_remove;
 
 	ret = request_irq(priv->vsync_irq, meson_irq, 0, drm->driver->name, drm);
 	if (ret)
-		goto exit_afbcd;
+		goto dsi_encoder_remove;
 
 	drm_mode_config_reset(drm);
 
@@ -360,6 +360,16 @@ static int meson_drv_bind_master(struct device *dev, bool has_components)
 
 uninstall_irq:
 	free_irq(priv->vsync_irq, drm);
+dsi_encoder_remove:
+	if (meson_vpu_is_compatible(priv, VPU_COMPATIBLE_G12A))
+		meson_encoder_dsi_remove(priv);
+hdmi_encoder_remove:
+	meson_encoder_hdmi_remove(priv);
+unbind_components:
+	if (has_components)
+		component_unbind_all(dev, drm);
+cvbs_encoder_remove:
+	meson_encoder_cvbs_remove(priv);
 exit_afbcd:
 	if (priv->afbcd.ops)
 		priv->afbcd.ops->exit(priv);
@@ -373,13 +383,6 @@ free_canvas_osd1:
 	meson_canvas_free(priv->canvas, priv->canvas_id_osd1);
 free_drm:
 	drm_dev_put(drm);
-
-	meson_encoder_dsi_remove(priv);
-	meson_encoder_hdmi_remove(priv);
-	meson_encoder_cvbs_remove(priv);
-
-	if (has_components)
-		component_unbind_all(dev, drm);
 
 	return ret;
 }
