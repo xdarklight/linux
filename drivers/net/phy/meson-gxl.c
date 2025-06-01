@@ -25,12 +25,21 @@
 #define TSTREAD1	21
 #define TSTWRITE	23
 
+/* These are part of MII_LAN83C185_ISF / MII_LAN83C185_IM */
+#define MESON_GXL_INTSRC_WOL	0xe00
+
 #define BANK_ANALOG_DSP		0
 #define BANK_WOL		1
 #define BANK_BIST		3
 
 /* WOL Registers */
-#define LPI_STATUS	0xc
+#define WOL_MAGIC_ADDR01	0x0
+#define WOL_MAGIC_ADDR23	0x1
+#define WOL_MAGIC_ADDR45	0x2
+#define WOL_MAGIC_CONFIG	0x3
+#define  WOL_MAGIC_CONFIG_UNK0	BIT(0)
+#define  WOL_MAGIC_CONFIG_UNK3	BIT(3)
+#define LPI_STATUS		0xc
 #define  LPI_STATUS_RSV12	BIT(12)
 
 /* BIST Registers */
@@ -189,6 +198,45 @@ read_status_continue:
 	return genphy_read_status(phydev);
 }
 
+static void meson_gxl_get_wol(struct phy_device *dev, struct ethtool_wolinfo *wol)
+{
+	int ret;
+
+	/* There's only reference code available for enabling WAKE_MAGIC */
+	wol->supported = WAKE_MAGIC;
+
+	ret = meson_gxl_read_reg(dev, BANK_WOL, false, WOL_MAGIC_CONFIG);
+	if (ret > 0 && ret & (WOL_MAGIC_CONFIG_UNK0 | WOL_MAGIC_CONFIG_UNK3))
+		wol->wolopts = WAKE_MAGIC;
+}
+
+static int meson_gxl_set_wol(struct phy_device *dev, struct ethtool_wolinfo *wol)
+{
+	const u8 *mac_addr = dev->attached_dev->dev_addr;
+
+	if (wol->wolopts & WAKE_MAGIC) {
+		/* Store the device address for the magic packet */
+		meson_gxl_write_reg(dev, BANK_WOL, false, WOL_MAGIC_ADDR01,
+				    mac_addr[0] | (mac_addr[1] << 8));
+		meson_gxl_write_reg(dev, BANK_WOL, false, WOL_MAGIC_ADDR23,
+				    mac_addr[2] | (mac_addr[3] << 8));
+		meson_gxl_write_reg(dev, BANK_WOL, false, WOL_MAGIC_ADDR45,
+				    mac_addr[4] | (mac_addr[5] << 8));
+
+		/* Enable magic packet matching */
+		meson_gxl_write_reg(dev, BANK_WOL, false, WOL_MAGIC_CONFIG,
+				    WOL_MAGIC_CONFIG_UNK0 | WOL_MAGIC_CONFIG_UNK3);
+
+		/* Enable the WOL interrupt */
+		phy_set_bits(dev, MII_LAN83C185_IM, MESON_GXL_INTSRC_WOL);
+	} else {
+		/* Disable the WOL interrupt */
+		phy_clear_bits(dev, MII_LAN83C185_IM, MESON_GXL_INTSRC_WOL);
+	}
+
+	return 0;
+}
+
 static struct phy_driver meson_gxl_phy[] = {
 	{
 		PHY_ID_MATCH_EXACT(0x01814400),
@@ -200,6 +248,8 @@ static struct phy_driver meson_gxl_phy[] = {
 		.read_status	= meson_gxl_read_status,
 		.config_intr	= smsc_phy_config_intr,
 		.handle_interrupt = smsc_phy_handle_interrupt,
+		.set_wol	= meson_gxl_set_wol,
+		.get_wol	= meson_gxl_get_wol,
 		.suspend        = genphy_suspend,
 		.resume         = genphy_resume,
 		.read_mmd	= genphy_read_mmd_unsupported,
