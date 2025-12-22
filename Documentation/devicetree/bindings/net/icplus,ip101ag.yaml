@@ -26,13 +26,33 @@ description: |
 
   All of them share the same PHY ID.
 
-allOf:
-  - $ref: ethernet-phy.yaml#
-
 properties:
   compatible:
     enum:
       - ethernet-phy-id0243.0c54
+
+  clocks:
+    maxItems: 1
+    description:
+      25MHz (crystal or oscillator) or a 50MHz RMII REF_CLK input
+
+  clock-names:
+    oneOf:
+      - description: 25MHz crystal input
+        items:
+          - const: xtal
+      - description: 25MHz (single-ended) oscillator
+        items:
+          - const: 25mhz_oscillator
+      - description: 50MHz RMII reference clock
+        items:
+          - const: ref_clk
+
+  '#clock-cells':
+    const: 0
+    description: |
+      The PHY generates a 50MHz RMII REF_CLK (called C50M_O) output when
+      supplied with a 25MHz input.
 
   icplus,select-rx-error:
     type: boolean
@@ -57,6 +77,16 @@ dependentSchemas:
   icplus,select-interrupt:
     properties:
       icplus,select-rx-error: false
+
+allOf:
+  - $ref: ethernet-phy.yaml#
+  - if:
+      properties:
+        clock-names:
+          contains:
+            const: ref_clk
+      then:
+        '#clock-cells': false
 
 unevaluatedProperties: false
 
