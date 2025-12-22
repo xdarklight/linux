@@ -13,6 +13,7 @@
  */
 
 #include <linux/clk.h>
+#include <linux/clk-provider.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/mii.h>
@@ -655,11 +656,35 @@ int smsc_phy_set_tunable(struct phy_device *phydev,
 }
 EXPORT_SYMBOL_GPL(smsc_phy_set_tunable);
 
+static int smsc_phy_register_rmii_refclk_output(struct device *dev)
+{
+	struct clk_hw *refclko;
+	char *name;
+
+	if (!IS_ENABLED(CONFIG_COMMON_CLK))
+		return 0;
+
+	name = devm_kasprintf(dev, GFP_KERNEL, "%s-refclko", dev_name(dev));
+	if (!name)
+		return -ENOMEM;
+
+	refclko = devm_clk_hw_register_fixed_factor_index(dev, name, 0, 0,
+							  2, 1);
+	if (IS_ERR(refclko))
+		return dev_err_probe(dev, PTR_ERR(refclko),
+				     "Failed to register RMII REF_CLK clock output\n");
+
+	return devm_of_clk_add_hw_provider(dev, of_clk_hw_simple_get, refclko);
+}
+
 int smsc_phy_probe(struct phy_device *phydev)
 {
 	struct device *dev = &phydev->mdio.dev;
 	struct smsc_phy_priv *priv;
+	bool has_rmii_ref_clk_in;
+	unsigned long in_clk_mhz;
 	struct clk *refclk;
+	int rc;
 
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
@@ -673,12 +698,28 @@ int smsc_phy_probe(struct phy_device *phydev)
 
 	phydev->priv = priv;
 
+	has_rmii_ref_clk_in = !device_property_present(dev, "clock-names") ||
+			      device_property_match_string(dev, "clock-names",
+							   "ref_clk") >= 0;
+	if (has_rmii_ref_clk_in)
+		in_clk_mhz = 50;
+	else
+		in_clk_mhz = 25;
+
 	/* Make clk optional to keep DTB backward compatibility. */
 	refclk = devm_clk_get_optional_enabled_with_rate(dev, NULL,
-							 50 * 1000 * 1000);
+							 in_clk_mhz * 1000 * 1000);
 	if (IS_ERR(refclk))
 		return dev_err_probe(dev, PTR_ERR(refclk),
-				     "Failed to request clock\n");
+				     "Failed to request %luMHz clock input\n",
+				     in_clk_mhz);
+
+	if (phydev->interface == PHY_INTERFACE_MODE_RMII &&
+	    !has_rmii_ref_clk_in) {
+		rc = smsc_phy_register_rmii_refclk_output(dev);
+		if (rc)
+			return rc;
+	}
 
 	return 0;
 }
