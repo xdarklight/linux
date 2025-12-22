@@ -6,6 +6,8 @@
  */
 #include <linux/kernel.h>
 #include <linux/string.h>
+#include <linux/clk.h>
+#include <linux/clk-provider.h>
 #include <linux/errno.h>
 #include <linux/unistd.h>
 #include <linux/interrupt.h>
@@ -201,10 +203,31 @@ static int ip175c_config_aneg(struct phy_device *phydev)
 	return 0;
 }
 
+static int ip101a_g_register_rmii_ref_clk(struct device *dev)
+{
+	struct clk_hw *rmii_ref_clk;
+
+	if (!IS_ENABLED(CONFIG_COMMON_CLK))
+		return 0;
+
+	rmii_ref_clk = devm_clk_hw_register_fixed_factor_index(dev, "c50m_o",
+							       0, 0, 2, 1);
+	if (IS_ERR(rmii_ref_clk))
+		return dev_err_probe(dev, PTR_ERR(rmii_ref_clk),
+				     "Failed to register RMII REF_CLK clock output\n");
+
+	return devm_of_clk_add_hw_provider(dev, of_clk_hw_simple_get,
+					   rmii_ref_clk);
+}
+
 static int ip101a_g_probe(struct phy_device *phydev)
 {
 	struct device *dev = &phydev->mdio.dev;
 	struct ip101a_g_phy_priv *priv;
+	unsigned long input_clock_rate;
+	bool register_rmii_ref_clk;
+	struct clk *clk;
+	int ret;
 
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
@@ -228,6 +251,27 @@ static int ip101a_g_probe(struct phy_device *phydev)
 		priv->sel_intr32 = IP101GR_SEL_INTR32_KEEP;
 
 	phydev->priv = priv;
+
+	if (device_property_match_string(dev, "clock-names", "ref_clk") >= 0) {
+		input_clock_rate = 50 * 1000 * 1000;
+		register_rmii_ref_clk = false;
+	} else {
+		input_clock_rate = 25 * 1000 * 1000;
+		register_rmii_ref_clk = true;
+	}
+
+	clk = devm_clk_get_optional_enabled_with_rate(dev, NULL,
+						      input_clock_rate);
+	if (IS_ERR(clk))
+		return dev_err_probe(dev, PTR_ERR(clk),
+				     "Failed to get %luMHz clock input\n",
+				     input_clock_rate / 1000 / 1000);
+
+	if (register_rmii_ref_clk) {
+		ret = ip101a_g_register_rmii_ref_clk(dev);
+		if (ret)
+			return ret;
+	}
 
 	return 0;
 }
