@@ -13,9 +13,6 @@ maintainers:
 description:
   Bindings for SMSC / Microchip LAN87xx PHYs
 
-allOf:
-  - $ref: ethernet-phy.yaml#
-
 properties:
   compatible:
     enum:
@@ -32,15 +29,70 @@ properties:
 
   clocks:
     maxItems: 1
+
+  clock-names:
+    oneOf:
+      - description: 25MHz crystal input
+        items:
+          - const: xtal
+      - description: 25MHz single-ended crystal oscillator or another 25MHz clock
+        items:
+          - const: clkin
+      - description: 50MHz RMII reference clock
+        items:
+          - const: ref_clk
+      default: ref_clk
+
+  '#clock-cells':
+    const: 0
     description: |
-      The clock used as phy reference clock and is connected to phy
-      pin XTAL1/CLKIN.
+      In RMII mode the PHY outputs a 50MHz RMII reference clock (REFCLKO)
+      when either an external 25MHz crystal or an external 25MHz clock
+      signal is used as input of the PHY.
+      The pad is shared with the nINT functionality, meaning the PHY cannot
+      output the interrupt signal when it generates the REFCLKO.
 
   smsc,disable-energy-detect:
     type: boolean
     description: |
       If set, do not enable energy detect mode for the SMSC PHY.
       default: enable energy detect mode
+
+allOf:
+  - $ref: ethernet-phy.yaml#
+  - if:
+      properties:
+        compatible:
+          contains:
+            enum:
+              - ethernet-phy-id0007.c0d0
+      then:
+        clock-names:
+          const: xtal
+          default: xtal
+  - if:
+      properties:
+        clock-names:
+          contains:
+            const: ref_clk
+      then:
+        '#clock-cells': false
+  - if:
+      required:
+        - interrupts
+      then:
+        '#clock-cells': false
+  - if:
+      not:
+        properties:
+          compatible:
+            contains:
+              enum:
+                - ethernet-phy-id0007.c0f1
+                - ethernet-phy-id0007.c130
+                - ethernet-phy-id0007.c131
+      then:
+        '#clock-cells': false
 
 unevaluatedProperties: false
 
