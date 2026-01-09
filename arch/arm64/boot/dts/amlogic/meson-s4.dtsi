@@ -66,6 +66,39 @@
 		#clock-cells = <0>;
 	};
 
+	gpu_opp_table: opp-table-gpu {
+		compatible = "operating-points-v2";
+
+		opp-124999998 {
+			opp-hz = /bits/ 64 <124999998>;
+			opp-microvolt = <800000>;
+		};
+		opp-249999996 {
+			opp-hz = /bits/ 64 <249999996>;
+			opp-microvolt = <800000>;
+		};
+		opp-285714281 {
+			opp-hz = /bits/ 64 <285714281>;
+			opp-microvolt = <800000>;
+		};
+		opp-399999994 {
+			opp-hz = /bits/ 64 <399999994>;
+			opp-microvolt = <800000>;
+		};
+		opp-499999992 {
+			opp-hz = /bits/ 64 <499999992>;
+			opp-microvolt = <800000>;
+		};
+		opp-666666656 {
+			opp-hz = /bits/ 64 <666666656>;
+			opp-microvolt = <800000>;
+		};
+		opp-799999988 {
+			opp-hz = /bits/ 64 <799999988>;
+			opp-microvolt = <800000>;
+		};
+	};
+
 	firmware {
 		sm: secure-monitor {
 			compatible = "amlogic,meson-gxbb-sm";
@@ -781,6 +814,22 @@
 				reg = <0x0 0x84040 0x0 0x30>;
 				interrupts = <GIC_SPI 22 IRQ_TYPE_EDGE_RISING>;
 				status = "disabled";
+			};
+
+			gpu: gpu@400000 {
+				compatible = "amlogic,meson-s4-mali", "arm,mali-bifrost";
+				reg = <0x00 0xfe400000 0x00 0x40000>;
+				interrupts = <GIC_SPI 146 IRQ_TYPE_LEVEL_HIGH>,
+					     <GIC_SPI 145 IRQ_TYPE_LEVEL_HIGH>,
+					     <GIC_SPI 144 IRQ_TYPE_LEVEL_HIGH>;
+				interrupt-names = "job", "mmu", "gpu";
+				clocks = <&clkc_periphs CLKID_MALI_SEL>,
+					 <&clkc_periphs CLKID_MALI>;
+				clock-names = "gpu", "bus";
+				resets = <&reset RESET_MALI>,
+					 <&reset RESET_MALI_APB>;
+				operating-points-v2 = <&gpu_opp_table>;
+				#cooling-cells = <2>;
 			};
 
 			hwrng: rng@440788 {
