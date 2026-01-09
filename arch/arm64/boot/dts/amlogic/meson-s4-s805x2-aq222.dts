@@ -5,7 +5,7 @@
 
 /dts-v1/;
 
-#include "meson-s4.dtsi"
+#include "meson-s4-s805x2.dtsi"
 
 / {
 	model = "Amlogic Meson S4 AQ222 Development Board";

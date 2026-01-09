@@ -141,6 +141,7 @@ config ARM_MEDIATEK_CPUFREQ_HW
 	  The driver implements the cpufreq interface for this HW engine.
 	  Say Y if you want to support CPUFreq HW.
 
+
 config ARM_MESON8_SOC_CPUFREQ
 	tristate "Amlogic Meson8/8b/8m2 SoC CPUFreq support"
 	depends on (ARCH_MESON && ARM) || COMPILE_TEST
@@ -148,6 +149,15 @@ config ARM_MESON8_SOC_CPUFREQ
 	default ARCH_MESON
 	help
 	  This adds the CPUFreq driver for Amlogic Meson8/8b/8m2 SoCs.
+
+config ARM_MESON_S4_SOC_CPUFREQ
+	tristate "Amlogic Meson-S4 SoC CPUFreq support"
+	depends on ARCH_MESON || COMPILE_TEST
+	depends on MESON_SM
+	depends on CPUFREQ_DT
+	default ARCH_MESON
+	help
+	  This adds the CPUFreq driver for Amlogic Meson-S4 SoCs.
 
 config ARM_OMAP2PLUS_CPUFREQ
 	bool "TI OMAP2+"

@@ -1,0 +1,77 @@
+# SPDX-License-Identifier: GPL-2.0
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/opp/amlogic,meson-s4-cpu-operating-points.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Amlogic Meson-S4 CPU OPP
+
+maintainers:
+  - Martin Blumenstingl <martin.blumenstingl@googlemail.com>
+
+description: |
+  On Amlogic Meson-S4 SoCs the voltages of the CPU OPPs depend on the
+  silicon quality. The secure monitor firmware exposes the silicon
+  binning information, where higher bins are of better silicon quality
+  (meaning: the same frequency requires lower operating voltages).
+
+allOf:
+  - $ref: opp-v2-base.yaml#
+
+properties:
+  compatible:
+    const: amlogic,meson-s4-cpu-operating-points
+
+  secure-monitor:
+    description: phandle to the secure-monitor node
+    $ref: /schemas/types.yaml#/definitions/phandle
+
+  opp-shared: true
+
+required:
+  - compatible
+
+patternProperties:
+  "^opp-[0-9]+$":
+    type: object
+
+    properties:
+      opp-hz: true
+      clock-latency-ns: true
+      opp-microvolt: true
+
+    patternProperties:
+      "^opp-microvolt-bin[0-9]$": true
+
+    required:
+      - opp-hz
+
+    unevaluatedProperties: false
+
+additionalProperties: false
+
+examples:
+  - |
+    cpu_opp_table: opp-table {
+        compatible = "amlogic,meson-s4-cpu-operating-points";
+        secure-monitor = <&sm>;
+        opp-shared;
+
+        opp-100000000 {
+            opp-hz = /bits/ 64 <100000000>;
+            opp-microvolt-bin0 = <769000>;
+            opp-microvolt-bin1 = <769000>;
+            opp-microvolt-bin2 = <759000>;
+            opp-microvolt-bin3 = <759000>;
+            clock-latency-ns = <50000>;
+        };
+
+        opp-1800000000 {
+            opp-hz = /bits/ 64 <1704000000>;
+            opp-microvolt-bin0 = <1009000>;
+            opp-microvolt-bin1 = <1009000>;
+            opp-microvolt-bin2 = <999000>;
+            opp-microvolt-bin3 = <939000>;
+            clock-latency-ns = <50000>;
+        };
+    };

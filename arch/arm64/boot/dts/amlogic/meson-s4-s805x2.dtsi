@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * Copyright (c) 2026 Martin Blumenstingl <martin.blumenstingl@googlemail.com>
+ */
+
+#include "meson-s4.dtsi"
+
+&cpu_opp_table {
+	opp-1800000000 {
+		opp-hz = /bits/ 64 <1704000000>;
+		opp-microvolt-bin0 = <1009000>;
+		opp-microvolt-bin1 = <1009000>;
+		opp-microvolt-bin2 = <999000>;
+		opp-microvolt-bin3 = <939000>;
+		clock-latency-ns = <50000>;
+	};
+};
