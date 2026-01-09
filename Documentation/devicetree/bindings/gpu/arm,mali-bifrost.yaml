@@ -19,6 +19,7 @@ properties:
           - enum:
               - allwinner,sun50i-h616-mali
               - amlogic,meson-g12a-mali
+              - amlogic,meson-s4-mali
               - mediatek,mt8183-mali
               - mediatek,mt8183b-mali
               - mediatek,mt8186-mali
@@ -143,6 +144,25 @@ allOf:
         power-domain-names: false
       required:
         - resets
+  - if:
+      properties:
+        compatible:
+          contains:
+            const: amlogic,meson-s4-mali
+    then:
+      properties:
+        power-domains:
+          maxItems: 1
+        power-domain-names: false
+        clocks:
+          minItems: 2
+        clock-names:
+          items:
+            - const: gpu
+            - const: bus
+      required:
+        - resets
+        - clock-names
   - if:
       properties:
         compatible:
