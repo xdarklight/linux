@@ -14,6 +14,7 @@ enum {
 	SM_GET_CHIP_ID,
 	SM_A1_PWRC_SET,
 	SM_A1_PWRC_GET,
+	SM_S4_GET_DVFS_TABLE_INDEX,
 };
 
 struct meson_sm_firmware;
